@@ -60,3 +60,8 @@ Data-flow coverage seeks to capture _use-def_ relationships such as the one
 outlined in the previous section. In "data-flow guided fuzzing", seed selection
 is based on the ways in which values are associated with variables, and how
 these associations can affect the execution of the program.
+
+# Further reading
+
+My random thoughts and notes can be found on the
+[wiki](https://github.com/HexHive/afl-dataflow/wiki).
