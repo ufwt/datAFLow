@@ -119,10 +119,15 @@ static void edit_params(u32 argc, char** argv) {
 
      http://clang.llvm.org/docs/SanitizerCoverage.html#tracing-pcs-with-guards */
 
-#ifdef USE_TRACE_PC
+#if defined(USE_TRACE_PC)
   cc_params[cc_par_cnt++] = "-fsanitize-coverage=trace-pc-guard";
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-sanitizer-coverage-block-threshold=0";
+#elif defined(USE_DATAFLOW_COVERAGE)
+  cc_params[cc_par_cnt++] = "-Xclang";
+  cc_params[cc_par_cnt++] = "-load";
+  cc_params[cc_par_cnt++] = "-Xclang";
+  cc_params[cc_par_cnt++] = alloc_printf("%s/afl-dataflow-llvm-pass.so", obj_path);
 #else
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = "-load";
