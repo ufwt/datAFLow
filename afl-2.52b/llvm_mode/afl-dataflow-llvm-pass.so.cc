@@ -4,11 +4,12 @@
 #include "../debug.h"
 
 #include <unistd.h>
-#include <vector>
+#include <unordered_set>
 
 #include "llvm/Pass.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -18,24 +19,37 @@ using namespace llvm;
 namespace {
 
 class AFLDataFlowCoverage : public ModulePass {
+    private:
+        GlobalVariable *AFLMapPtr;
+        ConstantInt *MapSize;
+
+        /**
+         * Instrument the \c Use of definition \c Def in the module \c M.
+         */
+        void instrumentUse(Module &M, Value *Def, Instruction *Use);
+
     public:
         static char ID;
         AFLDataFlowCoverage() : ModulePass(ID) { }
 
+        bool doInitialization(Module &M) override;
         bool runOnModule(Module &M) override;
 };
 
-} // annonymous namespace
+} /* End anonymous namespace */
 
 char AFLDataFlowCoverage::ID = 0;
 
 /**
  * \brief Get all users of a given value.
  *
- * This essentially constructs the "def-use chain" for the given value.
+ * This essentially constructs the complete "def-use chain" (transitive
+ * closure) for the given value.
+ *
+ * Note: This only performs an intraprocedural analysis!
  */
-static std::vector<User*> getUses(Value *Def) {
-    std::vector<User*> Uses;
+static std::unordered_set<User*> getUses(Value *Def) {
+    std::unordered_set<User*> Uses;
 
     for (auto *U : Def->users()) {
         SmallVector<User*, 4> Worklist;
@@ -43,7 +57,7 @@ static std::vector<User*> getUses(Value *Def) {
 
         while (!Worklist.empty()) {
             auto *U = Worklist.pop_back_val();
-            Uses.push_back(U);
+            Uses.insert(U);
 
             /*
              * Store instructions are a special case.
@@ -67,6 +81,47 @@ static std::vector<User*> getUses(Value *Def) {
     return Uses;
 }
 
+void AFLDataFlowCoverage::instrumentUse(Module &M, Value *Def, Instruction *Use) {
+    LLVMContext &C = M.getContext();
+    IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
+
+    IRBuilder<> IRB(Use);
+
+    /*
+     * Load SHM pointer based on the address of the definition modulo the size
+     * of the SHM region.
+     */
+
+    LoadInst *MapPtr = IRB.CreateLoad(this->AFLMapPtr);
+    MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+    Value *MapPtrIdx =
+        IRB.CreateGEP(MapPtr, IRB.CreateURem(Def, this->MapSize));
+
+    /* Update bitmap */
+
+    LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+    Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+    Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+    StoreInst *MapUpdate = IRB.CreateStore(Incr, MapPtrIdx);
+    MapUpdate->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+}
+
+bool AFLDataFlowCoverage::doInitialization(Module &M) {
+    LLVMContext &C = M.getContext();
+
+    IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
+    IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
+
+    /* Get globals for the SHM region */
+
+    this->AFLMapPtr =
+        new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
+                           GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
+    this->MapSize = ConstantInt::get(Int32Ty, MAP_SIZE);
+
+    return true;
+}
+
 bool AFLDataFlowCoverage::runOnModule(Module &M) {
     /* Show a banner */
     char be_quiet = 0;
@@ -80,43 +135,78 @@ bool AFLDataFlowCoverage::runOnModule(Module &M) {
     LLVMContext &C = M.getContext();
     const DataLayout &DL = M.getDataLayout();
 
-    /* malloc reference */
-    Type *BPTy = Type::getInt8PtrTy(C);
+    /* Generate a malloc reference */
+
+    PointerType *BPTy = Type::getInt8PtrTy(C);
     IntegerType *IntPtrTy = DL.getIntPtrType(C);
     const Value *MallocFunc = M.getOrInsertFunction("malloc", BPTy, IntPtrTy);
 
-    /* Instrument all the things! */
+    /*
+     * Instrument all the things!
+     *
+     * The data-flow instrumentation works as follows:
+     *
+     *   1. Collect the following definitions:
+     *     a) Dynamically-allocated arrays (via malloc)
+     *     b) Stack-based static arrays
+     *     c) Global non-constant static arrays
+     *   2. Find all the uses of the definitions calculated in 1.
+     *   3. If the use is a load instruction (i.e., dereference), then
+     *      instrument it
+     *
+     * The instrumentation is very similar to AFL's code coverage
+     * instrumentation (i.e., it increments a counter associated with that
+     * instrumentation point). However, instead of using a hash of the previous
+     * instrumentation point to index into the SHM region, we instead take the
+     * address of the definition (i.e., step 1. above) modulo the size of the
+     * SHM region.
+     */
+
+    unsigned numDefs = 0;
+    unsigned numUses = 0;
 
     for (auto &F : M.functions()) {
         for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-            /* Get the def-use chain for dynamically-allocated arrays */
-            if (auto *CallInst = dyn_cast<llvm::CallInst>(&*I)) {
-                if (CallInst->getCalledFunction() == MallocFunc) {
-                    llvm::outs() << "def-use chain for dynamic array - " << *CallInst << "\n";
-                    for (auto *I : getUses(CallInst)) {
-                        llvm::outs() << "    - " << *I << "\n";
+            /* Instrument uses of dynamically-allocated arrays */
+            if (auto *Call = dyn_cast<CallInst>(&*I)) {
+                if (Call->getCalledFunction() == MallocFunc) {
+                    numDefs++;
+
+                    for (auto *U : getUses(Call)) {
+                        if (auto *Load = dyn_cast<LoadInst>(U)) {
+                            instrumentUse(M, Call, Load);
+                            numUses++;
+                        }
                     }
                 }
-            /* Get the def-use chain for local statically-allocated arrays */
-            } else if (auto *AllocaInst = dyn_cast<llvm::AllocaInst>(&*I)) {
-                Type *ElemTy = AllocaInst->getType()->getElementType();
+            /* Instrument uses of stack-based statically-allocated arrays */
+            } else if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
+                Type *ElemTy = Alloca->getType()->getElementType();
                 if (isa<SequentialType>(ElemTy)) {
-                    llvm::outs() << "def-use chain for static array - " << *AllocaInst << "\n";
-                    for (auto *I : getUses(AllocaInst)) {
-                        llvm::outs() << "    - " << *I << "\n";
+                    numDefs++;
+
+                    for (auto *U : getUses(Alloca)) {
+                        if (auto *Load = dyn_cast<LoadInst>(U)) {
+                            instrumentUse(M, Alloca, Load);
+                            numUses++;
+                        }
                     }
                 }
             }
         }
     }
 
-    /* Get the def-use chain for global statically-allocated arrays */
+    /* Instrument uses of global statically-allocated arrays */
     for (auto &G : M.globals()) {
         Type *ElemTy = G.getType()->getElementType();
-        if (isa<SequentialType>(ElemTy)) {
-            llvm::outs() << "def-use chain for global static array - " << G << "\n";
-            for (auto *I : getUses(&G)) {
-                llvm::outs() << "    - " << *I << "\n";
+        if (!G.isConstant() && isa<SequentialType>(ElemTy)) {
+            numDefs++;
+
+            for (auto *U : getUses(&G)) {
+                if (auto *Load = dyn_cast<LoadInst>(U)) {
+                    instrumentUse(M, &G, Load);
+                    numUses++;
+                }
             }
         }
     }
@@ -124,6 +214,12 @@ bool AFLDataFlowCoverage::runOnModule(Module &M) {
     /* Say something nice */
 
     if (!be_quiet) {
+        if (!numDefs) {
+            WARNF("No definitions to instrument found.");
+        } else {
+            OKF("Instrumented %u definition(s) and %u use(s).",
+                numDefs, numUses);
+        }
     }
 
     return true;
