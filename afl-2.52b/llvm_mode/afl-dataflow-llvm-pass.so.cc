@@ -6,12 +6,14 @@
 #include <unistd.h>
 #include <unordered_set>
 
-#include "llvm/Pass.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace llvm;
@@ -132,14 +134,8 @@ bool AFLDataFlowCoverage::runOnModule(Module &M) {
         be_quiet = 1;
     }
 
-    LLVMContext &C = M.getContext();
-    const DataLayout &DL = M.getDataLayout();
-
-    /* Generate a malloc reference */
-
-    PointerType *BPTy = Type::getInt8PtrTy(C);
-    IntegerType *IntPtrTy = DL.getIntPtrType(C);
-    const Value *MallocFunc = M.getOrInsertFunction("malloc", BPTy, IntPtrTy);
+    TargetLibraryInfoImpl TLII;
+    TargetLibraryInfo TLI(TLII);
 
     /*
      * Instrument all the things!
@@ -169,7 +165,7 @@ bool AFLDataFlowCoverage::runOnModule(Module &M) {
         for (auto I = inst_begin(F); I != inst_end(F); ++I) {
             /* Instrument uses of dynamically-allocated arrays */
             if (auto *Call = dyn_cast<CallInst>(&*I)) {
-                if (Call->getCalledFunction() == MallocFunc) {
+                if (isMallocOrCallocLikeFn(Call, &TLI)) {
                     numDefs++;
 
                     for (auto *U : getUses(Call)) {
