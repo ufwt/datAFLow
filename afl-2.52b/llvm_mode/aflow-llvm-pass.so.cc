@@ -20,7 +20,7 @@ using namespace llvm;
 
 namespace {
 
-class AFLDataFlowCoverage : public ModulePass {
+class AFLowCoverage : public ModulePass {
     private:
         GlobalVariable *AFLMapPtr;
         ConstantInt *MapSize;
@@ -32,7 +32,7 @@ class AFLDataFlowCoverage : public ModulePass {
 
     public:
         static char ID;
-        AFLDataFlowCoverage() : ModulePass(ID) { }
+        AFLowCoverage() : ModulePass(ID) { }
 
         bool doInitialization(Module &M) override;
         bool runOnModule(Module &M) override;
@@ -40,7 +40,7 @@ class AFLDataFlowCoverage : public ModulePass {
 
 } /* End anonymous namespace */
 
-char AFLDataFlowCoverage::ID = 0;
+char AFLowCoverage::ID = 0;
 
 /**
  * \brief Get all users of a given value.
@@ -83,7 +83,7 @@ static std::unordered_set<User*> getUses(Value *Def) {
     return Uses;
 }
 
-void AFLDataFlowCoverage::instrumentUse(Module &M, Value *Def, Instruction *Use) {
+void AFLowCoverage::instrumentUse(Module &M, Value *Def, Instruction *Use) {
     LLVMContext &C = M.getContext();
     IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
 
@@ -108,7 +108,7 @@ void AFLDataFlowCoverage::instrumentUse(Module &M, Value *Def, Instruction *Use)
     MapUpdate->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
 }
 
-bool AFLDataFlowCoverage::doInitialization(Module &M) {
+bool AFLowCoverage::doInitialization(Module &M) {
     LLVMContext &C = M.getContext();
 
     IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
@@ -124,12 +124,12 @@ bool AFLDataFlowCoverage::doInitialization(Module &M) {
     return true;
 }
 
-bool AFLDataFlowCoverage::runOnModule(Module &M) {
+bool AFLowCoverage::runOnModule(Module &M) {
     /* Show a banner */
     char be_quiet = 0;
 
     if (isatty(2) && !getenv("AFL_QUIET")) {
-        SAYF(cCYA "afl-dataflow-llvm-pass " cBRI VERSION cRST " by <adrian.herrera02@gmail.com>\n");
+        SAYF(cCYA "aflow-llvm-pass " cBRI VERSION cRST " by <adrian.herrera02@gmail.com>\n");
     } else {
         be_quiet = 1;
     }
@@ -221,16 +221,16 @@ bool AFLDataFlowCoverage::runOnModule(Module &M) {
     return true;
 }
 
-static RegisterPass<AFLDataFlowCoverage> AFLDataFlowPass(
-        "afl-dataflow-coverage", "AFL data-flow coverage pass");
+static RegisterPass<AFLowCoverage> AFLowPass(
+        "aflow-coverage", "AFL data-flow coverage pass");
 
-static void registerAFLDataFlowPass(const PassManagerBuilder &,
-                                    legacy::PassManagerBase &PM) {
-    PM.add(new AFLDataFlowCoverage());
+static void registerAFLowPass(const PassManagerBuilder &,
+                              legacy::PassManagerBase &PM) {
+    PM.add(new AFLowCoverage());
 }
 
 static RegisterStandardPasses RegisterAFLDFPass(
-        PassManagerBuilder::EP_OptimizerLast, registerAFLDataFlowPass);
+        PassManagerBuilder::EP_OptimizerLast, registerAFLowPass);
 
 static RegisterStandardPasses RegisterAFLDFPass0(
-        PassManagerBuilder::EP_EnabledOnOptLevel0, registerAFLDataFlowPass);
+        PassManagerBuilder::EP_EnabledOnOptLevel0, registerAFLowPass);
