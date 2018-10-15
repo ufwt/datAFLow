@@ -86,7 +86,7 @@ void EscapeInfo::recalculate(llvm::Function &F, AliasAnalysis &AA) {
           if (auto *Inst = dyn_cast<StoreInst>(U)) {
             Value *Ptr = Inst->getPointerOperand();
 
-            bool Escapes;
+            bool Escapes = false;
 
             // Check function arguments
             for (auto &Arg : F.args()) {
@@ -111,13 +111,21 @@ void EscapeInfo::recalculate(llvm::Function &F, AliasAnalysis &AA) {
               if (auto *V = dyn_cast<Value>(&Global)) {
                 if (!AA.isNoAlias(Ptr, V)) {
                   EscapePoints[I].push_back(Inst);
+                  Escapes = true;
                   break;
                 }
               }
             }
 
-            // No escape through store.
-            continue;
+            // No need to check pointer uses if we already found an escape
+            // point.
+            if (Escapes)
+              continue;
+
+            // Check pointer uses for escape.
+            if (auto *PtrInst = dyn_cast<Instruction>(Ptr)) {
+                Worklist.push_back(PtrInst);
+            }
           }
         }
       }
