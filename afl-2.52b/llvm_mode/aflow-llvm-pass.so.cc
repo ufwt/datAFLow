@@ -98,7 +98,7 @@ bool AFLowCoverage::runOnModule(Module &M) {
             continue;
         }
 
-        // TODO escape analysis does not seem to work correctly :(
+        // TODO Escape analysis does not seem to work correctly :(
         auto const &EI = getAnalysis<EscapeAnalysisPass>(F).getEscapeInfo();
 
         for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -106,6 +106,9 @@ bool AFLowCoverage::runOnModule(Module &M) {
             if (auto *Call = dyn_cast<CallInst>(&*I)) {
                 if (isMallocOrCallocLikeFn(Call, &TLI)) {
                     llvm::outs() << "Found malloc -> " << *Call << "\n";
+
+                    // TODO ideally perform escape analysis on malloc'd data
+                    // and only transform to fat pointer if it escapes
 
                     numDefs++;
                 }
