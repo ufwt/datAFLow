@@ -25,11 +25,6 @@ class AFLowCoverage : public ModulePass {
         GlobalVariable *AFLMapPtr;
         ConstantInt *MapSize;
 
-        /**
-         * Instrument the \c Use of definition \c Def in the module \c M.
-         */
-        void instrumentUse(Module &M, Value *Def, Instruction *Use);
-
     public:
         static char ID;
         AFLowCoverage() : ModulePass(ID) { }
@@ -41,72 +36,6 @@ class AFLowCoverage : public ModulePass {
 } /* End anonymous namespace */
 
 char AFLowCoverage::ID = 0;
-
-/**
- * \brief Get all users of a given value.
- *
- * This essentially constructs the complete "def-use chain" (transitive
- * closure) for the given value.
- *
- * Note: This only performs an intraprocedural analysis!
- */
-static std::unordered_set<User*> getUses(Value *Def) {
-    std::unordered_set<User*> Uses;
-
-    for (auto *U : Def->users()) {
-        SmallVector<User*, 4> Worklist;
-        Worklist.push_back(U);
-
-        while (!Worklist.empty()) {
-            auto *U = Worklist.pop_back_val();
-            Uses.insert(U);
-
-            /*
-             * Store instructions are a special case.
-             *
-             * Look at the users of the memory address that is written to
-             * (i.e., the pointer operand).
-             */
-            if (auto *StoreInst = dyn_cast<llvm::StoreInst>(U)) {
-                auto *StorePtr = StoreInst->getPointerOperand();
-                for (auto *StoreUser : StorePtr->users()) {
-                    if (StoreUser != StoreInst) {
-                        Worklist.push_back(StoreUser);
-                    }
-                }
-            } else {
-                Worklist.append(U->user_begin(), U->user_end());
-            }
-        }
-    }
-
-    return Uses;
-}
-
-void AFLowCoverage::instrumentUse(Module &M, Value *Def, Instruction *Use) {
-    LLVMContext &C = M.getContext();
-    IntegerType *Int8Ty = IntegerType::getInt8Ty(C);
-
-    IRBuilder<> IRB(Use);
-
-    /*
-     * Load SHM pointer based on the address of the definition modulo the size
-     * of the SHM region.
-     */
-
-    LoadInst *MapPtr = IRB.CreateLoad(this->AFLMapPtr);
-    MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-    Value *MapPtrIdx =
-        IRB.CreateGEP(MapPtr, IRB.CreateURem(Def, this->MapSize));
-
-    /* Update bitmap */
-
-    LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
-    Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-    Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
-    StoreInst *MapUpdate = IRB.CreateStore(Incr, MapPtrIdx);
-    MapUpdate->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-}
 
 bool AFLowCoverage::doInitialization(Module &M) {
     LLVMContext &C = M.getContext();
@@ -159,49 +88,14 @@ bool AFLowCoverage::runOnModule(Module &M) {
      */
 
     unsigned numDefs = 0;
-    unsigned numUses = 0;
 
     for (auto &F : M.functions()) {
         for (auto I = inst_begin(F); I != inst_end(F); ++I) {
             /* Instrument uses of dynamically-allocated arrays */
             if (auto *Call = dyn_cast<CallInst>(&*I)) {
                 if (isMallocOrCallocLikeFn(Call, &TLI)) {
+                    llvm::outs() << "Found malloc -> " << *Call << "\n";
                     numDefs++;
-
-                    for (auto *U : getUses(Call)) {
-                        if (auto *Load = dyn_cast<LoadInst>(U)) {
-                            instrumentUse(M, Call, Load);
-                            numUses++;
-                        }
-                    }
-                }
-            /* Instrument uses of stack-based statically-allocated arrays */
-            } else if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-                Type *ElemTy = Alloca->getType()->getElementType();
-                if (isa<SequentialType>(ElemTy)) {
-                    numDefs++;
-
-                    for (auto *U : getUses(Alloca)) {
-                        if (auto *Load = dyn_cast<LoadInst>(U)) {
-                            instrumentUse(M, Alloca, Load);
-                            numUses++;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /* Instrument uses of global statically-allocated arrays */
-    for (auto &G : M.globals()) {
-        Type *ElemTy = G.getType()->getElementType();
-        if (!G.isConstant() && isa<SequentialType>(ElemTy)) {
-            numDefs++;
-
-            for (auto *U : getUses(&G)) {
-                if (auto *Load = dyn_cast<LoadInst>(U)) {
-                    instrumentUse(M, &G, Load);
-                    numUses++;
                 }
             }
         }
@@ -213,8 +107,7 @@ bool AFLowCoverage::runOnModule(Module &M) {
         if (!numDefs) {
             WARNF("No definitions to instrument found.");
         } else {
-            OKF("Instrumented %u definition(s) and %u use(s).",
-                numDefs, numUses);
+            OKF("Instrumented %u definition(s).", numDefs);
         }
     }
 
