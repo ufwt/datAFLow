@@ -4,7 +4,7 @@
 #include "../debug.h"
 
 #include <unistd.h>
-#include <unordered_set>
+#include <vector>
 
 #include "llvm/Analysis/EscapeAnalysis.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -18,6 +18,8 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace llvm;
+
+#define PTR_BITS 16ULL
 
 namespace {
 
@@ -37,6 +39,20 @@ class AFLowCoverage : public ModulePass {
 };
 
 } /* End anonymous namespace */
+
+/**
+ * Create a fat pointer by storing `Data` in the upper `PTR_BITS` bits of the
+ * given `Ptr`.
+ */
+static Value *createFatPointer(IRBuilder<> &IRB, Value *Ptr, Value *Data) {
+    IntegerType *Int64Ty = IRB.getInt64Ty();
+
+    Value *Upper = IRB.CreateShl(Data, PTR_BITS);
+    Value *Lower = IRB.CreatePtrToInt(Ptr, Int64Ty);
+    Value *Combined = IRB.CreateOr(Lower, Upper);
+
+    return IRB.CreateIntToPtr(Combined, Ptr->getType());
+}
 
 char AFLowCoverage::ID = 0;
 
@@ -69,26 +85,11 @@ bool AFLowCoverage::runOnModule(Module &M) {
     TargetLibraryInfoImpl TLII;
     TargetLibraryInfo TLI(TLII);
 
-    /*
-     * Instrument all the things!
-     *
-     * The data-flow instrumentation works as follows:
-     *
-     *   1. Collect the following definitions:
-     *     a) Dynamically-allocated arrays (via malloc)
-     *     b) Stack-based static arrays
-     *     c) Global non-constant static arrays
-     *   2. Find all the uses of the definitions calculated in 1.
-     *   3. If the use is a load instruction (i.e., dereference), then
-     *      instrument it
-     *
-     * The instrumentation is very similar to AFL's code coverage
-     * instrumentation (i.e., it increments a counter associated with that
-     * instrumentation point). However, instead of using a hash of the previous
-     * instrumentation point to index into the SHM region, we instead take the
-     * address of the definition (i.e., step 1. above) modulo the size of the
-     * SHM region.
-     */
+    LLVMContext &C = M.getContext();
+
+    IntegerType *Int64Ty = IntegerType::getInt64Ty(C);
+
+    /* Instrument all the things! */
 
     unsigned numDefs = 0;
 
@@ -109,6 +110,22 @@ bool AFLowCoverage::runOnModule(Module &M) {
 
                     // TODO ideally perform escape analysis on malloc'd data
                     // and only transform to fat pointer if it escapes
+
+                    /* Cache uses before creating more */
+                    std::vector<User*> Users(I->user_begin(), I->user_end());
+
+                    uint16_t def_id = AFL_R(MAP_SIZE);
+                    ConstantInt *DefId = ConstantInt::get(Int64Ty, def_id);
+
+                    // TODO check NextNode != NULL
+                    IRBuilder<> IRB(Call->getNextNode());
+
+                    Value *FatPtr = createFatPointer(IRB, Call, DefId);
+
+                    /* Replace uses with the fat pointer */
+                    for (User *U : Users) {
+                        U->replaceUsesOfWith(Call, FatPtr);
+                    }
 
                     numDefs++;
                 }
