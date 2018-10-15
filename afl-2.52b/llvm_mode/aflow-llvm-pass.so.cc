@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <unordered_set>
 
+#include "llvm/Analysis/EscapeAnalysis.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
@@ -31,6 +32,8 @@ class AFLowCoverage : public ModulePass {
 
         bool doInitialization(Module &M) override;
         bool runOnModule(Module &M) override;
+
+        void getAnalysisUsage(AnalysisUsage &AU) const override;
 };
 
 } /* End anonymous namespace */
@@ -50,7 +53,7 @@ bool AFLowCoverage::doInitialization(Module &M) {
                            GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
     this->MapSize = ConstantInt::get(Int32Ty, MAP_SIZE);
 
-    return true;
+    return false;
 }
 
 bool AFLowCoverage::runOnModule(Module &M) {
@@ -90,11 +93,20 @@ bool AFLowCoverage::runOnModule(Module &M) {
     unsigned numDefs = 0;
 
     for (auto &F : M.functions()) {
+        /* Skip if declared outside of this module */
+        if (F.isDeclaration()) {
+            continue;
+        }
+
+        // TODO escape analysis does not seem to work correctly :(
+        auto const &EI = getAnalysis<EscapeAnalysisPass>(F).getEscapeInfo();
+
         for (auto I = inst_begin(F); I != inst_end(F); ++I) {
             /* Instrument uses of dynamically-allocated arrays */
             if (auto *Call = dyn_cast<CallInst>(&*I)) {
                 if (isMallocOrCallocLikeFn(Call, &TLI)) {
                     llvm::outs() << "Found malloc -> " << *Call << "\n";
+
                     numDefs++;
                 }
             }
@@ -114,8 +126,12 @@ bool AFLowCoverage::runOnModule(Module &M) {
     return true;
 }
 
+void AFLowCoverage::getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired<EscapeAnalysisPass>();
+}
+
 static RegisterPass<AFLowCoverage> AFLowPass(
-        "aflow-coverage", "AFL data-flow coverage pass");
+        "aflow-coverage", "AFL data-flow coverage pass", false, false);
 
 static void registerAFLowPass(const PassManagerBuilder &,
                               legacy::PassManagerBase &PM) {
