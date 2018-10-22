@@ -1,3 +1,18 @@
+//===-- ArrayAllocaPromotion.cpp - Promote static arrays to mallocs -------===//
+//
+//                     The LLVM Compiler Infrastructure
+//
+// This file is distributed under the University of Illinois Open Source
+// License. See LICENSE.TXT for details.
+//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// This pass promotes static arrays (both global and stack-based) to
+/// dynamically allocated arrays via \p malloc.
+///
+//===----------------------------------------------------------------------===//
+
 #include <vector>
 
 #include "llvm/ADT/Statistic.h"
@@ -17,6 +32,9 @@ STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
 
+/// ArrayAllocaPromotion: instrument the code in a module to promote static,
+/// fixed-size arrays (both global and stack-based) to dynamically allocated
+/// arrays via \p malloc.
 class ArrayAllocaPromotion : public ModulePass {
 private:
   Type *IntPtrTy;
@@ -39,14 +57,20 @@ char ArrayAllocaPromotion::ID = 0;
 
 Value *ArrayAllocaPromotion::updateGEP(AllocaInst *Alloca,
                                        GetElementPtrInst *GEP) {
+  // Cache uses before creating more
   std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
 
   IRBuilder<> IRB(GEP);
 
+  // Load the pointer to the dynamically allocated array and greate a new GEP
+  // instruction, ignoring the initial "offset 0" that is used when accessing
+  // static arrays
   auto *LoadMalloc = IRB.CreateLoad(Alloca);
   auto *NewGEP = IRB.CreateInBoundsGEP(
       LoadMalloc, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
 
+  // Update all the users of the original GEP instruction to use the updated
+  // GEP that is correctly typed for the given alloca instruction
   for (auto *U : Users) {
     U->replaceUsesOfWith(GEP, NewGEP);
   }
@@ -56,6 +80,7 @@ Value *ArrayAllocaPromotion::updateGEP(AllocaInst *Alloca,
 
 Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
                                                 AllocaInst *Alloca) {
+  // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
   Type *ArrayTy = Alloca->getAllocatedType();
@@ -63,6 +88,24 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
 
   IRBuilder<> IRB(Alloca);
 
+  // This will transform something like this:
+  //
+  // %1 = alloca [NumElements x Ty]
+  //
+  // into:
+  //
+  // %1 = alloca Ty*
+  // %2 = call i8* @malloc(PtrTy Size)
+  // %3 = bitcast i8* %2 to Ty*
+  // store Ty* %3, Ty** %1
+  //
+  // Where:
+  //
+  //  - `Ty` is the array element type
+  //  - `NumElements` is the array number of elements
+  //  - `PtrTy` is the target's pointer type
+  //  - `Size` is the size of the allocated buffer (equivalent to
+  //    `NumElements * sizeof(Ty)`)
   auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo());
   auto *MallocCall = CallInst::CreateMalloc(
       Alloca, this->IntPtrTy, ElemTy,
@@ -71,6 +114,8 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
       nullptr);
   auto *StoreMalloc = IRB.CreateStore(MallocCall, NewAlloca);
 
+  // Update all the users of the original array to use the dynamically
+  // allocated array
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       updateGEP(NewAlloca, GEP);
@@ -84,10 +129,11 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
 }
 
 void ArrayAllocaPromotion::insertFree(Value *Alloca, ReturnInst *Return) {
-    IRBuilder<> IRB(Return);
+  IRBuilder<> IRB(Return);
 
-    auto *LoadMalloc = IRB.CreateLoad(Alloca);
-    CallInst::CreateFree(LoadMalloc, Return);
+  // Load the pointer to the dynamically allocated memory and pass it to free
+  auto *LoadMalloc = IRB.CreateLoad(Alloca);
+  CallInst::CreateFree(LoadMalloc, Return);
 }
 
 bool ArrayAllocaPromotion::doInitialization(Module &M) {
@@ -101,14 +147,19 @@ bool ArrayAllocaPromotion::doInitialization(Module &M) {
 
 bool ArrayAllocaPromotion::runOnModule(Module &M) {
   std::vector<AllocaInst *> AllocasToPromote;
+  std::vector<AllocaInst *> StructsToPromote;
   std::vector<ReturnInst *> ReturnsToInsertFree;
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
         if (isa<ArrayType>(Alloca->getAllocatedType())) {
+          // TODO perform an escape analysis to determine which allocas to
+          // promote
           AllocasToPromote.push_back(Alloca);
           NumOfAllocaPromotion++;
+        } else if (isa<StructType>(Alloca->getAllocatedType())) {
+          // TODO handle structs with nested arrays
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
         ReturnsToInsertFree.push_back(Return);
@@ -121,12 +172,14 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
     auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
     Alloca->eraseFromParent();
 
+    // Ensure that the promoted alloca (now allocated dynamically) is freed
+    // when the function returns
     for (auto *Return : ReturnsToInsertFree) {
-        insertFree(NewAlloca, Return);
+      insertFree(NewAlloca, Return);
     }
   }
 
-  // TODO promote global variables
+  // TODO promote global static arrays
 
   return true;
 }
