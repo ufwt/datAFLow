@@ -46,6 +46,7 @@ private:
 
   Value *updateGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
   Value *promoteArrayAlloca(const DataLayout &DL, AllocaInst *Alloca);
+  Value *promoteStructAlloca(const DataLayout &DL, AllocaInst *Alloca);
   void insertFree(Value *Alloca, ReturnInst *Return);
 
 public:
@@ -149,6 +150,19 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
   return NewAlloca;
 }
 
+Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
+                                                 AllocaInst *Alloca) {
+  // Cache uses before creating more
+  std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
+
+  StructType *StructTy = cast<StructType>(Alloca->getAllocatedType());
+
+  for (auto *Elem : StructTy->elements()) {
+  }
+
+  return nullptr;
+}
+
 void ArrayAllocaPromotion::insertFree(Value *Alloca, ReturnInst *Return) {
   IRBuilder<> IRB(Return);
 
@@ -208,7 +222,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
   }
 
   for (auto *Alloca : StructAllocasToPromote) {
-    // TODO handle structs with nested arrays
+    auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
   }
 
   // TODO promote global static arrays
