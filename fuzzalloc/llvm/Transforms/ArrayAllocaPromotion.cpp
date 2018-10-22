@@ -27,6 +27,11 @@ using namespace llvm;
 
 #define DEBUG_TYPE "array-alloca-prom"
 
+static cl::opt<int> ClMinArraySize(
+    "array-alloca-prom-min-size",
+    cl::desc("The minimum size of an array to promote to malloc"),
+    cl::init(-1));
+
 STATISTIC(NumOfAllocaPromotion, "Number of array alloca promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
@@ -52,6 +57,22 @@ public:
 };
 
 } // end anonymous namespace
+
+/// Returns \p true if the struct contains a nested array, or \p false
+/// othewise.
+///
+/// Nested structs are also checked.
+static bool structContainsArray(StructType *StructTy) {
+  for (auto *Elem : StructTy->elements()) {
+    if (auto *StructElem = dyn_cast<StructType>(Elem)) {
+      return structContainsArray(StructElem);
+    } else if (auto *ArrayElem = dyn_cast<ArrayType>(Elem)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 char ArrayAllocaPromotion::ID = 0;
 
@@ -146,20 +167,27 @@ bool ArrayAllocaPromotion::doInitialization(Module &M) {
 }
 
 bool ArrayAllocaPromotion::runOnModule(Module &M) {
-  std::vector<AllocaInst *> AllocasToPromote;
-  std::vector<AllocaInst *> StructsToPromote;
+  std::vector<AllocaInst *> ArrayAllocasToPromote;
+  std::vector<AllocaInst *> StructAllocasToPromote;
   std::vector<ReturnInst *> ReturnsToInsertFree;
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-        if (isa<ArrayType>(Alloca->getAllocatedType())) {
-          // TODO perform an escape analysis to determine which allocas to
-          // promote
-          AllocasToPromote.push_back(Alloca);
+        Type *AllocaTy = Alloca->getAllocatedType();
+
+        if (isa<ArrayType>(AllocaTy)) {
+          // TODO perform an escape analysis to determine which array allocas
+          // to promote
+          ArrayAllocasToPromote.push_back(Alloca);
           NumOfAllocaPromotion++;
-        } else if (isa<StructType>(Alloca->getAllocatedType())) {
-          // TODO handle structs with nested arrays
+        } else if (auto *StructTy = dyn_cast<StructType>(AllocaTy)) {
+          if (structContainsArray(StructTy)) {
+            // TODO perform an escape analysis to determine which struct
+            // allocas to promote
+            StructAllocasToPromote.push_back(Alloca);
+            NumOfAllocaPromotion++;
+          }
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
         ReturnsToInsertFree.push_back(Return);
@@ -168,7 +196,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
     }
   }
 
-  for (auto *Alloca : AllocasToPromote) {
+  for (auto *Alloca : ArrayAllocasToPromote) {
     auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
     Alloca->eraseFromParent();
 
@@ -177,6 +205,10 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
     for (auto *Return : ReturnsToInsertFree) {
       insertFree(NewAlloca, Return);
     }
+  }
+
+  for (auto *Alloca : StructAllocasToPromote) {
+    // TODO handle structs with nested arrays
   }
 
   // TODO promote global static arrays
