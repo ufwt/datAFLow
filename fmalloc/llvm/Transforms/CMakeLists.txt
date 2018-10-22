@@ -1,0 +1,1 @@
+add_library(LLVMArrayAllocaPromotion MODULE ArrayAllocaPromotion.cpp)
