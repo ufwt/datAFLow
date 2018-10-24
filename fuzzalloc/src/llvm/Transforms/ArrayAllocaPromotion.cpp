@@ -13,6 +13,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include <map>
 #include <vector>
 
 #include "llvm/ADT/Statistic.h"
@@ -150,17 +151,68 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
   return NewAlloca;
 }
 
+// TODO handle nested structs
 Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
                                                  AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
+  // This is safe because we only promote struct types in this method
   StructType *StructTy = cast<StructType>(Alloca->getAllocatedType());
 
-  for (auto *Elem : StructTy->elements()) {
+  // Maps an array type (that will be promoted) to its position/index in the
+  // struct type
+  std::map<ArrayType *, unsigned> StructArrayElements;
+
+  // The elements of the new struct (i.e., arrays replaced with pointers to
+  // dynamically allocated memory)
+  std::vector<Type *> NewStructElements;
+
+  {
+    unsigned Index = 0;
+    for (auto *Elem : StructTy->elements()) {
+      if (auto *ArrayElem = dyn_cast<ArrayType>(Elem)) {
+        StructArrayElements.emplace(ArrayElem, Index);
+        NewStructElements.push_back(
+            ArrayElem->getArrayElementType()->getPointerTo());
+      } else {
+        NewStructElements.push_back(Elem);
+      }
+
+      Index++;
+    }
   }
 
-  return nullptr;
+  LLVMContext &C = StructTy->getContext();
+  IntegerType *Int32Ty = Type::getInt32Ty(C);
+  StructType *NewStructTy = StructType::create(
+      C, NewStructElements, StructTy->getName(), StructTy->isPacked());
+
+  IRBuilder<> IRB(Alloca);
+
+  auto *NewAlloca = IRB.CreateAlloca(NewStructTy);
+
+  for (auto &ArrayTysWithIndex : StructArrayElements) {
+    ArrayType *ArrayTy = ArrayTysWithIndex.first;
+    unsigned Index = ArrayTysWithIndex.second;
+    Type *ElemTy = ArrayTy->getArrayElementType();
+    Value *GEPIndices[] = {ConstantInt::get(Int32Ty, 0),
+                           ConstantInt::get(Int32Ty, Index)};
+
+    auto *MallocCall = CallInst::CreateMalloc(
+        Alloca, this->IntPtrTy, ElemTy,
+        ConstantInt::get(this->IntPtrTy, DL.getTypeAllocSize(ElemTy)),
+        ConstantInt::get(this->IntPtrTy, ArrayTy->getArrayNumElements()),
+        nullptr);
+    auto *NewStructGEP = IRB.CreateGEP(NewAlloca, GEPIndices);
+    auto *StoreMalloc = IRB.CreateStore(MallocCall, NewStructGEP);
+
+    for (auto *U : Users) {
+      // TODO
+    }
+  }
+
+  return NewAlloca;
 }
 
 void ArrayAllocaPromotion::insertFree(Value *Alloca, ReturnInst *Return) {
@@ -214,7 +266,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
     auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
     Alloca->eraseFromParent();
 
-    // Ensure that the promoted alloca (now allocated dynamically) is freed
+    // Ensure that the promoted alloca (now dynamically allocated) is freed
     // when the function returns
     for (auto *Return : ReturnsToInsertFree) {
       insertFree(NewAlloca, Return);
@@ -223,6 +275,12 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 
   for (auto *Alloca : StructAllocasToPromote) {
     auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
+
+    // Ensure that the promoted alloca (now dynamically allocated) is freed
+    // when the function returns
+    for (auto *Return : ReturnsToInsertFree) {
+      insertFree(NewAlloca, Return);
+    }
   }
 
   // TODO promote global static arrays
