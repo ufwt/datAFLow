@@ -26,7 +26,8 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "array-alloca-prom"
+#define ARRAY_ALLOCA_PROM "array-alloca-prom"
+#define DEBUG_TYPE ARRAY_ALLOCA_PROM
 
 static cl::opt<int> ClMinArraySize(
     "array-alloca-prom-min-size",
@@ -46,9 +47,9 @@ private:
   Type *IntPtrTy;
 
   Value *updateGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
-  Value *promoteArrayAlloca(const DataLayout &DL, AllocaInst *Alloca);
-  Value *promoteStructAlloca(const DataLayout &DL, AllocaInst *Alloca);
-  void insertFree(Value *Alloca, ReturnInst *Return);
+  AllocaInst *promoteArrayAlloca(const DataLayout &DL, AllocaInst *Alloca);
+  AllocaInst *promoteStructAlloca(const DataLayout &DL, AllocaInst *Alloca);
+  void insertFree(Instruction *Alloca, ReturnInst *Return);
 
 public:
   static char ID;
@@ -101,8 +102,8 @@ Value *ArrayAllocaPromotion::updateGEP(AllocaInst *Alloca,
   return NewGEP;
 }
 
-Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
-                                                AllocaInst *Alloca) {
+AllocaInst *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
+                                                     AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -152,8 +153,8 @@ Value *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
 }
 
 // TODO handle nested structs
-Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
-                                                 AllocaInst *Alloca) {
+AllocaInst *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
+                                                      AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -235,7 +236,7 @@ Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
   return NewAlloca;
 }
 
-void ArrayAllocaPromotion::insertFree(Value *Alloca, ReturnInst *Return) {
+void ArrayAllocaPromotion::insertFree(Instruction *Alloca, ReturnInst *Return) {
   IRBuilder<> IRB(Return);
 
   // Load the pointer to the dynamically allocated memory and pass it to free
@@ -282,8 +283,12 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
     }
   }
 
+  LLVMContext &C = M.getContext();
+
   for (auto *Alloca : ArrayAllocasToPromote) {
     auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
+    NewAlloca->setMetadata(C.getMDKindID(ARRAY_ALLOCA_PROM),
+                           MDNode::get(C, None));
     Alloca->eraseFromParent();
 
     // Ensure that the promoted alloca (now dynamically allocated) is freed
@@ -295,6 +300,8 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 
   for (auto *Alloca : StructAllocasToPromote) {
     auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
+    NewAlloca->setMetadata(C.getMDKindID(ARRAY_ALLOCA_PROM),
+                           MDNode::get(C, None));
     // TODO erase Alloca
 
     // TODO insert frees
@@ -306,8 +313,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 }
 
 static RegisterPass<ArrayAllocaPromotion>
-    X("array-alloca-prom", "Promote array allocas to malloc calls", false,
-      false);
+    X(ARRAY_ALLOCA_PROM, "Promote array allocas to malloc calls", false, false);
 
 static void registerArrayAllocaPromotionPass(const PassManagerBuilder &,
                                              legacy::PassManagerBase &PM) {
