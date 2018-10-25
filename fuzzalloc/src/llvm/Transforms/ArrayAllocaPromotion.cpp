@@ -157,17 +157,19 @@ Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
-  // This is safe because we only promote struct types in this method
+  // This is safe because we already know that the alloca has a struct type
   StructType *StructTy = cast<StructType>(Alloca->getAllocatedType());
 
-  // Maps an array type (that will be promoted) to its position/index in the
-  // struct type
+  // Maps a static array type (that will be promoted to a dynamically allocated
+  // array) to its position/index in the struct type
   std::map<ArrayType *, unsigned> StructArrayElements;
 
-  // The elements of the new struct (i.e., arrays replaced with pointers to
+  // The elements of the new struct (i.e., with arrays replaced by pointers to
   // dynamically allocated memory)
   std::vector<Type *> NewStructElements;
 
+  // Save static arrays (and their index/position in the struct) that need to
+  // be promoted to dynamically allocated arrays
   {
     unsigned Index = 0;
     for (auto *Elem : StructTy->elements()) {
@@ -183,10 +185,12 @@ Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
     }
   }
 
+  // The new struct type (without any static arrays)
   LLVMContext &C = StructTy->getContext();
-  IntegerType *Int32Ty = Type::getInt32Ty(C);
   StructType *NewStructTy = StructType::create(
       C, NewStructElements, StructTy->getName(), StructTy->isPacked());
+
+  IntegerType *Int32Ty = Type::getInt32Ty(C);
 
   IRBuilder<> IRB(Alloca);
 
@@ -207,8 +211,24 @@ Value *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
     auto *NewStructGEP = IRB.CreateGEP(NewAlloca, GEPIndices);
     auto *StoreMalloc = IRB.CreateStore(MallocCall, NewStructGEP);
 
+    // Update all the users of the original struct to use the new struct
     for (auto *U : Users) {
-      // TODO
+      if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
+        std::vector<User *> GEPUsers(GEP->user_begin(), GEP->user_end());
+
+        IRBuilder<> GEPIRB(GEP);
+
+        auto *NewGEP = IRB.CreateGEP(
+            U, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
+
+        for (auto *UU : GEPUsers) {
+          UU->replaceUsesOfWith(GEP, NewGEP);
+        }
+
+        // TODO erase GEP
+      } else {
+        U->replaceUsesOfWith(Alloca, NewAlloca);
+      }
     }
   }
 
@@ -275,12 +295,9 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 
   for (auto *Alloca : StructAllocasToPromote) {
     auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
+    // TODO erase Alloca
 
-    // Ensure that the promoted alloca (now dynamically allocated) is freed
-    // when the function returns
-    for (auto *Return : ReturnsToInsertFree) {
-      insertFree(NewAlloca, Return);
-    }
+    // TODO insert frees
   }
 
   // TODO promote global static arrays
