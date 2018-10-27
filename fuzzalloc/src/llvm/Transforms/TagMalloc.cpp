@@ -22,10 +22,8 @@
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 using namespace llvm;
 
@@ -137,16 +135,3 @@ static RegisterPass<TagMalloc> X("tag-malloc",
                                  "Tag malloc calls and replace them with a "
                                  "call to fuzzalloc's malloc wrapper",
                                  false, false);
-
-static void registerTagMallocPass(const PassManagerBuilder &,
-                                  legacy::PassManagerBase &PM) {
-  PM.add(new TagMalloc());
-}
-
-static RegisterStandardPasses
-    RegisterTagMallocPass(PassManagerBuilder::EP_OptimizerLast,
-                          registerTagMallocPass);
-
-static RegisterStandardPasses
-    RegisterTagMallocPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                           registerTagMallocPass);
