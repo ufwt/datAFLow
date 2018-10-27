@@ -1,4 +1,4 @@
-//===-- ArrayAllocaPromotion.cpp - Promote static arrays to mallocs -------===//
+//===-- PromoteStaticArrays.cpp - Promote static arrays to mallocs --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -19,30 +19,29 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+
+#include "FuzzAlloc.h"
 
 using namespace llvm;
 
-#define ARRAY_ALLOCA_PROM "array-alloca-prom"
-#define DEBUG_TYPE ARRAY_ALLOCA_PROM
+#define DEBUG_TYPE ARRAY_PROM_METADATA
 
 static cl::opt<int> ClMinArraySize(
-    "array-alloca-prom-min-size",
-    cl::desc("The minimum size of an array to promote to malloc"),
+    "static-array-prom-min-size",
+    cl::desc("The minimum size of a static array to promote to malloc"),
     cl::init(-1));
 
-STATISTIC(NumOfAllocaPromotion, "Number of array alloca promotions.");
+STATISTIC(NumOfAllocaPromotion, "Number of array promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
 
-/// ArrayAllocaPromotion: instrument the code in a module to promote static,
+/// PromoteStaticArrays: instrument the code in a module to promote static,
 /// fixed-size arrays (both global and stack-based) to dynamically allocated
 /// arrays via \p malloc.
-class ArrayAllocaPromotion : public ModulePass {
+class PromoteStaticArrays : public ModulePass {
 private:
   Type *IntPtrTy;
 
@@ -53,7 +52,7 @@ private:
 
 public:
   static char ID;
-  ArrayAllocaPromotion() : ModulePass(ID) {}
+  PromoteStaticArrays() : ModulePass(ID) {}
 
   bool doInitialization(Module &M) override;
   bool runOnModule(Module &M) override;
@@ -77,10 +76,10 @@ static bool structContainsArray(StructType *StructTy) {
   return false;
 }
 
-char ArrayAllocaPromotion::ID = 0;
+char PromoteStaticArrays::ID = 0;
 
-Value *ArrayAllocaPromotion::updateGEP(AllocaInst *Alloca,
-                                       GetElementPtrInst *GEP) {
+Value *PromoteStaticArrays::updateGEP(AllocaInst *Alloca,
+                                      GetElementPtrInst *GEP) {
   // Cache uses before creating more
   std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
 
@@ -102,8 +101,8 @@ Value *ArrayAllocaPromotion::updateGEP(AllocaInst *Alloca,
   return NewGEP;
 }
 
-AllocaInst *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
-                                                     AllocaInst *Alloca) {
+AllocaInst *PromoteStaticArrays::promoteArrayAlloca(const DataLayout &DL,
+                                                    AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -153,8 +152,8 @@ AllocaInst *ArrayAllocaPromotion::promoteArrayAlloca(const DataLayout &DL,
 }
 
 // TODO handle nested structs
-AllocaInst *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
-                                                      AllocaInst *Alloca) {
+AllocaInst *PromoteStaticArrays::promoteStructAlloca(const DataLayout &DL,
+                                                     AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -236,7 +235,7 @@ AllocaInst *ArrayAllocaPromotion::promoteStructAlloca(const DataLayout &DL,
   return NewAlloca;
 }
 
-void ArrayAllocaPromotion::insertFree(Instruction *Alloca, ReturnInst *Return) {
+void PromoteStaticArrays::insertFree(Instruction *Alloca, ReturnInst *Return) {
   IRBuilder<> IRB(Return);
 
   // Load the pointer to the dynamically allocated memory and pass it to free
@@ -244,7 +243,7 @@ void ArrayAllocaPromotion::insertFree(Instruction *Alloca, ReturnInst *Return) {
   CallInst::CreateFree(LoadMalloc, Return);
 }
 
-bool ArrayAllocaPromotion::doInitialization(Module &M) {
+bool PromoteStaticArrays::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
@@ -253,7 +252,7 @@ bool ArrayAllocaPromotion::doInitialization(Module &M) {
   return true;
 }
 
-bool ArrayAllocaPromotion::runOnModule(Module &M) {
+bool PromoteStaticArrays::runOnModule(Module &M) {
   std::vector<AllocaInst *> ArrayAllocasToPromote;
   std::vector<AllocaInst *> StructAllocasToPromote;
   std::vector<ReturnInst *> ReturnsToInsertFree;
@@ -287,8 +286,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 
   for (auto *Alloca : ArrayAllocasToPromote) {
     auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
-    NewAlloca->setMetadata(C.getMDKindID(ARRAY_ALLOCA_PROM),
-                           MDNode::get(C, None));
+    NewAlloca->setMetadata(ARRAY_PROM_METADATA, MDNode::get(C, None));
     Alloca->eraseFromParent();
 
     // Ensure that the promoted alloca (now dynamically allocated) is freed
@@ -300,8 +298,7 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
 
   for (auto *Alloca : StructAllocasToPromote) {
     auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
-    NewAlloca->setMetadata(C.getMDKindID(ARRAY_ALLOCA_PROM),
-                           MDNode::get(C, None));
+    NewAlloca->setMetadata(ARRAY_PROM_METADATA, MDNode::get(C, None));
     // TODO erase Alloca
 
     // TODO insert frees
@@ -312,18 +309,5 @@ bool ArrayAllocaPromotion::runOnModule(Module &M) {
   return true;
 }
 
-static RegisterPass<ArrayAllocaPromotion>
-    X(ARRAY_ALLOCA_PROM, "Promote array allocas to malloc calls", false, false);
-
-static void registerArrayAllocaPromotionPass(const PassManagerBuilder &,
-                                             legacy::PassManagerBase &PM) {
-  PM.add(new ArrayAllocaPromotion());
-}
-
-static RegisterStandardPasses
-    RegisterArrayAllocaPromotionPass(PassManagerBuilder::EP_OptimizerLast,
-                                     registerArrayAllocaPromotionPass);
-
-static RegisterStandardPasses
-    RegisterArrayAllocaPromotionPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                                      registerArrayAllocaPromotionPass);
+static RegisterPass<PromoteStaticArrays>
+    X(ARRAY_PROM_METADATA, "Promote static array to malloc calls", false, false);
