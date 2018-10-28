@@ -49,7 +49,6 @@ private:
   Value *updateGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
   AllocaInst *promoteArrayAlloca(AllocaInst *Alloca);
   AllocaInst *promoteStructAlloca(AllocaInst *Alloca);
-  void insertFree(Instruction *Alloca, ReturnInst *Return);
 
 public:
   static char ID;
@@ -246,14 +245,6 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
   // TODO set NewAlloca metadata
 
   return NewAlloca;
-}
-
-void PromoteStaticArrays::insertFree(Instruction *Alloca, ReturnInst *Return) {
-  IRBuilder<> IRB(Return);
-
-  // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = IRB.CreateLoad(Alloca);
-  CallInst::CreateFree(LoadMalloc, Return);
 }
 
 bool PromoteStaticArrays::doInitialization(Module &M) {
