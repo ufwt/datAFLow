@@ -26,7 +26,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE ARRAY_PROM_METADATA
+#define DEBUG_TYPE "static-array-prom"
 
 static cl::opt<int> ClMinArraySize(
     "static-array-prom-min-size",
@@ -43,11 +43,12 @@ namespace {
 /// arrays via \p malloc.
 class PromoteStaticArrays : public ModulePass {
 private:
+  DataLayout *DL;
   Type *IntPtrTy;
 
   Value *updateGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
-  AllocaInst *promoteArrayAlloca(const DataLayout &DL, AllocaInst *Alloca);
-  AllocaInst *promoteStructAlloca(const DataLayout &DL, AllocaInst *Alloca);
+  AllocaInst *promoteArrayAlloca(AllocaInst *Alloca);
+  AllocaInst *promoteStructAlloca(AllocaInst *Alloca);
   void insertFree(Instruction *Alloca, ReturnInst *Return);
 
 public:
@@ -55,6 +56,7 @@ public:
   PromoteStaticArrays() : ModulePass(ID) {}
 
   bool doInitialization(Module &M) override;
+  bool doFinalization(Module &) override;
   bool runOnModule(Module &M) override;
 };
 
@@ -101,15 +103,18 @@ Value *PromoteStaticArrays::updateGEP(AllocaInst *Alloca,
   return NewGEP;
 }
 
-AllocaInst *PromoteStaticArrays::promoteArrayAlloca(const DataLayout &DL,
-                                                    AllocaInst *Alloca) {
+AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
   Type *ArrayTy = Alloca->getAllocatedType();
   Type *ElemTy = ArrayTy->getArrayElementType();
 
+  uint64_t ArrayAllocSize = this->DL->getTypeAllocSize(ElemTy);
+  uint64_t ArrayNumElems = ArrayTy->getArrayNumElements();
+
   IRBuilder<> IRB(Alloca);
+  LLVMContext &C = IRB.getContext();
 
   // This will transform something like this:
   //
@@ -132,10 +137,9 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(const DataLayout &DL,
   auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo());
   auto *MallocCall = CallInst::CreateMalloc(
       Alloca, this->IntPtrTy, ElemTy,
-      ConstantInt::get(this->IntPtrTy, DL.getTypeAllocSize(ElemTy)),
-      ConstantInt::get(this->IntPtrTy, ArrayTy->getArrayNumElements()),
-      nullptr);
-  auto *StoreMalloc = IRB.CreateStore(MallocCall, NewAlloca);
+      ConstantInt::get(this->IntPtrTy, ArrayAllocSize),
+      ConstantInt::get(this->IntPtrTy, ArrayNumElems), nullptr);
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
 
   // Update all the users of the original array to use the dynamically
   // allocated array
@@ -148,12 +152,18 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(const DataLayout &DL,
     }
   }
 
+  // Save the total size (product of type size and number of array elements) of
+  // the original array as metadata
+  NewAlloca->setMetadata(
+      ARRAY_PROM_SIZE_MD,
+      MDNode::get(C, ConstantAsMetadata::get(ConstantInt::get(
+                         this->IntPtrTy, ArrayAllocSize * ArrayNumElems))));
+
   return NewAlloca;
 }
 
 // TODO handle nested structs
-AllocaInst *PromoteStaticArrays::promoteStructAlloca(const DataLayout &DL,
-                                                     AllocaInst *Alloca) {
+AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
   // Cache uses before creating more
   std::vector<User *> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -185,31 +195,32 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(const DataLayout &DL,
     }
   }
 
+  IRBuilder<> IRB(Alloca);
+  LLVMContext &C = IRB.getContext();
+
   // The new struct type (without any static arrays)
-  LLVMContext &C = StructTy->getContext();
   StructType *NewStructTy = StructType::create(
       C, NewStructElements, StructTy->getName(), StructTy->isPacked());
 
   IntegerType *Int32Ty = Type::getInt32Ty(C);
 
-  IRBuilder<> IRB(Alloca);
-
   auto *NewAlloca = IRB.CreateAlloca(NewStructTy);
 
   for (auto &ArrayTysWithIndex : StructArrayElements) {
     ArrayType *ArrayTy = ArrayTysWithIndex.first;
-    unsigned Index = ArrayTysWithIndex.second;
+    unsigned StructIndex = ArrayTysWithIndex.second;
+
     Type *ElemTy = ArrayTy->getArrayElementType();
     Value *GEPIndices[] = {ConstantInt::get(Int32Ty, 0),
-                           ConstantInt::get(Int32Ty, Index)};
+                           ConstantInt::get(Int32Ty, StructIndex)};
 
     auto *MallocCall = CallInst::CreateMalloc(
         Alloca, this->IntPtrTy, ElemTy,
-        ConstantInt::get(this->IntPtrTy, DL.getTypeAllocSize(ElemTy)),
+        ConstantInt::get(this->IntPtrTy, this->DL->getTypeAllocSize(ElemTy)),
         ConstantInt::get(this->IntPtrTy, ArrayTy->getArrayNumElements()),
         nullptr);
     auto *NewStructGEP = IRB.CreateGEP(NewAlloca, GEPIndices);
-    auto *StoreMalloc = IRB.CreateStore(MallocCall, NewStructGEP);
+    auto *MallocStore = IRB.CreateStore(MallocCall, NewStructGEP);
 
     // Update all the users of the original struct to use the new struct
     for (auto *U : Users) {
@@ -232,6 +243,8 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(const DataLayout &DL,
     }
   }
 
+  // TODO set NewAlloca metadata
+
   return NewAlloca;
 }
 
@@ -245,11 +258,17 @@ void PromoteStaticArrays::insertFree(Instruction *Alloca, ReturnInst *Return) {
 
 bool PromoteStaticArrays::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
-  const DataLayout &DL = M.getDataLayout();
 
-  this->IntPtrTy = DL.getIntPtrType(C);
+  this->DL = new DataLayout(M.getDataLayout());
+  this->IntPtrTy = this->DL->getIntPtrType(C);
 
-  return true;
+  return false;
+}
+
+bool PromoteStaticArrays::doFinalization(Module &) {
+  delete this->DL;
+
+  return false;
 }
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
@@ -285,8 +304,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
 
   for (auto *Alloca : ArrayAllocasToPromote) {
-    auto *NewAlloca = promoteArrayAlloca(M.getDataLayout(), Alloca);
-    NewAlloca->setMetadata(ARRAY_PROM_METADATA, MDNode::get(C, None));
+    auto *NewAlloca = promoteArrayAlloca(Alloca);
     Alloca->eraseFromParent();
 
     // Ensure that the promoted alloca (now dynamically allocated) is freed
@@ -297,8 +315,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   }
 
   for (auto *Alloca : StructAllocasToPromote) {
-    auto *NewAlloca = promoteStructAlloca(M.getDataLayout(), Alloca);
-    NewAlloca->setMetadata(ARRAY_PROM_METADATA, MDNode::get(C, None));
+    auto *NewAlloca = promoteStructAlloca(Alloca);
     // TODO erase Alloca
 
     // TODO insert frees
@@ -310,4 +327,5 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 }
 
 static RegisterPass<PromoteStaticArrays>
-    X(ARRAY_PROM_METADATA, "Promote static array to malloc calls", false, false);
+    X("static-array-prom", "Promote static array to malloc calls", false,
+      false);
