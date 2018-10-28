@@ -19,12 +19,12 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 
-/// Metadata label for storing the total size (in bytes) of a promoted static
-/// array
-const char *const ARRAY_PROM_SIZE_MD = "static-array-prom.size";
+/// Metadata label for storing the total number of elements in a promoted
+/// static array
+const char *const ARRAY_PROM_NUM_ELEMS_MD = "static-array-prom.numElems";
 
 /// \p free the given allocation before the given return address.
-void insertFree(llvm::AllocaInst *Alloca, llvm::ReturnInst *Return) {
+inline void insertFree(llvm::AllocaInst *Alloca, llvm::ReturnInst *Return) {
   llvm::IRBuilder<> IRB(Return);
 
   // Load the pointer to the dynamically allocated memory and pass it to free

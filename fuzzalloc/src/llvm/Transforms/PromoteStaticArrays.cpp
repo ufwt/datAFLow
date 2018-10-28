@@ -154,9 +154,9 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // Save the total size (product of type size and number of array elements) of
   // the original array as metadata
   NewAlloca->setMetadata(
-      ARRAY_PROM_SIZE_MD,
-      MDNode::get(C, ConstantAsMetadata::get(ConstantInt::get(
-                         this->IntPtrTy, ArrayAllocSize * ArrayNumElems))));
+      ARRAY_PROM_NUM_ELEMS_MD,
+      MDNode::get(C, ConstantAsMetadata::get(
+                         ConstantInt::get(this->IntPtrTy, ArrayNumElems))));
 
   return NewAlloca;
 }
@@ -263,8 +263,14 @@ bool PromoteStaticArrays::doFinalization(Module &) {
 }
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
+  // List of static array allocations to promote
   std::vector<AllocaInst *> ArrayAllocasToPromote;
+
+  // List of struct allocations that contain a static array to promote
   std::vector<AllocaInst *> StructAllocasToPromote;
+
+  // List of return instructions that require calls to free to be inserted
+  // before them
   std::vector<ReturnInst *> ReturnsToInsertFree;
 
   for (auto &F : M.functions()) {
