@@ -22,7 +22,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
-#include "FuzzAlloc.h"
+#include "Utils.h"
 
 using namespace llvm;
 
