@@ -29,7 +29,6 @@
 
 // Alignment used by muslc
 #define SIZE_ALIGN (4 * sizeof(size_t))
-#define SIZE_MASK (-SIZE_ALIGN)
 
 /// When a allocation site pool is initially created, make it this times as
 /// many bytes larger than the original request (to handle subsequent
@@ -51,7 +50,7 @@ struct pool_t {
 };
 
 /// Amount of chunk overhead (in bytes)
-#define CHUNK_OVERHEAD (sizeof(struct chunk_t))
+#define CHUNK_OVERHEAD (sizeof(size_t))
 
 /// Returns non-zero if the chunk is in use
 #define IN_USE(c) (c->size & ((size_t)1))

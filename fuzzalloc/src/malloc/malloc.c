@@ -14,9 +14,9 @@
 /// pools
 static struct pool_t pool_map[TAG_MAX + 1];
 
-/// Ensure that the given size is aligned correctly
-static inline size_t size_align(size_t size) {
-  return (size + CHUNK_OVERHEAD + SIZE_ALIGN - 1) & SIZE_MASK;
+/// Align the given value
+static inline size_t align(size_t n, size_t alignment) {
+  return (n + alignment - 1) & -alignment;
 }
 
 /// Initialize a pool of the given size (mmap'ed memory) with the given initial
@@ -44,15 +44,15 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // This allocation site has not been used before. Create a new "allocation
     // pool" for this site
 
-    // Adjust the allocation size so that it satisfies alignment. If the
+    // Adjust the allocation size so that it is properly aligned. If the
     // requested size cannot fit within the chunk's size field, return an error
-    const size_t aligned_size = size_align(size);
+    const size_t aligned_size = align(size + CHUNK_OVERHEAD, SIZE_ALIGN);
     if (aligned_size > MAX_CHUNK_SIZE) {
       DEBUG_MSG("memory request too large\n");
       return NULL;
     }
 
-    // TODO this is probably overkill...
+    // XXX is this even right?
     const size_t mmap_size = POOL_SIZE_SCALE * aligned_size;
 
     // mmap the requested memory
