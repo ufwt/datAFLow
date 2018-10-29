@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/mman.h>
 
 #include "fuzzalloc.h"
@@ -19,13 +20,18 @@
 #define DEBUG_MSG(format, ...)
 #endif
 
-/// Alignment used by muslc
+// Simple booleans
+#define FALSE 0
+#define TRUE !FALSE
+
+// Alignment used by muslc
 #define SIZE_ALIGN (4 * sizeof(size_t))
+#define SIZE_MASK (-SIZE_ALIGN)
 
 /// When a allocation site pool is initially created, make it this times as
-/// many bytes larger than the original request (to handle subsequent requests
-/// at the same allocation site)
-#define POOL_SIZE_MULTIPLIER 4
+/// many bytes larger than the original request (to handle subsequent
+/// allocations at the same allocation site)
+#define POOL_SIZE_SCALE 4
 
 struct chunk_t {
   size_t size;          //< LSB indicates whether in use or free
@@ -33,18 +39,18 @@ struct chunk_t {
 };
 
 struct pool_t {
-  uint8_t in_use : 1;
+  uint8_t in_use : 1; //< Set to \p TRUE when this pool is in use
   struct {
-    size_t allocated_size;
-    size_t used_size;
-    struct chunk_t *entry;
+    size_t allocated_size; //< Total size allocated (via mmap) for this pool
+    size_t used_size;      //< Size used in this pool
+    struct chunk_t *entry; //< Pointer to the first chunk in this pool
   };
 };
 
-/// Size of chunk overhead (in bytes)
+/// Amount of chunk overhead (in bytes)
 #define CHUNK_OVERHEAD (sizeof(struct chunk_t))
 
-/// Returns non-zero if the chunk \p c is in use
+/// Returns non-zero if the chunk is in use
 #define IN_USE(c) (c->size & ((size_t)1))
 
 /// Set the chunk as being in use
@@ -72,14 +78,22 @@ struct pool_t {
 /// Convert chunk to a memory address (as seen by the user)
 #define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + CHUNK_OVERHEAD))
 
-// TODO more space-efficient data structure
-static struct pool_t tag_map[TAG_MAX + 1];
+/// Maps malloc/calloc tags (inserted during compilation) to allocation-site
+/// pools
+static struct pool_t pool_map[TAG_MAX + 1];
 
+/// Ensure that the given size is aligned correctly
+static inline size_t size_align(size_t size) {
+  return (size + CHUNK_OVERHEAD + SIZE_ALIGN - 1) & SIZE_MASK;
+}
+
+/// Initialize a pool of the given size (mmap'ed memory) with the given initial
+/// chunk
 static struct pool_t initialize_pool(size_t allocated_size,
                                      struct chunk_t *chunk) {
   struct pool_t pool;
 
-  pool.in_use = 1;
+  pool.in_use = TRUE;
   pool.allocated_size = allocated_size;
   pool.used_size = CHUNK_SIZE(chunk);
   pool.entry = chunk;
@@ -94,23 +108,24 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     return NULL;
   }
 
-  if (tag_map[tag].in_use == 0) {
+  if (pool_map[tag].in_use == FALSE) {
+    // This allocation site has not been used before. Create a new "allocation
+    // pool" for this site
+
     // Adjust the allocation size so that it satisfies alignment. If the
     // requested size cannot fit within the chunk's size field, return an error
-    const size_t aligned_size =
-        ((size + CHUNK_OVERHEAD + SIZE_ALIGN - 1) / SIZE_ALIGN) * SIZE_ALIGN;
-    const size_t mmap_aligned_size =
-        ((POOL_SIZE_MULTIPLIER * (size + CHUNK_OVERHEAD) + SIZE_ALIGN - 1) /
-         SIZE_ALIGN) *
-        SIZE_ALIGN;
+    const size_t aligned_size = size_align(size);
     if (aligned_size > MAX_CHUNK_SIZE) {
       DEBUG_MSG("memory request too large\n");
       return NULL;
     }
 
+    // TODO this is probably overkill...
+    const size_t mmap_size = POOL_SIZE_SCALE * aligned_size;
+
     // mmap the requested memory
-    DEBUG_MSG("mmap-ing %lu bytes of memory...\n", mmap_aligned_size);
-    void *base = mmap(NULL, mmap_aligned_size, PROT_READ | PROT_WRITE,
+    DEBUG_MSG("mmap-ing %lu bytes of memory...\n", mmap_size);
+    void *base = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == (void *)-1) {
       DEBUG_MSG("mmap failed\n");
@@ -124,7 +139,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     size_t adjust = 0;
     if ((ptr & (SIZE_ALIGN - 1)) != 0) {
       adjust = SIZE_ALIGN - (ptr & (SIZE_ALIGN - 1));
-      DEBUG_MSG("adjust of %lu bytes required for mmap base\n", adjust);
+      DEBUG_MSG("adjustment of %lu bytes required for mmap base\n", adjust);
     }
     ptr += adjust - CHUNK_OVERHEAD;
 
@@ -134,12 +149,15 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     SET_IN_USE(chunk);
 
     // This is the first chunk allocated for this particular tag, so save it
-    // into the tag map
-    tag_map[tag] = initialize_pool(mmap_aligned_size, chunk);
+    // into the pool map
+    pool_map[tag] = initialize_pool(mmap_size, chunk);
 
     DEBUG_MSG("returning %p to the user\n", CHUNK_TO_MEM(chunk));
     return CHUNK_TO_MEM(chunk);
   } else {
+    // Reuse of an existing allocation site. Try and fit the new allocation
+    // into the existing memory pool
+
     DEBUG_MSG("allocation site already in use!\n");
   }
 
@@ -148,9 +166,22 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
 }
 
 void *__tagged_calloc(uint16_t tag, size_t nmemb, size_t size) {
-  DEBUG_MSG("__tagged_calloc(%u, %lu, %lu)\n", tag, nmemb, size);
+  DEBUG_MSG("calloc(%lu, %lu)\n", nmemb, size);
 
-  return NULL;
+  // Adapted from muslc
+
+  if (size && nmemb > (size_t)(-1) / size) {
+    errno = ENOMEM;
+    return NULL;
+  }
+
+  size *= nmemb;
+  void *p = __tagged_malloc(tag, size);
+  if (!p) {
+    return p;
+  }
+
+  return memset(p, 0, size);
 }
 
 void *malloc(size_t size) { return __tagged_malloc(DEFAULT_TAG, size); }
@@ -161,4 +192,12 @@ void *calloc(size_t nmemb, size_t size) {
 
 void *realloc(void *ptr, size_t size) { return ptr; }
 
-void free(void *ptr) {}
+void free(void *ptr) {
+  DEBUG_MSG("free(%p)\n", ptr);
+
+  if (!ptr) {
+    return;
+  }
+
+  // TODO implement free
+}
