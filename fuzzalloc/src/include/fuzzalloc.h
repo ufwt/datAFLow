@@ -12,5 +12,16 @@
 ///
 //===----------------------------------------------------------------------===//
 
-/// The default malloc/calloc tag. Used by default for non-instrumented code.
+#ifndef _FUZZ_ALLOC_H_
+#define _FUZZ_ALLOC_H_
+
+/// Number of bits in a tag
+#define TAG_NUM_BITS 16
+
+/// The maximum possible tag value
+#define TAG_MAX ((1 << TAG_NUM_BITS) - 1)
+
+/// The default malloc/calloc tag. Used by default for non-instrumented code
 #define DEFAULT_TAG 0
+
+#endif

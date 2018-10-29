@@ -110,7 +110,7 @@ bool TagMalloc::runOnModule(Module &M) {
     Function *WrapperF = AllocCallWithWrapper.second;
 
     // Generate a random 16-bit tag representing the allocation site
-    ConstantInt *Tag = ConstantInt::get(Int16Ty, (uint16_t)RAND(DEFAULT_TAG + 1, UINT16_MAX));
+    ConstantInt *Tag = ConstantInt::get(Int16Ty, (uint16_t)RAND(DEFAULT_TAG + 1, TAG_MAX));
     SmallVector<Value *, 3> WrapperArgs = {Tag};
 
     // Copy the original malloc/calloc call's arguments after the tag
