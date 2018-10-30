@@ -12,6 +12,11 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#ifndef _MALLOC_INTERNAL_H_
+#define _MALLOC_INTERNAL_H_
+
+#include <stdint.h>
+
 // TODO delete
 #define DEBUG 1
 
@@ -23,34 +28,28 @@
 #define DEBUG_MSG(format, ...)
 #endif
 
-// Simple booleans
 #define FALSE 0
 #define TRUE !FALSE
 
-// Alignment used by muslc
-#define SIZE_ALIGN (4 * sizeof(size_t))
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
 
-/// When a allocation site pool is initially created, make it this times as
-/// many bytes larger than the original request (to handle subsequent
-/// allocations at the same allocation site)
-#define POOL_SIZE_SCALE 4
+///////////////////////////////////////////////////////////////////////////////
 
 struct chunk_t {
-  size_t size;          //< LSB indicates whether in use or free
-  struct chunk_t *next; //< Pointer to next free chunk
+  /// Chunk size (in bytes). The least-significant bit indicates whether the
+  /// chunk is in use or free
+  size_t size;
+  /// Pointer to the next free chunk
+  struct chunk_t *next;
 };
 
-struct pool_t {
-  uint8_t in_use : 1; //< Set to \p TRUE when this pool is in use
-  struct {
-    size_t allocated_size; //< Total size allocated (via mmap) for this pool
-    size_t used_size;      //< Size used in this pool
-    struct chunk_t *entry; //< Pointer to the first chunk in this pool
-  };
-};
+/// Size of chunk overhead (in bytes)
+#define CHUNK_OVERHEAD (1 * sizeof(size_t))
 
-/// Amount of chunk overhead (in bytes)
-#define CHUNK_OVERHEAD (sizeof(size_t))
+// Chunk alignment used by muslc
+// XXX why this value?
+#define CHUNK_ALIGN (4 * sizeof(size_t))
 
 /// Returns non-zero if the chunk is in use
 #define IN_USE(c) (c->size & ((size_t)1))
@@ -66,10 +65,10 @@ struct pool_t {
 
 /// Set the size of the chunk
 #define SET_CHUNK_SIZE(c, s)                                                   \
-  (c->size = (size_t)(s - (SIZE_ALIGN - CHUNK_OVERHEAD)))
+  (c->size = (size_t)(s - (CHUNK_ALIGN - CHUNK_OVERHEAD)))
 
 /// The maximum possible chunk size (in bytes)
-#define MAX_CHUNK_SIZE ((size_t)(~0) - 1)
+#define MAX_CHUNK_SIZE SIZE_MAX
 
 /// Pointer to next chunk
 #define NEXT_CHUNK(c) ((struct chunk *)((uint8_t *)(c) + CHUNK_SIZE(c)))
@@ -79,3 +78,38 @@ struct pool_t {
 
 /// Convert chunk to a memory address (as seen by the user)
 #define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + CHUNK_OVERHEAD))
+
+///////////////////////////////////////////////////////////////////////////////
+
+struct pool_t {
+  /// Total size (in bytes) allocated (via mmap) for this pool
+  size_t allocated_size;
+  /// Size (in bytes) already used in this pool
+  size_t used_size;
+  /// First chunk in this pool
+  struct chunk_t entry;
+};
+
+/// Size of pool overhead (in bytes)
+#define POOL_OVERHEAD (2 * sizeof(size_t))
+
+/// The number of usable bits on the X86-64 architecture
+#define NUM_USABLE_BITS 48
+
+/// The number of (most upper) bits used to identify an allocation site's pool
+#define NUM_POOL_ID_BITS 16
+
+/// Pool alignment. This ensures that the upper \p NUM_POOL_ID_BITS of the pool
+/// address are unique to a single pool
+#define POOL_ALIGN (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+
+/// Maximum size (in bytes) of a pool: either the amount of data we can fit
+/// after \p POOL_ID_BITS or the maximum value we can represent in \p size_t
+#define MAX_POOL_SIZE MIN(POOL_ALIGN - 1, SIZE_MAX)
+
+/// Extract the pool identifier from the allocated pool
+#define GET_POOL_ID(p) ((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+
+///////////////////////////////////////////////////////////////////////////////
+
+#endif
