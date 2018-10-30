@@ -83,6 +83,10 @@ struct pool_t {
 /// Size of pool overhead (in bytes)
 #define POOL_OVERHEAD (2 * sizeof(size_t))
 
+/// Each time a new allocation site pool is created, make it this times as many
+/// bytes larger than the original allocation request
+#define POOL_SIZE_SCALE 4
+
 /// The number of usable bits on the X86-64 architecture
 #define NUM_USABLE_BITS 48
 

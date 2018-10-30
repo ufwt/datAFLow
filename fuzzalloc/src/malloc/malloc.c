@@ -55,6 +55,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     }
 
     // Adjust the allocation size so that it is properly aligned
+    // XXX this alignment is too large!
     const size_t aligned_size = align(size + POOL_OVERHEAD, POOL_ALIGN);
 
     // mmap the requested amount of memory
@@ -81,6 +82,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     }
 
     DEBUG_MSG("allocation pool at %p\n", pool_base);
+    DEBUG_MSG("pool size -> %lu bytes\n", aligned_size - adjust);
 
 //    // Adjust the allocation size so that it is properly aligned. If the
 //    // requested size cannot fit within the chunk's size field, return an error
