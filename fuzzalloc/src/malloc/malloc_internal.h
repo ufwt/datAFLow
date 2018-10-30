@@ -1,19 +1,9 @@
-//===-- malloc_internal.h - Definitions ---------------------------*- C -*-===//
-//
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
-//
-//===----------------------------------------------------------------------===//
-///
-/// \file
-/// Internal definitions for the fuzzing memory allocator, \p fuzzalloc.
-///
-//===----------------------------------------------------------------------===//
-
 #ifndef _MALLOC_INTERNAL_H_
 #define _MALLOC_INTERNAL_H_
+
+#if !defined(__x86_64__)
+#error Unsupported platform
+#endif
 
 #include <stdint.h>
 

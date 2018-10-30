@@ -1,7 +1,3 @@
-#if !defined(__x86_64__)
-#error Unsupported platform
-#endif
-
 #include <errno.h>      // for errno, ENOMEM
 #include <stdint.h>     // for uintptr_t
 #include <string.h>     // for memset
