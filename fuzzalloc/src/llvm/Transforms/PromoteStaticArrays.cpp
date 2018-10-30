@@ -46,7 +46,9 @@ private:
   DataLayout *DL;
   Type *IntPtrTy;
 
-  Value *updateGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
+  Value *updateArrayGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
+  Value *updateStructGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
+
   AllocaInst *promoteArrayAlloca(AllocaInst *Alloca);
   AllocaInst *promoteStructAlloca(AllocaInst *Alloca);
 
@@ -79,8 +81,8 @@ static bool structContainsArray(StructType *StructTy) {
 
 char PromoteStaticArrays::ID = 0;
 
-Value *PromoteStaticArrays::updateGEP(AllocaInst *Alloca,
-                                      GetElementPtrInst *GEP) {
+Value *PromoteStaticArrays::updateArrayGEP(AllocaInst *Alloca,
+                                           GetElementPtrInst *GEP) {
   // Cache uses before creating more
   std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
 
@@ -94,9 +96,29 @@ Value *PromoteStaticArrays::updateGEP(AllocaInst *Alloca,
       LoadMalloc, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
 
   // Update all the users of the original GEP instruction to use the updated
-  // GEP that is correctly typed for the given alloca instruction
+  // GEP. The updated GEP is correctly typed for the given alloca instruction
   for (auto *U : Users) {
     U->replaceUsesOfWith(GEP, NewGEP);
+  }
+
+  return NewGEP;
+}
+
+Value *PromoteStaticArrays::updateStructGEP(AllocaInst *Alloca,
+                                            GetElementPtrInst *GEP) {
+  // Cache uses before creating more
+  std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
+
+  IRBuilder<> IRB(GEP);
+
+  auto *NewGEP = IRB.CreateInBoundsGEP(
+      Alloca, std::vector<Value *>(GEP->idx_begin(), GEP->idx_end()));
+  auto *LoadNewGEP = IRB.CreateLoad(NewGEP);
+
+  errs() << "replacing users of " << *GEP << '\n';
+  for (auto *U : Users) {
+    errs() << "replacing GEP user -> " << *U << '\n';
+    // U->replaceUsesOfWith(GEP, LoadFromNewGEP);
   }
 
   return NewGEP;
@@ -119,7 +141,7 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   //
   // %1 = alloca [NumElements x Ty]
   //
-  // into:
+  // into something like this:
   //
   // %1 = alloca Ty*
   // %2 = call i8* @malloc(PtrTy Size)
@@ -144,7 +166,8 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // allocated array
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
-      updateGEP(NewAlloca, GEP);
+      // GEPs are handled separately to ensure that they are correctly typed
+      updateArrayGEP(NewAlloca, GEP);
       GEP->eraseFromParent();
     } else {
       U->replaceUsesOfWith(Alloca, NewAlloca);
@@ -177,8 +200,8 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
   // dynamically allocated memory)
   std::vector<Type *> NewStructElements;
 
-  // Save static arrays (and their index/position in the struct) that need to
-  // be promoted to dynamically allocated arrays
+  // Record all of the static arrays (and their index/position in the struct)
+  // that are to be promoted to dynamically allocated arrays
   {
     unsigned Index = 0;
     for (auto *Elem : StructTy->elements()) {
@@ -197,10 +220,12 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
   IRBuilder<> IRB(Alloca);
   LLVMContext &C = IRB.getContext();
 
-  // The new struct type (without any static arrays)
+  // The new struct type (with static arrays replaced by pointers)
   StructType *NewStructTy = StructType::create(
       C, NewStructElements, StructTy->getName(), StructTy->isPacked());
 
+  // As per https://llvm.org/docs/GetElementPtr.html, struct member indices
+  // always use i32
   IntegerType *Int32Ty = Type::getInt32Ty(C);
 
   auto *NewAlloca = IRB.CreateAlloca(NewStructTy);
@@ -224,17 +249,8 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
     // Update all the users of the original struct to use the new struct
     for (auto *U : Users) {
       if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
-        std::vector<User *> GEPUsers(GEP->user_begin(), GEP->user_end());
-
-        IRBuilder<> GEPIRB(GEP);
-
-        auto *NewGEP = IRB.CreateGEP(
-            U, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
-
-        for (auto *UU : GEPUsers) {
-          UU->replaceUsesOfWith(GEP, NewGEP);
-        }
-
+        // GEPs are handled separately to ensure that they are correctly typed
+        updateStructGEP(NewAlloca, GEP);
         // TODO erase GEP
       } else {
         U->replaceUsesOfWith(Alloca, NewAlloca);
