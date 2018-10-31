@@ -46,6 +46,9 @@ private:
   DataLayout *DL;
   Type *IntPtrTy;
 
+  Instruction *createMalloc(Instruction *InsertBefore, Type *AllocTy,
+                            uint64_t TypeSize, uint64_t ArrayNumElems);
+
   Value *updateArrayGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
   Value *updateStructGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
 
@@ -80,6 +83,15 @@ static bool structContainsArray(StructType *StructTy) {
 }
 
 char PromoteStaticArrays::ID = 0;
+
+Instruction *PromoteStaticArrays::createMalloc(Instruction *InsertBefore,
+                                               Type *AllocTy, uint64_t TypeSize,
+                                               uint64_t ArrayNumElems) {
+  return CallInst::CreateMalloc(InsertBefore, this->IntPtrTy, AllocTy,
+                                ConstantInt::get(this->IntPtrTy, TypeSize),
+                                ConstantInt::get(this->IntPtrTy, ArrayNumElems),
+                                nullptr);
+}
 
 Value *PromoteStaticArrays::updateArrayGEP(AllocaInst *Alloca,
                                            GetElementPtrInst *GEP) {
@@ -156,10 +168,8 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   //  - `Size` is the size of the allocated buffer (equivalent to
   //    `NumElements * sizeof(Ty)`)
   auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo());
-  auto *MallocCall = CallInst::CreateMalloc(
-      Alloca, this->IntPtrTy, ElemTy,
-      ConstantInt::get(this->IntPtrTy, ArrayAllocSize),
-      ConstantInt::get(this->IntPtrTy, ArrayNumElems), nullptr);
+  auto *MallocCall =
+      createMalloc(Alloca, ElemTy, ArrayAllocSize, ArrayNumElems);
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
 
   // Update all the users of the original array to use the dynamically
@@ -235,14 +245,15 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
     unsigned StructIndex = ArrayTysWithIndex.second;
 
     Type *ElemTy = ArrayTy->getArrayElementType();
+
+    uint64_t ArrayAllocSize = this->DL->getTypeAllocSize(ElemTy);
+    uint64_t ArrayNumElems = ArrayTy->getArrayNumElements();
+
     Value *GEPIndices[] = {ConstantInt::get(Int32Ty, 0),
                            ConstantInt::get(Int32Ty, StructIndex)};
 
-    auto *MallocCall = CallInst::CreateMalloc(
-        Alloca, this->IntPtrTy, ElemTy,
-        ConstantInt::get(this->IntPtrTy, this->DL->getTypeAllocSize(ElemTy)),
-        ConstantInt::get(this->IntPtrTy, ArrayTy->getArrayNumElements()),
-        nullptr);
+    auto *MallocCall =
+        createMalloc(Alloca, ElemTy, ArrayAllocSize, ArrayNumElems);
     auto *NewStructGEP = IRB.CreateGEP(NewAlloca, GEPIndices);
     auto *MallocStore = IRB.CreateStore(MallocCall, NewStructGEP);
 
