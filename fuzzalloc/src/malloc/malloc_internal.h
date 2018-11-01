@@ -27,44 +27,64 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 struct chunk_t {
-  /// Chunk size (in bytes). The least-significant bit indicates whether the
-  /// chunk is in use or free
+  /// Current chunk size (in bytes). The least-significant bit indicates
+  /// whether the chunk is in use or free
   size_t size;
+  /// Size of the previous chunk (in bytes)
+  size_t prev_size;
   /// Pointer to the next free chunk
   struct chunk_t *next;
+  /// Pointer to the previous free chunk
+  struct chunk_t *prev;
 };
 
 /// Size of chunk overhead (in bytes)
-#define CHUNK_OVERHEAD (1 * sizeof(size_t))
+#define CHUNK_OVERHEAD (2 * sizeof(size_t))
 
 // Chunk alignment used by muslc
 // XXX why this value?
 #define CHUNK_ALIGN (4 * sizeof(size_t))
 
 /// Returns non-zero if the chunk is in use
-#define IN_USE(c) (c->size & ((size_t)1))
+#define CHUNK_IN_USE(c) ((uint8_t)(c->size & ((size_t)1)))
+
+/// Returns non-zero if the previous chunk is in use
+#define PREV_CHUNK_IN_USE(c) ((uint8_t)(c->prev_size & ((size_t)1)))
 
 /// Set the chunk as being in use
-#define SET_IN_USE(c) (c->size |= ((size_t)1))
+#define SET_CHUNK_IN_USE(c) (c->size |= ((size_t)1))
+
+/// Set the previous chunk as being in use
+#define SET_PREV_CHUNK_IN_USE(c) (c->prev_size |= ((size_t)1))
 
 /// Set the chunk as being free
-#define CLEAR_USE(c) (c->size &= ((size_t)(~1)))
+#define CLEAR_CHUNK_USE(c) (c->size &= ((size_t)(~1)))
+
+/// Set the previous chunk as being free
+#define CLEAR_PREV_CHUNK_USE(c) (c->prev_size &= ((size_t)(~1)))
 
 /// Chunk size (in bytes), ignoring the in use/free bit
 #define CHUNK_SIZE(c) (c->size & ((size_t)(~0) - 1))
 
-/// Set the size of the chunk
-#define SET_CHUNK_SIZE(c, s)                                                   \
-  (c->size = (size_t)(s - (CHUNK_ALIGN - CHUNK_OVERHEAD)))
+/// Previous chunk size (in bytes), ignoring the in use/free bit
+#define PREV_CHUNK_SIZE(c) (c->prev_size & ((size_t)(~0) - 1))
 
-/// The maximum possible chunk size (in bytes)
-#define MAX_CHUNK_SIZE SIZE_MAX
+/// Set the size of the chunk (in bytes). This size should include the chunk
+/// overhead. The caller must ensure that the in-use bit is unused
+#define SET_CHUNK_SIZE(c, s) (c->size = (size_t)(s & (~1)))
+
+/// Set the size of the previous chunk (in bytes). This size should include
+/// the chunk overhead. The caller must ensure that the in-use bit is unused
+#define SET_PREV_CHUNK_SIZE(c, s) (c->prev_size = (size_t)(s & (~1)))
 
 /// Pointer to next chunk
-#define NEXT_CHUNK(c) ((struct chunk *)((uint8_t *)(c) + CHUNK_SIZE(c)))
+#define NEXT_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c) + CHUNK_SIZE(c)))
+
+/// Pointer to previous chunk
+#define PREV_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c)-CHUNK_PREV_SIZE(c)))
 
 /// Convert memory address (as seen by the user) to a chunk
-#define MEM_TO_CHUNK(p) ((struct chunk *)((uint8_t *)(p)-CHUNK_OVERHEAD))
+#define MEM_TO_CHUNK(p) ((struct chunk_t *)((uint8_t *)(p)-CHUNK_OVERHEAD))
 
 /// Convert chunk to a memory address (as seen by the user)
 #define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + CHUNK_OVERHEAD))
@@ -72,20 +92,19 @@ struct chunk_t {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct pool_t {
-  /// Total size (in bytes) allocated (via mmap) for this pool
+  /// The amount of memory mmap'd for this pool
   size_t allocated_size;
-  /// Size (in bytes) already used in this pool
+  /// Size (in bytes) currently in use by this pool
   size_t used_size;
   /// First chunk in this pool
-  struct chunk_t entry;
+  struct chunk_t *entry;
 };
 
 /// Size of pool overhead (in bytes)
 #define POOL_OVERHEAD (2 * sizeof(size_t))
 
-/// Each time a new allocation site pool is created, make it this times as many
-/// bytes larger than the original allocation request
-#define POOL_SIZE_SCALE 4
+/// Default pool size
+#define DEFAULT_POOL_SIZE 20000UL
 
 /// The number of usable bits on the X86-64 architecture
 #define NUM_USABLE_BITS 48
@@ -96,10 +115,6 @@ struct pool_t {
 /// Pool alignment. This ensures that the upper \p NUM_POOL_ID_BITS of the pool
 /// address are unique to a single pool
 #define POOL_ALIGN (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
-
-/// Maximum size (in bytes) of a pool: either the amount of data we can fit
-/// after \p POOL_ID_BITS or the maximum value we can represent in \p size_t
-#define MAX_POOL_SIZE MIN(POOL_ALIGN - 1, SIZE_MAX)
 
 /// Extract the pool identifier from the allocated pool
 #define GET_POOL_ID(p) ((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS))

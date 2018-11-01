@@ -1,8 +1,9 @@
-#include <errno.h>      // for errno, ENOMEM
-#include <stdint.h>     // for uintptr_t
-#include <string.h>     // for memset
-#include <sys/mman.h>   // for mmap
-#include <unistd.h>     // for getpagesize
+#include <errno.h>    // for errno, ENOMEM
+#include <stddef.h>   // for ptrdiff_t
+#include <stdint.h>   // for uintptr_t
+#include <string.h>   // for memset
+#include <sys/mman.h> // for mmap
+#include <unistd.h>   // for getpagesize
 
 #include "fuzzalloc.h"
 #include "malloc_internal.h"
@@ -18,23 +19,8 @@ static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
 }
 
-/// Initialize a pool of the given size (mmap'ed memory) with the given initial
-/// chunk
-//static struct pool_t initialize_pool(size_t allocated_size,
-//                                     struct chunk_t *chunk) {
-//  struct pool_t pool;
-//
-//  pool.in_use = TRUE;
-//  pool.allocated_size = allocated_size;
-//  pool.used_size = CHUNK_SIZE(chunk);
-//  pool.entry = chunk;
-//
-//  return pool;
-//}
-
-__attribute__((constructor))
-static void __init_fuzzalloc(void) {
-    page_size = getpagesize();
+__attribute__((constructor)) static void __init_fuzzalloc(void) {
+  page_size = getpagesize();
 }
 
 void *__tagged_malloc(uint16_t tag, size_t size) {
@@ -49,22 +35,24 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // pool" for this site
 
     // If the requested size cannot fit in an allocation pool, return an error
-    if (size + POOL_OVERHEAD > MAX_POOL_SIZE) {
-        DEBUG_MSG("memory request too large for an allocation pool\n");
-        return NULL;
+    if (size > DEFAULT_POOL_SIZE) {
+      DEBUG_MSG("memory request too large for an allocation pool\n");
+      errno = EINVAL;
+      return NULL;
     }
 
     // Adjust the allocation size so that it is properly aligned
-    // XXX this alignment is too large!
-    const size_t aligned_size = align(size + POOL_OVERHEAD, POOL_ALIGN);
+    size_t pool_size = align(size + POOL_OVERHEAD, POOL_ALIGN);
 
     // mmap the requested amount of memory
-    DEBUG_MSG("mmap-ing %lu bytes of memory...\n", aligned_size);
-    void *base = mmap(NULL, aligned_size, PROT_READ | PROT_WRITE,
+    DEBUG_MSG("mmap-ing %lu bytes of memory...\n", pool_size);
+    void *base = mmap(NULL, pool_size, PROT_READ | PROT_WRITE,
                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (base == (void *)(-1)) {
-        DEBUG_MSG("mmap failed: %s\n", strerror(errno));
-        return NULL;
+      DEBUG_MSG("mmap failed: %s\n", strerror(errno));
+      errno = ENOMEM;
+
+      return NULL;
     }
     DEBUG_MSG("mmap base at %p\n", base);
 
@@ -74,61 +62,55 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // containing a part of the indicated range are unmapped. To prevent
     // SIGSEGVs by unmapping a page that is partly used, only unmap at the page
     // level
-    void *pool_base = (void*)align((uintptr_t) base, POOL_ALIGN);
-    size_t adjust = (pool_base - base) / page_size * page_size;
+    void *pool_base = (void *)align((uintptr_t)base, POOL_ALIGN);
+    ptrdiff_t adjust = (pool_base - base) / page_size * page_size;
     if (adjust > 0) {
-        DEBUG_MSG("unmapping %lu bytes of unused memory...\n", adjust);
-        munmap(base, adjust);
+      munmap(base, adjust);
+      DEBUG_MSG("unmapped %lu bytes before pool base\n", adjust);
+
+      pool_size -= adjust;
     }
 
-    DEBUG_MSG("allocation pool at %p\n", pool_base);
-    DEBUG_MSG("pool size -> %lu bytes\n", aligned_size - adjust);
+    // To ensure alignment with a valid pool ID, we mmap much more memory than
+    // we actually require. Adjust the amount of mmap'd memory to the default
+    // pool size
+    adjust =
+        (pool_size - DEFAULT_POOL_SIZE - POOL_OVERHEAD) * page_size / page_size;
+    if (adjust > 0) {
+      munmap(pool_base + (pool_size - adjust), adjust);
+      DEBUG_MSG("unmapped %lu bytes of unused memory\n", adjust);
 
-//    // Adjust the allocation size so that it is properly aligned. If the
-//    // requested size cannot fit within the chunk's size field, return an error
-//    const size_t aligned_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGN);
-//    if (aligned_size > MAX_CHUNK_SIZE) {
-//      DEBUG_MSG("memory request too large\n");
-//      return NULL;
-//    }
-//
-//    // XXX is this correct?
-//    const size_t mmap_size = POOL_OVERHEAD + (POOL_SIZE_SCALE * aligned_size);
-//
-//    // mmap the requested memory
-//    DEBUG_MSG("mmap-ing %lu bytes of memory...\n", mmap_size);
-//    void *base = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
-//                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-//    if (base == (void *)-1) {
-//      DEBUG_MSG("mmap failed\n");
-//      return NULL;
-//    }
-//    DEBUG_MSG("mmap base at %p\n", base);
-//
-//    uintptr_t pool_ptr = (uintptr_t)base + POOL_OVERHEAD + CHUNK_OVERHEAD;
-//    size_t adjust = 0;
-//
-//    // Adjust the mmap'ed memory so that the memory returned to the user is
-//    // aligned correctly
-//    uintptr_t ptr = (uintptr_t)base + CHUNK_OVERHEAD;
-//    size_t adjust = 0;
-//    if ((ptr & (SIZE_ALIGN - 1)) != 0) {
-//      adjust = SIZE_ALIGN - (ptr & (SIZE_ALIGN - 1));
-//      DEBUG_MSG("adjustment of %lu bytes required for mmap base\n", adjust);
-//    }
-//    ptr += adjust - CHUNK_OVERHEAD;
-//
-//    // Set the required fields in the allocated chunk
-//    struct chunk_t *chunk = (struct chunk_t *)ptr;
-//    SET_CHUNK_SIZE(chunk, aligned_size);
-//    SET_IN_USE(chunk);
-//
-//    // This is the first chunk allocated for this particular tag, so save it
-//    // into the pool map
-//    pool_map[tag] = initialize_pool(mmap_size, chunk);
-//
-//    DEBUG_MSG("returning %p to the user\n", CHUNK_TO_MEM(chunk));
-//    return CHUNK_TO_MEM(chunk);
+      pool_size -= adjust;
+    }
+
+    // Create a chunk that can hold the amount of data requested by the user.
+    // Chunks have their own alignment constraints that must satisfy the malloc
+    // API
+    struct chunk_t *chunk = MEM_TO_CHUNK(align(
+        (uintptr_t)pool_base + POOL_OVERHEAD + CHUNK_OVERHEAD, CHUNK_ALIGN));
+    size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGN);
+    SET_CHUNK_SIZE(chunk, chunk_size);
+    SET_PREV_CHUNK_SIZE(chunk, 0);
+    SET_CHUNK_IN_USE(chunk);
+    SET_PREV_CHUNK_IN_USE(chunk);
+
+    // Finally, initialise the pool's metadata. The allocated size is the
+    // amount of mmap'd data left after aligning and cleaning up the mapping.
+    // The used size is the amount of mmap'd space that this first chunk will
+    // use (including storing the pool metadata itself). The entry chunk is
+    // the chunk previously created
+    struct pool_t *pool = (void *)pool_base;
+    pool->allocated_size = pool_size;
+    pool->used_size = chunk_size + POOL_OVERHEAD;
+    pool->entry = chunk;
+
+    // This is the first memory allocation for this allocation site, so save
+    // the pool ID into the pool map
+    uint16_t pool_id = GET_POOL_ID(pool_base);
+    DEBUG_MSG("tag 0x%u -> pool ID 0x%x\n", tag, pool_id);
+    pool_map[tag] = pool_id;
+
+    return CHUNK_TO_MEM(chunk);
   } else {
     // Reuse of an existing allocation site. Try and fit the new allocation
     // into the existing memory pool
