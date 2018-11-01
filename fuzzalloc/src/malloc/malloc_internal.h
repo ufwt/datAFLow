@@ -11,11 +11,14 @@
 #define DEBUG 1
 
 #ifdef DEBUG
+#include <assert.h>
 #include <stdio.h>
+
 #define DEBUG_MSG(format, ...)                                                 \
   fprintf(stderr, "%s(): " format, __func__, ##__VA_ARGS__)
 #else
 #define DEBUG_MSG(format, ...)
+#define assert(x)
 #endif
 
 #define FALSE 0

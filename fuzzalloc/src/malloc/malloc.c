@@ -1,5 +1,4 @@
-#include <assert.h>   // for assert
-#include <errno.h>    // for errno, ENOMEM
+#include <errno.h>    // for errno, EINVAL, ENOMEM
 #include <stddef.h>   // for ptrdiff_t
 #include <stdint.h>   // for uintptr_t
 #include <string.h>   // for memset
