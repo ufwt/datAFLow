@@ -220,5 +220,15 @@ void free(void *ptr) {
     return;
   }
 
+  struct chunk_t *chunk = MEM_TO_CHUNK(ptr);
+  size_t chunk_size = CHUNK_SIZE(chunk);
+  DEBUG_MSG("freeing memory at %p (size %lu bytes)\n", chunk, chunk_size);
+
+  struct chunk_t *next = NEXT_CHUNK(chunk);
+  if (chunk_size != PREV_CHUNK_SIZE(next)) {
+    DEBUG_MSG("size sanity check failed\n");
+    // TODO abort
+  }
+
   // TODO implement free
 }
