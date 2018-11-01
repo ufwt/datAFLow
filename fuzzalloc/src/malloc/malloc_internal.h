@@ -71,11 +71,11 @@ struct chunk_t {
 
 /// Set the size of the chunk (in bytes). This size should include the chunk
 /// overhead. The caller must ensure that the in-use bit is unused
-#define SET_CHUNK_SIZE(c, s) (c->size = (size_t)(s & (~1)))
+#define SET_CHUNK_SIZE(c, s) (c->size = (size_t)((s) & (~1)))
 
 /// Set the size of the previous chunk (in bytes). This size should include
 /// the chunk overhead. The caller must ensure that the in-use bit is unused
-#define SET_PREV_CHUNK_SIZE(c, s) (c->prev_size = (size_t)(s & (~1)))
+#define SET_PREV_CHUNK_SIZE(c, s) (c->prev_size = (size_t)((s) & (~1)))
 
 /// Pointer to next chunk
 #define NEXT_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c) + CHUNK_SIZE(c)))
@@ -94,14 +94,12 @@ struct chunk_t {
 struct pool_t {
   /// The amount of memory mmap'd for this pool
   size_t allocated_size;
-  /// Size (in bytes) currently in use by this pool
-  size_t used_size;
   /// First chunk in this pool
   struct chunk_t *entry;
 };
 
 /// Size of pool overhead (in bytes)
-#define POOL_OVERHEAD (2 * sizeof(size_t))
+#define POOL_OVERHEAD (1 * sizeof(size_t))
 
 /// Default pool size
 #define DEFAULT_POOL_SIZE 20000UL
@@ -118,6 +116,10 @@ struct pool_t {
 
 /// Extract the pool identifier from the allocated pool
 #define GET_POOL_ID(p) ((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+
+/// Get the allocation pool address from an identifier
+#define GET_POOL(id)                                                           \
+  ((struct pool_t *)((uintptr_t)id << (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
 
 ///////////////////////////////////////////////////////////////////////////////
 
