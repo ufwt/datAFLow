@@ -13,6 +13,7 @@
 /// pools
 static uint16_t pool_map[TAG_MAX + 1];
 
+// XXX should this be a constant?
 static int page_size;
 
 __attribute__((constructor)) static void __init_fuzzalloc(void) {
@@ -23,17 +24,12 @@ static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
 }
 
-static inline struct chunk_t *find_first_free_chunk(const struct pool_t *pool) {
-  uintptr_t pool_end = (uintptr_t)pool + pool->allocated_size;
-  struct chunk_t *chunk = pool->entry;
+static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
+                                              size_t size) {
+  struct chunk_t *chunk = pool->free_list;
 
-  while (CHUNK_IN_USE(chunk)) {
-    chunk = NEXT_CHUNK(chunk);
-
-    // Using this chunk will overflow the allocation pool
-    if ((uintptr_t)chunk + CHUNK_OVERHEAD > pool_end) {
-      return NULL;
-    }
+  while (chunk && CHUNK_SIZE(chunk) < size) {
+    chunk = chunk->next;
   }
 
   return chunk;
@@ -46,7 +42,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     return NULL;
   }
 
-  size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGN);
+  size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
   uint16_t pool_id = pool_map[tag];
 
   if (pool_id == 0) {
@@ -61,19 +57,19 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     }
 
     // Adjust the allocation size so that it is properly aligned
-    size_t pool_size = align(size + POOL_OVERHEAD, POOL_ALIGN);
+    size_t pool_size = align(size + POOL_OVERHEAD, POOL_ALIGNMENT);
 
     // mmap the requested amount of memory
     DEBUG_MSG("mmap-ing %lu bytes of memory...\n", pool_size);
-    void *base = mmap(NULL, pool_size, PROT_READ | PROT_WRITE,
-                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (base == (void *)(-1)) {
+    void *mmap_base = mmap(NULL, pool_size, PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (mmap_base == (void *)(-1)) {
       DEBUG_MSG("mmap failed: %s\n", strerror(errno));
       errno = ENOMEM;
 
       return NULL;
     }
-    DEBUG_MSG("mmap base at %p\n", base);
+    DEBUG_MSG("mmap base at %p\n", mmap_base);
 
     // Adjust the mmap'd memory so that it is aligned with a valid pool ID. If
     // necessary, unmap wasted memory between the original mapping and the
@@ -81,10 +77,10 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // containing a part of the indicated range are unmapped. To prevent
     // SIGSEGVs by unmapping a page that is partly used, only unmap at the page
     // level
-    void *pool_base = (void *)align((uintptr_t)base, POOL_ALIGN);
-    ptrdiff_t adjust = (pool_base - base) / page_size * page_size;
+    void *pool_base = (void *)align((uintptr_t)mmap_base, POOL_ALIGNMENT);
+    ptrdiff_t adjust = (pool_base - mmap_base) / page_size * page_size;
     if (adjust > 0) {
-      munmap(base, adjust);
+      munmap(mmap_base, adjust);
       DEBUG_MSG("unmapped %lu bytes before pool base\n", adjust);
 
       pool_size -= adjust;
@@ -105,31 +101,31 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // Create an entry chunk that can hold the amount of data requested by the
     // user. Chunks have their own alignment constraints that must satisfy the
     // malloc API
-    struct chunk_t *chunk = MEM_TO_CHUNK(align(
-        (uintptr_t)pool_base + POOL_OVERHEAD + CHUNK_OVERHEAD, CHUNK_ALIGN));
+    struct chunk_t *chunk = MEM_TO_CHUNK(
+        align((uintptr_t)pool_base + POOL_OVERHEAD + CHUNK_OVERHEAD,
+              CHUNK_ALIGNMENT));
     SET_CHUNK_SIZE(chunk, chunk_size);
     SET_CHUNK_IN_USE(chunk);
+    SET_PREV_CHUNK_IN_USE(chunk);
 
-    // Create a free chunk following the newly-created entry chunk
+    // Create the initial free chunk following the newly-created entry chunk.
+    // This chunk will later be insert into the allocation pool's free list
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
-    free_chunk->prev = free_chunk->next = NULL;
-    SET_CHUNK_SIZE(free_chunk, pool_size - chunk_size);
-    CLEAR_CHUNK_USE(free_chunk);
     SET_PREV_CHUNK_SIZE(free_chunk, chunk_size);
+    SET_CHUNK_SIZE(free_chunk, pool_size - chunk_size);
     SET_PREV_CHUNK_IN_USE(free_chunk);
+    SET_CHUNK_FREE(free_chunk);
+
+    free_chunk->prev = free_chunk->next = NULL;
 
     DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,
               CHUNK_SIZE(free_chunk));
 
-    // Finally, initialise the allocation pool's metadata. The allocated size
-    // is the amount of mmap'd data left after aligning and cleaning up the
-    // mapping. The used size is the amount of mmap'd space that this first
-    // chunk will use (including storing the pool metadata itself). The entry
-    // chunk is the chunk we just created
+    // Finally, initialise the allocation pool's metadata
     struct pool_t *pool = (void *)pool_base;
-    pool->allocated_size = pool_size;
     pool->entry = chunk;
+    pool->free_list = free_chunk;
 
     // This is the first memory allocation for this allocation site, so save
     // the pool ID into the pool map
@@ -145,10 +141,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     struct pool_t *pool = GET_POOL(pool_id);
 
     // Find a suitably-sized free chunk in the allocation pool for this tag
-    struct chunk_t *chunk = find_first_free_chunk(pool);
-    for (; chunk != NULL && CHUNK_SIZE(chunk) < chunk_size;
-         chunk = chunk->next) {
-    }
+    struct chunk_t *chunk = find_free_chunk(pool, chunk_size);
     if (!chunk) {
       DEBUG_MSG("unable to find a free chunk in the allocation pool\n");
       errno = ENOMEM;
@@ -159,16 +152,18 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     SET_CHUNK_SIZE(chunk, chunk_size);
     SET_CHUNK_IN_USE(chunk);
 
-    // Create a free chunk following the newly-created chunk
+    // Create a free chunk following the newly-created chunk. Insert it into
+    // the allocation pool's free list
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
+    SET_PREV_CHUNK_SIZE(free_chunk, chunk_size);
+    SET_CHUNK_SIZE(free_chunk, free_chunk_size - chunk_size);
+    SET_PREV_CHUNK_IN_USE(free_chunk);
+    SET_CHUNK_FREE(free_chunk);
+
     free_chunk->prev = chunk->prev;
     free_chunk->next = chunk->next;
-    SET_CHUNK_SIZE(free_chunk, free_chunk_size - chunk_size);
-    CLEAR_CHUNK_USE(free_chunk);
-    SET_PREV_CHUNK_SIZE(free_chunk, chunk_size);
-    SET_PREV_CHUNK_IN_USE(free_chunk);
 
-    // TODO coalesce free chunk with neighbouring free chunks
+    // TODO update free list
 
     DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,

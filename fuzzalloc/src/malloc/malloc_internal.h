@@ -27,11 +27,11 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 struct chunk_t {
+  /// Size of the previous chunk (in bytes)
+  size_t prev_size;
   /// Current chunk size (in bytes). The least-significant bit indicates
   /// whether the chunk is in use or free
   size_t size;
-  /// Size of the previous chunk (in bytes)
-  size_t prev_size;
   /// Pointer to the next free chunk
   struct chunk_t *next;
   /// Pointer to the previous free chunk
@@ -41,9 +41,8 @@ struct chunk_t {
 /// Size of chunk overhead (in bytes)
 #define CHUNK_OVERHEAD (2 * sizeof(size_t))
 
-// Chunk alignment used by muslc
-// XXX why this value?
-#define CHUNK_ALIGN (4 * sizeof(size_t))
+/// Malloc alignment (as used by dlmalloc)
+#define CHUNK_ALIGNMENT ((size_t)(2 * sizeof(void *)))
 
 /// Returns non-zero if the chunk is in use
 #define CHUNK_IN_USE(c) ((uint8_t)(c->size & ((size_t)1)))
@@ -58,10 +57,10 @@ struct chunk_t {
 #define SET_PREV_CHUNK_IN_USE(c) (c->prev_size |= ((size_t)1))
 
 /// Set the chunk as being free
-#define CLEAR_CHUNK_USE(c) (c->size &= ((size_t)(~1)))
+#define SET_CHUNK_FREE(c) (c->size &= ((size_t)(~1)))
 
 /// Set the previous chunk as being free
-#define CLEAR_PREV_CHUNK_USE(c) (c->prev_size &= ((size_t)(~1)))
+#define SET_PREV_CHUNK_FREE(c) (c->prev_size &= ((size_t)(~1)))
 
 /// Chunk size (in bytes), ignoring the in use/free bit
 #define CHUNK_SIZE(c) (c->size & ((size_t)(~0) - 1))
@@ -92,10 +91,10 @@ struct chunk_t {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct pool_t {
-  /// The amount of memory mmap'd for this pool
-  size_t allocated_size;
   /// First chunk in this pool
   struct chunk_t *entry;
+  /// Free list for this pool
+  struct chunk_t *free_list;
 };
 
 /// Size of pool overhead (in bytes)
@@ -112,7 +111,7 @@ struct pool_t {
 
 /// Pool alignment. This ensures that the upper \p NUM_POOL_ID_BITS of the pool
 /// address are unique to a single pool
-#define POOL_ALIGN (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+#define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
 
 /// Extract the pool identifier from the allocated pool
 #define GET_POOL_ID(p) ((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
