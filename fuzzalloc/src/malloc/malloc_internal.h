@@ -24,9 +24,6 @@
 #define FALSE 0
 #define TRUE !FALSE
 
-#define MIN(x, y) ((x) < (y) ? (x) : (y))
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-
 ///////////////////////////////////////////////////////////////////////////////
 
 struct chunk_t {

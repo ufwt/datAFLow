@@ -1,4 +1,4 @@
-//===-- TagMalloc.cpp - Tag mallocs with a unique identifier --------------===//
+//===-- TagMalloc.cpp - Tag dynamic memory allocs with a unique ID --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,8 +8,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass tags calls to \p malloc with a randomly-generated identifier
-/// and calls fuzzalloc's \p malloc wrapper function.
+/// This pass tags calls to dynamic memory allocation functions (e.g.,
+/// \p malloc, \p calloc, etc.) with a randomly-generated identifier. The
+/// original function calls are redirected to fuzzalloc's wrapper functions.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -32,15 +33,17 @@ using namespace llvm;
 #define DEBUG_TYPE "tag-malloc"
 
 // Adapted from http://c-faq.com/lib/randrange.html
-#define RAND(x, y) (x + random() / (RAND_MAX / (y - x + 1) + 1))
+#define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
 STATISTIC(NumOfTaggedMalloc, "Number of malloc calls tagged.");
 STATISTIC(NumOfTaggedCalloc, "Number of calloc calls tagged.");
+STATISTIC(NumOfTaggedRealloc, "Number of realloc calls tagged.");
 
 namespace {
 
 static const char *const TaggedMallocName = "__tagged_malloc";
 static const char *const TaggedCallocName = "__tagged_calloc";
+static const char *const TaggedReallocName = "__tagged_realloc";
 
 /// TagMalloc: tag \p malloc and \p calloc calls with a randomly-generated
 /// identifier and call fuzzalloc's \p malloc (or \p calloc) wrapper function
@@ -54,6 +57,11 @@ public:
 };
 
 } // end anonymous namespace
+
+static CallInst *extractReallocCall(const Value *I, const TargetLibraryInfo *TLI) {
+    // TODO
+    return nullptr;
+}
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
 static Function *checkAllocWrapperFunction(Constant *FuncOrBitcast) {
@@ -76,19 +84,21 @@ bool TagMalloc::runOnModule(Module &M) {
   const DataLayout &DL = M.getDataLayout();
 
   PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
-  IntegerType *Int16Ty = Type::getInt16Ty(C);
-  IntegerType *IntPtrTy = DL.getIntPtrType(C);
+  IntegerType *TagTy = Type::getIntNTy(C, TAG_NUM_BITS);
+  IntegerType *SizeTTy = DL.getIntPtrType(C);
 
   TargetLibraryInfoImpl TLII;
   TargetLibraryInfo TLI(TLII);
 
-  // The malloc/calloc wrapper functions take the same arguments as the
-  // original function, except that the first argument is an unsigned 16-bit
-  // tag for the allocation site
+  // The malloc/calloc/realloc wrapper functions take the same arguments as the
+  // original function, except that the first argument is tag that represents
+  // the allocation site
   Function *MallocWrapperF = checkAllocWrapperFunction(
-      M.getOrInsertFunction(TaggedMallocName, Int8PtrTy, Int16Ty, IntPtrTy));
+      M.getOrInsertFunction(TaggedMallocName, Int8PtrTy, TagTy, SizeTTy));
   Function *CallocWrapperF = checkAllocWrapperFunction(M.getOrInsertFunction(
-      TaggedCallocName, Int8PtrTy, Int16Ty, IntPtrTy, IntPtrTy));
+      TaggedCallocName, Int8PtrTy, TagTy, SizeTTy, SizeTTy));
+  Function *ReallocWrapperF = checkAllocWrapperFunction(M.getOrInsertFunction(
+      TaggedReallocName, Int8PtrTy, TagTy, Int8PtrTy, SizeTTy));
 
   // Maps malloc/calloc calls to the appropriate malloc/calloc wrapper function
   std::map<CallInst *, Function *> AllocCalls;
@@ -101,6 +111,9 @@ bool TagMalloc::runOnModule(Module &M) {
       } else if (auto *CallocCall = extractCallocCall(&*I, &TLI)) {
         AllocCalls.emplace(CallocCall, CallocWrapperF);
         NumOfTaggedCalloc++;
+      } else if (auto *ReallocCall = extractReallocCall(&*I, &TLI)) {
+        AllocCalls.emplace(ReallocCall, ReallocWrapperF);
+        NumOfTaggedRealloc++;
       }
     }
   }
@@ -109,11 +122,11 @@ bool TagMalloc::runOnModule(Module &M) {
     CallInst *AllocCall = AllocCallWithWrapper.first;
     Function *WrapperF = AllocCallWithWrapper.second;
 
-    // Generate a random 16-bit tag representing the allocation site
-    ConstantInt *Tag = ConstantInt::get(Int16Ty, (uint16_t)RAND(DEFAULT_TAG + 1, TAG_MAX));
+    // Generate a random tag representing the allocation site
+    ConstantInt *Tag = ConstantInt::get(TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
     SmallVector<Value *, 3> WrapperArgs = {Tag};
 
-    // Copy the original malloc/calloc call's arguments after the tag
+    // Copy the original allocation call's arguments after the tag
     for (auto &Arg : AllocCall->arg_operands()) {
       WrapperArgs.push_back(&*Arg);
     }
@@ -121,8 +134,8 @@ bool TagMalloc::runOnModule(Module &M) {
     CallInst *AllocWrapperCall =
         CallInst::Create(WrapperF, WrapperArgs, "", AllocCall);
 
-    // Replace all uses of the original malloc/calloc result with the wrapped
-    // result
+    // Replace all uses of the original function return value with the return
+    // value from the wrapped function
     for (auto *U : AllocCall->users()) {
       U->replaceUsesOfWith(AllocCall, AllocWrapperCall);
     }

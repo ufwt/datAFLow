@@ -8,6 +8,9 @@
 #include "fuzzalloc.h"
 #include "malloc_internal.h"
 
+// Forward declarations
+void free(void *ptr);
+
 /// Maps malloc/calloc tags (inserted during compilation) to allocation pool
 /// IDs
 static uint16_t pool_map[TAG_MAX + 1];
@@ -27,6 +30,7 @@ static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
                                               size_t size) {
   struct chunk_t *chunk = pool->free_list;
 
+  // TODO prevent infinite loop of circular linked list
   while (chunk && CHUNK_SIZE(chunk) < size) {
     chunk = chunk->next;
   }
@@ -34,13 +38,14 @@ static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
   return chunk;
 }
 
-void *__tagged_malloc(uint16_t tag, size_t size) {
+void *__tagged_malloc(tag_t tag, size_t size) {
   DEBUG_MSG("__tagged_malloc(%u, %lu)\n", tag, size);
 
   if (size == 0) {
     return NULL;
   }
 
+  void *mem = NULL;
   size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
   uint16_t pool_id = pool_map[tag];
 
@@ -132,7 +137,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     DEBUG_MSG("tag %u -> pool ID 0x%x\n", tag, pool_id);
     pool_map[tag] = pool_id;
 
-    return CHUNK_TO_MEM(chunk);
+    mem = CHUNK_TO_MEM(chunk);
   } else {
     // Reuse of an existing allocation site. Try and fit the new memory request
     // into the existing allocation pool
@@ -173,14 +178,13 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,
               CHUNK_SIZE(free_chunk));
 
-    return CHUNK_TO_MEM(chunk);
+    mem = CHUNK_TO_MEM(chunk);
   }
 
-  assert(FALSE && "Execution should never reach here");
-  return NULL;
+  return mem;
 }
 
-void *__tagged_calloc(uint16_t tag, size_t nmemb, size_t size) {
+void *__tagged_calloc(tag_t tag, size_t nmemb, size_t size) {
   DEBUG_MSG("__tagged_calloc(%u, %lu, %lu)\n", tag, nmemb, size);
 
   // Adapted from muslc
@@ -191,12 +195,28 @@ void *__tagged_calloc(uint16_t tag, size_t nmemb, size_t size) {
   }
 
   size *= nmemb;
-  void *ptr = __tagged_malloc(tag, size);
-  if (!ptr) {
-    return ptr;
+  void *mem = __tagged_malloc(tag, size);
+  if (!mem) {
+    return mem;
   }
 
-  return memset(ptr, 0, size);
+  return memset(mem, 0, size);
+}
+
+void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
+  DEBUG_MSG("__tagged_realloc(%u, %p, %lu)\n", tag, ptr, size);
+
+  void *mem = NULL;
+
+  if (!ptr) {
+    mem = __tagged_malloc(tag, size);
+  } else if (size == 0) {
+    free(ptr);
+  } else {
+    // TODO
+  }
+
+  return mem;
 }
 
 void *malloc(size_t size) { return __tagged_malloc(DEFAULT_TAG, size); }
@@ -206,10 +226,7 @@ void *calloc(size_t nmemb, size_t size) {
 }
 
 void *realloc(void *ptr, size_t size) {
-  DEBUG_MSG("realloc(%p, %lu)\n", ptr, size);
-
-  // TODO implement realloc
-  return NULL;
+  return __tagged_realloc(DEFAULT_TAG, ptr, size);
 }
 
 void free(void *ptr) {
@@ -234,7 +251,8 @@ void free(void *ptr) {
 
   // TODO coalesce
 
-  // Insert the newly-freed chunk at the head of the free list
+  // Insert the newly-freed chunk at the head of the allocation pool's free
+  // list
   struct chunk_t *free_list = GET_POOL(GET_POOL_ID(chunk))->free_list;
   chunk->prev = free_list->prev;
   chunk->next = free_list;

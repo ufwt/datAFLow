@@ -18,6 +18,9 @@
 /// Number of bits in a tag
 #define TAG_NUM_BITS 16
 
+/// Tag typedef
+typedef uint16_t tag_t;
+
 /// The maximum possible tag value
 #define TAG_MAX ((1 << TAG_NUM_BITS) - 1)
 
