@@ -94,17 +94,19 @@ struct chunk_t {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct pool_t {
+  /// Free list for this pool. Doubly-linked circular list
+  struct chunk_t *free_list;
   /// First chunk in this pool
   struct chunk_t *entry;
-  /// Free list for this pool
-  struct chunk_t *free_list;
 };
 
 /// Size of pool overhead (in bytes)
-#define POOL_OVERHEAD (1 * sizeof(size_t))
+#define POOL_OVERHEAD (sizeof(struct chunk_t*))
 
-/// Default pool size
-#define DEFAULT_POOL_SIZE 20000UL
+/// Default pool size. Configurable at compile-time
+#ifndef POOL_SIZE
+#define POOL_SIZE 20000UL
+#endif
 
 /// The number of usable bits on the X86-64 architecture
 #define NUM_USABLE_BITS 48

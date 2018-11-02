@@ -8,8 +8,8 @@
 #include "fuzzalloc.h"
 #include "malloc_internal.h"
 
-/// Maps malloc/calloc tags (inserted during compilation) to allocation-site
-/// pools
+/// Maps malloc/calloc tags (inserted during compilation) to allocation pool
+/// IDs
 static uint16_t pool_map[TAG_MAX + 1];
 
 // XXX should this be a constant?
@@ -49,7 +49,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // pool" for this site
 
     // If the requested size cannot fit in an allocation pool, return an error
-    if (size > DEFAULT_POOL_SIZE) {
+    if (size > POOL_SIZE) {
       DEBUG_MSG("memory request too large for an allocation pool\n");
       errno = EINVAL;
       return NULL;
@@ -88,8 +88,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     // To ensure alignment with a valid pool ID, we mmap much more memory than
     // we actually require. Adjust the amount of mmap'd memory to the default
     // pool size
-    adjust =
-        (pool_size - DEFAULT_POOL_SIZE - POOL_OVERHEAD) * page_size / page_size;
+    adjust = (pool_size - POOL_SIZE - POOL_OVERHEAD) * page_size / page_size;
     if (adjust > 0) {
       munmap(pool_base + (pool_size - adjust), adjust);
       DEBUG_MSG("unmapped %lu bytes of unused memory\n", adjust);
@@ -115,7 +114,8 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     SET_PREV_CHUNK_IN_USE(free_chunk);
     SET_CHUNK_FREE(free_chunk);
 
-    free_chunk->prev = free_chunk->next = NULL;
+    // Free list is circular
+    free_chunk->prev = free_chunk->next = free_chunk;
 
     DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,
@@ -127,7 +127,7 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     pool->free_list = free_chunk;
 
     // This is the first memory allocation for this allocation site, so save
-    // the pool ID into the pool map
+    // the allocation pool ID into the pool map
     pool_id = GET_POOL_ID(pool_base);
     DEBUG_MSG("tag %u -> pool ID 0x%x\n", tag, pool_id);
     pool_map[tag] = pool_id;
@@ -148,11 +148,15 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
     }
     size_t free_chunk_size = CHUNK_SIZE(chunk);
 
+    // Unlink the chunk from the free list
     SET_CHUNK_SIZE(chunk, chunk_size);
     SET_CHUNK_IN_USE(chunk);
+    chunk->prev->next = chunk->next;
+    chunk->next->prev = chunk->prev;
 
-    // Create a free chunk following the newly-created chunk. Insert it into
-    // the allocation pool's free list
+    // Turn whatever space is left following the newly-allocated chunk into a
+    // new free chunk. Insert this free chunk into the allocation pool's free
+    // list
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
     SET_PREV_CHUNK_SIZE(free_chunk, chunk_size);
     SET_CHUNK_SIZE(free_chunk, free_chunk_size - chunk_size);
@@ -161,8 +165,9 @@ void *__tagged_malloc(uint16_t tag, size_t size) {
 
     free_chunk->prev = chunk->prev;
     free_chunk->next = chunk->next;
-
-    // TODO update free list
+    if (pool->free_list == chunk) {
+      pool->free_list = free_chunk;
+    }
 
     DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,
@@ -218,11 +223,20 @@ void free(void *ptr) {
   size_t chunk_size = CHUNK_SIZE(chunk);
   DEBUG_MSG("freeing memory at %p (size %lu bytes)\n", chunk, chunk_size);
 
+  // Sanity check that the chunk metadata hasn't been corrupted in some way
   struct chunk_t *next = NEXT_CHUNK(chunk);
   if (chunk_size != PREV_CHUNK_SIZE(next)) {
     DEBUG_MSG("size sanity check failed\n");
     // TODO abort
   }
 
-  // TODO implement free
+  SET_CHUNK_FREE(chunk);
+
+  // TODO coalesce
+
+  // Insert the newly-freed chunk at the head of the free list
+  struct chunk_t *free_list = GET_POOL(GET_POOL_ID(chunk))->free_list;
+  chunk->prev = free_list->prev;
+  chunk->next = free_list;
+  free_list = chunk;
 }
