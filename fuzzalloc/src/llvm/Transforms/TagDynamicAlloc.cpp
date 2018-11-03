@@ -58,11 +58,6 @@ public:
 
 } // end anonymous namespace
 
-static CallInst *extractReallocCall(const Value *I, const TargetLibraryInfo *TLI) {
-    // TODO
-    return nullptr;
-}
-
 // Adapted from llvm::checkSanitizerInterfaceFunction
 static Function *checkAllocWrapperFunction(Constant *FuncOrBitcast) {
   if (isa<Function>(FuncOrBitcast)) {
@@ -75,6 +70,16 @@ static Function *checkAllocWrapperFunction(Constant *FuncOrBitcast) {
   raw_string_ostream Stream(Err);
   Stream << "Allocation wrapper function redefined: " << *FuncOrBitcast;
   report_fatal_error(Err);
+}
+
+static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
+                            bool LookThroughBitCast = false) {
+  return isAllocationFn(V, TLI, LookThroughBitCast) &&
+         !isAllocLikeFn(V, TLI, LookThroughBitCast);
+}
+
+static CallInst *extractReallocCall(Value *I, const TargetLibraryInfo *TLI) {
+  return isReallocLikeFn(I, TLI) ? cast<CallInst>(I) : nullptr;
 }
 
 char TagMalloc::ID = 0;
