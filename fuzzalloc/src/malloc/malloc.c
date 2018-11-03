@@ -1,6 +1,7 @@
 #include <errno.h>    // for errno, EINVAL, ENOMEM
 #include <stddef.h>   // for ptrdiff_t
 #include <stdint.h>   // for uintptr_t
+#include <stdlib.h>   // for abort
 #include <string.h>   // for memset
 #include <sys/mman.h> // for mmap
 #include <unistd.h>   // for getpagesize
@@ -211,7 +212,9 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
   } else if (size == 0) {
     free(ptr);
   } else {
-    // TODO
+    // TODO implementation
+    DEBUG_MSG("realloc not yet implemented\n");
+    abort();
   }
 
   return mem;
@@ -242,7 +245,7 @@ void free(void *ptr) {
   struct chunk_t *next = NEXT_CHUNK(chunk);
   if (chunk_size != PREV_CHUNK_SIZE(next)) {
     DEBUG_MSG("size sanity check failed\n");
-    // TODO abort
+    abort();
   }
 
   SET_CHUNK_FREE(chunk);
