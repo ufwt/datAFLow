@@ -30,7 +30,6 @@ static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
                                               size_t size) {
   struct chunk_t *chunk = pool->free_list;
 
-  // TODO prevent infinite loop of circular linked list
   while (chunk && CHUNK_SIZE(chunk) < size) {
     chunk = chunk->next;
   }
@@ -119,8 +118,7 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     SET_PREV_CHUNK_IN_USE(free_chunk);
     SET_CHUNK_FREE(free_chunk);
 
-    // Free list is circular
-    free_chunk->prev = free_chunk->next = free_chunk;
+    free_chunk->prev = free_chunk->next = NULL;
 
     DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,

@@ -91,7 +91,7 @@ struct chunk_t {
 ///////////////////////////////////////////////////////////////////////////////
 
 struct pool_t {
-  /// Free list for this pool. Doubly-linked circular list
+  /// Free list for this pool
   struct chunk_t *free_list;
   /// First chunk in this pool
   struct chunk_t *entry;
