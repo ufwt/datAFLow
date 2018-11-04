@@ -47,17 +47,20 @@ struct chunk_t {
 /// Returns non-zero if the chunk is in use
 #define CHUNK_IN_USE(c) ((uint8_t)(c->size & ((size_t)1)))
 
+// Returns non-zero if the chunk is free
+#define CHUNK_FREE(c) (!CHUNK_IN_USE(c))
+
 /// Returns non-zero if the previous chunk is in use
 #define PREV_CHUNK_IN_USE(c) ((uint8_t)(c->prev_size & ((size_t)1)))
 
 /// Set the chunk as being in use
 #define SET_CHUNK_IN_USE(c) (c->size |= ((size_t)1))
 
-/// Set the previous chunk as being in use
-#define SET_PREV_CHUNK_IN_USE(c) (c->prev_size |= ((size_t)1))
-
 /// Set the chunk as being free
 #define SET_CHUNK_FREE(c) (c->size &= ((size_t)(~1)))
+
+/// Set the previous chunk as being in use
+#define SET_PREV_CHUNK_IN_USE(c) (c->prev_size |= ((size_t)1))
 
 /// Set the previous chunk as being free
 #define SET_PREV_CHUNK_FREE(c) (c->prev_size &= ((size_t)(~1)))
@@ -116,7 +119,7 @@ struct pool_t {
 #define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
 
 /// Extract the pool identifier from the allocated pool
-#define GET_POOL_ID(p) ((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+#define GET_POOL_ID(p) ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
 
 /// Get the allocation pool address from an identifier
 #define GET_POOL(id)                                                           \

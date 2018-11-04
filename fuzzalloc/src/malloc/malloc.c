@@ -159,7 +159,9 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     // Find a suitably-sized free chunk in the allocation pool for this tag
     struct chunk_t *chunk = find_free_chunk(pool, chunk_size);
     if (!chunk) {
-      DEBUG_MSG("unable to find a free chunk in the allocation pool\n");
+      DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
+                "allocation pool 0x%x\n",
+                chunk_size, pool_id);
       errno = ENOMEM;
       return NULL;
     }
@@ -236,13 +238,15 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
     // Sanity check that the chunk metadata hasn't been corrupted in some way
     in_use_sanity_check(orig_chunk);
 
+    struct pool_t *pool = GET_POOL(GET_POOL_ID(orig_chunk));
+
     size_t orig_chunk_size = CHUNK_SIZE(orig_chunk);
     size_t new_chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
 
     if (orig_chunk_size >= new_chunk_size) {
-      // The new size requested is smaller than the existing size. Therefore,
-      // we can just reduce the amount of space allocated for this chunk and
-      // add the remaining space as a free chunk
+      // The requested reallocation size is smaller than the existing size. We
+      // can just reduce the amount of space allocated for this chunk and add
+      // the remaining space as a free chunk
 
       size_t resize = orig_chunk_size - new_chunk_size;
       DEBUG_MSG("resizing existing chunk at %p by %lu bytes\n", orig_chunk,
@@ -259,16 +263,60 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
       SET_PREV_CHUNK_IN_USE(free_chunk);
       SET_CHUNK_FREE(free_chunk);
 
-      struct chunk_t *free_list = GET_POOL(GET_POOL_ID(orig_chunk))->free_list;
-      free_chunk->prev = free_list->prev;
-      free_chunk->next = free_list;
-      free_list = free_chunk;
+      free_chunk->prev = pool->free_list->prev;
+      free_chunk->next = pool->free_list;
+      pool->free_list = free_chunk;
 
       mem = CHUNK_TO_MEM(orig_chunk);
     } else {
-      // TODO implementation
-      DEBUG_MSG("realloc not yet implemented\n");
-      abort();
+      // The requested reallocation size is larger than the space currently
+      // allocated for this chunk. Find a free chunk in the same allocation
+      // pool that will fit the new chunk
+
+      // Find a suitably-sized free chunk in the allocation pool for the
+      // reallocation destination
+      struct chunk_t *new_chunk = find_free_chunk(pool, new_chunk_size);
+      if (!new_chunk) {
+        DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
+                  "allocation pool 0x%x\n",
+                  new_chunk_size, GET_POOL_ID(pool));
+        errno = ENOMEM;
+        return NULL;
+      }
+      size_t free_chunk_size = CHUNK_SIZE(new_chunk);
+
+      // Unlink the chunk from the free list
+      SET_CHUNK_SIZE(new_chunk, new_chunk_size);
+      SET_CHUNK_IN_USE(new_chunk);
+      // TODO fixme
+      // chunk->prev->next = chunk->next;
+      // chunk->next->prev = chunk->prev;
+
+      // Turn whatever free space is left following the newly-allocated chunk
+      // into a new free chunk. Insert this free chunk into the allocation
+      // pool's free list
+      struct chunk_t *free_chunk = NEXT_CHUNK(new_chunk);
+      SET_PREV_CHUNK_SIZE(free_chunk, new_chunk_size);
+      SET_CHUNK_SIZE(free_chunk, free_chunk_size - new_chunk_size);
+      SET_PREV_CHUNK_IN_USE(free_chunk);
+      SET_CHUNK_FREE(free_chunk);
+
+      free_chunk->prev = new_chunk->prev;
+      free_chunk->next = new_chunk->next;
+      if (pool->free_list == new_chunk) {
+        pool->free_list = free_chunk;
+      }
+
+      // Copy the data contained in the original chunk into the new chunk. Free
+      // the original chunk
+      memcpy(new_chunk + CHUNK_OVERHEAD, orig_chunk + CHUNK_OVERHEAD,
+             orig_chunk_size - CHUNK_OVERHEAD);
+      free(ptr);
+
+      DEBUG_MSG("chunk moved from %p (size %lu) to %p (size %lu)\n", orig_chunk,
+                orig_chunk_size, new_chunk, new_chunk_size);
+
+      mem = CHUNK_TO_MEM(new_chunk);
     }
   }
 
