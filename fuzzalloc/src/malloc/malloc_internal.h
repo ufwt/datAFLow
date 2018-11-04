@@ -53,6 +53,9 @@ struct chunk_t {
 /// Returns non-zero if the previous chunk is in use
 #define PREV_CHUNK_IN_USE(c) ((uint8_t)(c->prev_size & ((size_t)1)))
 
+/// Returns non-zero if the previous chunk is free
+#define PREV_CHUNK_FREE(c) (!PREV_CHUNK_IN_USE(c))
+
 /// Set the chunk as being in use
 #define SET_CHUNK_IN_USE(c) (c->size |= ((size_t)1))
 
@@ -66,18 +69,26 @@ struct chunk_t {
 #define SET_PREV_CHUNK_FREE(c) (c->prev_size &= ((size_t)(~1)))
 
 /// Chunk size (in bytes), ignoring the in use/free bit
-#define CHUNK_SIZE(c) (c->size & ((size_t)(~0) - 1))
+#define CHUNK_SIZE(c) (c->size & ((size_t)(~1)))
 
 /// Previous chunk size (in bytes), ignoring the in use/free bit
-#define PREV_CHUNK_SIZE(c) (c->prev_size & ((size_t)(~0) - 1))
+#define PREV_CHUNK_SIZE(c) (c->prev_size & ((size_t)(~1)))
 
-/// Set the size of the chunk (in bytes). This size should include the chunk
-/// overhead. The caller must ensure that the in-use bit is unused
-#define SET_CHUNK_SIZE(c, s) (c->size = (size_t)((s) & (~1)))
+/// Set the size (in bytes) of a chunk and mark it as being in use. This size
+/// must include the chunk overhead
+#define SET_CHUNK_IN_USE_SIZE(c, s) (c->size = (size_t)((s) | 1))
 
-/// Set the size of the previous chunk (in bytes). This size should include
-/// the chunk overhead. The caller must ensure that the in-use bit is unused
-#define SET_PREV_CHUNK_SIZE(c, s) (c->prev_size = (size_t)((s) & (~1)))
+/// Set the size (in bytes) of the previous chunk and mark it as being in use.
+/// This size must include the chunk overhead
+#define SET_PREV_CHUNK_IN_USE_SIZE(c, s) (c->prev_size = (size_t)((s) | 1))
+
+/// Set the size (in bytes) of a chunk and mark it as being free. This size
+/// must include the chunk overhead
+#define SET_CHUNK_FREE_SIZE(c, s) (c->size = (size_t)((s) & (~1)))
+
+/// Set the size (in bytes) of the previous chunk and mark it as being free.
+/// This size must include the chunk overhead
+#define SET_PREV_CHUNK_FREE_SIZE(c, s) (c->prev_size = (size_t)((s) & (~1)))
 
 /// Pointer to next chunk
 #define NEXT_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c) + CHUNK_SIZE(c)))
