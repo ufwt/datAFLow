@@ -1,3 +1,10 @@
+//
+// fuzzalloc
+// A memory allocator for fuzzing
+//
+// Author: Adrian Herrera
+//
+
 #include <errno.h>    // for errno, EINVAL, ENOMEM
 #include <stddef.h>   // for ptrdiff_t
 #include <stdint.h>   // for uintptr_t

@@ -1,3 +1,10 @@
+//
+// fuzzalloc
+// A memory allocator for fuzzing
+//
+// Author: Adrian Herrera
+//
+
 #ifndef _MALLOC_INTERNAL_H_
 #define _MALLOC_INTERNAL_H_
 
@@ -112,7 +119,7 @@ struct pool_t {
 };
 
 /// Size of pool overhead (in bytes)
-#define POOL_OVERHEAD (sizeof(struct chunk_t*))
+#define POOL_OVERHEAD (sizeof(struct chunk_t *))
 
 /// Default pool size. Configurable at compile-time
 #ifndef POOL_SIZE
@@ -130,7 +137,8 @@ struct pool_t {
 #define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
 
 /// Extract the pool identifier from the allocated pool
-#define GET_POOL_ID(p) ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
+#define GET_POOL_ID(p)                                                         \
+  ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
 
 /// Get the allocation pool address from an identifier
 #define GET_POOL(id)                                                           \
