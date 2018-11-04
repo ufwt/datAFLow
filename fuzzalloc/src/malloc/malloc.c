@@ -2,7 +2,7 @@
 #include <stddef.h>   // for ptrdiff_t
 #include <stdint.h>   // for uintptr_t
 #include <stdlib.h>   // for abort
-#include <string.h>   // for memset
+#include <string.h>   // for memcpy, memset
 #include <sys/mman.h> // for mmap
 #include <unistd.h>   // for getpagesize
 
@@ -36,6 +36,19 @@ static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
   }
 
   return chunk;
+}
+
+static inline void in_use_sanity_check(struct chunk_t *chunk) {
+  size_t chunk_size = CHUNK_SIZE(chunk);
+  struct chunk_t *next_chunk = NEXT_CHUNK(chunk);
+
+  if (CHUNK_IN_USE(chunk) && PREV_CHUNK_IN_USE(next_chunk) &&
+      (chunk_size == PREV_CHUNK_SIZE(next_chunk))) {
+    return;
+  } else {
+    DEBUG_MSG("chunk in use sanity check failed (chunk = %p)\n", chunk);
+    abort();
+  }
 }
 
 void *__tagged_malloc(tag_t tag, size_t size) {
@@ -155,8 +168,9 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     // Unlink the chunk from the free list
     SET_CHUNK_SIZE(chunk, chunk_size);
     SET_CHUNK_IN_USE(chunk);
-    chunk->prev->next = chunk->next;
-    chunk->next->prev = chunk->prev;
+    // TODO fixme
+    // chunk->prev->next = chunk->next;
+    // chunk->next->prev = chunk->prev;
 
     // Turn whatever space is left following the newly-allocated chunk into a
     // new free chunk. Insert this free chunk into the allocation pool's free
@@ -208,13 +222,54 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
   void *mem = NULL;
 
   if (!ptr) {
+    // Per realloc manual: "if ptr is NULL, then the call is equivalent to
+    // malloc(size), for all values of size. This will create a new allocation
+    // pool (as this is essentially a new allocation site)
     mem = __tagged_malloc(tag, size);
   } else if (size == 0) {
+    // Per realloc manual: "if size is equal to zero, and ptr is not NULL, then
+    // the call is equivalent to free(ptr)
     free(ptr);
   } else {
-    // TODO implementation
-    DEBUG_MSG("realloc not yet implemented\n");
-    abort();
+    struct chunk_t *orig_chunk = MEM_TO_CHUNK(ptr);
+
+    // Sanity check that the chunk metadata hasn't been corrupted in some way
+    in_use_sanity_check(orig_chunk);
+
+    size_t orig_chunk_size = CHUNK_SIZE(orig_chunk);
+    size_t new_chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
+
+    if (orig_chunk_size >= new_chunk_size) {
+      // The new size requested is smaller than the existing size. Therefore,
+      // we can just reduce the amount of space allocated for this chunk and
+      // add the remaining space as a free chunk
+
+      size_t resize = orig_chunk_size - new_chunk_size;
+      DEBUG_MSG("resizing existing chunk at %p by %lu bytes\n", orig_chunk,
+                resize);
+
+      SET_CHUNK_SIZE(orig_chunk, new_chunk_size);
+
+      // Turn whatever space is left following the newly-resized chunk into a
+      // new free chunk. Insert this free chunk into the head of the allocation
+      // pool's free list
+      struct chunk_t *free_chunk = NEXT_CHUNK(orig_chunk);
+      SET_PREV_CHUNK_SIZE(free_chunk, new_chunk_size);
+      SET_CHUNK_SIZE(free_chunk, resize);
+      SET_PREV_CHUNK_IN_USE(free_chunk);
+      SET_CHUNK_FREE(free_chunk);
+
+      struct chunk_t *free_list = GET_POOL(GET_POOL_ID(orig_chunk))->free_list;
+      free_chunk->prev = free_list->prev;
+      free_chunk->next = free_list;
+      free_list = free_chunk;
+
+      mem = CHUNK_TO_MEM(orig_chunk);
+    } else {
+      // TODO implementation
+      DEBUG_MSG("realloc not yet implemented\n");
+      abort();
+    }
   }
 
   return mem;
@@ -242,11 +297,7 @@ void free(void *ptr) {
   DEBUG_MSG("freeing memory at %p (size %lu bytes)\n", chunk, chunk_size);
 
   // Sanity check that the chunk metadata hasn't been corrupted in some way
-  struct chunk_t *next = NEXT_CHUNK(chunk);
-  if (chunk_size != PREV_CHUNK_SIZE(next)) {
-    DEBUG_MSG("size sanity check failed\n");
-    abort();
-  }
+  in_use_sanity_check(chunk);
 
   SET_CHUNK_FREE(chunk);
 
