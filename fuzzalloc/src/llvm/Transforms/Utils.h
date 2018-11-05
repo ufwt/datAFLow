@@ -16,7 +16,7 @@
 #define _UTILS_H_
 
 namespace llvm {
-class AllocaInst;
+class Instruction;
 class ReturnInst;
 } // namespace llvm
 
@@ -24,7 +24,8 @@ class ReturnInst;
 /// static array
 const char *const ARRAY_PROM_NUM_ELEMS_MD = "static-array-prom.numElems";
 
-/// \p free the given allocation before the given return address
-void insertFree(llvm::AllocaInst *Alloca, llvm::ReturnInst *Return);
+/// Insert a call to \p free for a \p malloc'd pointer before the given return
+/// address
+void insertFree(llvm::Instruction *MallocPtr, llvm::ReturnInst *Return);
 
 #endif

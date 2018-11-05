@@ -49,8 +49,8 @@ private:
   Instruction *createMalloc(Instruction *InsertBefore, Type *AllocTy,
                             uint64_t TypeSize, uint64_t ArrayNumElems);
 
-  Value *updateArrayGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
-  Value *updateStructGEP(AllocaInst *Alloca, GetElementPtrInst *GEP);
+  Value *updateArrayGEP(Instruction *MallocPtr, GetElementPtrInst *GEP);
+  Value *updateStructGEP(Instruction *MallocPtr, GetElementPtrInst *GEP);
 
   AllocaInst *promoteArrayAlloca(AllocaInst *Alloca);
   AllocaInst *promoteStructAlloca(AllocaInst *Alloca);
@@ -93,7 +93,7 @@ Instruction *PromoteStaticArrays::createMalloc(Instruction *InsertBefore,
                                 nullptr);
 }
 
-Value *PromoteStaticArrays::updateArrayGEP(AllocaInst *Alloca,
+Value *PromoteStaticArrays::updateArrayGEP(Instruction *MallocPtr,
                                            GetElementPtrInst *GEP) {
   // Cache uses before creating more
   std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
@@ -103,9 +103,9 @@ Value *PromoteStaticArrays::updateArrayGEP(AllocaInst *Alloca,
   // Load the pointer to the dynamically allocated array and greate a new GEP
   // instruction, ignoring the initial "offset 0" that is used when accessing
   // static arrays
-  auto *LoadMalloc = IRB.CreateLoad(Alloca);
+  auto *Load = IRB.CreateLoad(MallocPtr);
   auto *NewGEP = IRB.CreateInBoundsGEP(
-      LoadMalloc, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
+      Load, std::vector<Value *>(GEP->idx_begin() + 1, GEP->idx_end()));
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the given alloca instruction
@@ -116,21 +116,24 @@ Value *PromoteStaticArrays::updateArrayGEP(AllocaInst *Alloca,
   return NewGEP;
 }
 
-Value *PromoteStaticArrays::updateStructGEP(AllocaInst *Alloca,
+Value *PromoteStaticArrays::updateStructGEP(Instruction *MallocPtr,
                                             GetElementPtrInst *GEP) {
   // Cache uses before creating more
   std::vector<User *> Users(GEP->user_begin(), GEP->user_end());
 
   IRBuilder<> IRB(GEP);
 
-  auto *NewGEP = IRB.CreateInBoundsGEP(
-      Alloca, std::vector<Value *>(GEP->idx_begin(), GEP->idx_end()));
-  auto *LoadNewGEP = IRB.CreateLoad(NewGEP);
+  auto *NewGEP = cast<GetElementPtrInst>(IRB.CreateInBoundsGEP(
+      MallocPtr, std::vector<Value *>(GEP->idx_begin(), GEP->idx_end())));
 
-  errs() << "replacing users of " << *GEP << '\n';
   for (auto *U : Users) {
-    errs() << "replacing GEP user -> " << *U << '\n';
-    // U->replaceUsesOfWith(GEP, LoadFromNewGEP);
+    if (auto *ArrayGEP = dyn_cast<GetElementPtrInst>(U)) {
+      // GEPs are handled separately to ensure that they are correctly typed
+      updateArrayGEP(cast<Instruction>(NewGEP), ArrayGEP);
+      ArrayGEP->eraseFromParent();
+    } else {
+      U->replaceUsesOfWith(GEP, NewGEP);
+    }
   }
 
   return NewGEP;
@@ -254,7 +257,7 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
 
     auto *MallocCall =
         createMalloc(Alloca, ElemTy, ArrayAllocSize, ArrayNumElems);
-    auto *NewStructGEP = IRB.CreateGEP(NewAlloca, GEPIndices);
+    auto *NewStructGEP = IRB.CreateInBoundsGEP(NewAlloca, GEPIndices);
     auto *MallocStore = IRB.CreateStore(MallocCall, NewStructGEP);
 
     // Update all the users of the original struct to use the new struct
@@ -262,7 +265,7 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
       if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
         // GEPs are handled separately to ensure that they are correctly typed
         updateStructGEP(NewAlloca, GEP);
-        // TODO erase GEP
+        GEP->eraseFromParent();
       } else {
         U->replaceUsesOfWith(Alloca, NewAlloca);
       }
@@ -340,9 +343,11 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 
   for (auto *Alloca : StructAllocasToPromote) {
     auto *NewAlloca = promoteStructAlloca(Alloca);
-    // TODO erase Alloca
+    Alloca->eraseFromParent();
 
-    // TODO insert frees
+    for (auto *Return : ReturnsToInsertFree) {
+      // TODO insert free
+    }
   }
 
   // TODO promote global static arrays

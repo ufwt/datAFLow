@@ -17,10 +17,12 @@
 
 #include "Utils.h"
 
-void insertFree(llvm::AllocaInst *Alloca, llvm::ReturnInst *Return) {
-  llvm::IRBuilder<> IRB(Return);
+using namespace llvm;
+
+void insertFree(Instruction *MallocPtr, ReturnInst *Return) {
+  IRBuilder<> IRB(Return);
 
   // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = IRB.CreateLoad(Alloca);
-  llvm::CallInst::CreateFree(LoadMalloc, Return);
+  auto *LoadMalloc = IRB.CreateLoad(MallocPtr);
+  CallInst::CreateFree(LoadMalloc, Return);
 }
