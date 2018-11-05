@@ -1,4 +1,4 @@
-//===-- TagMalloc.cpp - Tag dynamic memory allocs with a unique ID --------===//
+//===-- TagDynamicAllocs.cpp - Tag dynamic memory allocs with a unique ID -===//
 //
 //                     The LLVM Compiler Infrastructure
 //

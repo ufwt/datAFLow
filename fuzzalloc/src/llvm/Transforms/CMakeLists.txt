@@ -1,2 +1,2 @@
 add_library(LLVMPromoteStaticArrays MODULE PromoteStaticArrays.cpp)
-add_library(LLVMTagMalloc MODULE TagDynamicAlloc.cpp)
+add_library(LLVMTagMallocs MODULE TagDynamicAllocs.cpp)
