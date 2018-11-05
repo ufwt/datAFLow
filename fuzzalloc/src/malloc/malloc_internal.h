@@ -34,11 +34,17 @@
 ///////////////////////////////////////////////////////////////////////////////
 
 struct chunk_t {
-  /// Size of the previous chunk (in bytes)
+  /// Size of the previous chunk (in bytes). The least-significant bit
+  /// indicates whether the previous chunk is in use or free. This size
+  /// includes the overhead associated with the chunk
   size_t prev_size;
   /// Current chunk size (in bytes). The least-significant bit indicates
-  /// whether the chunk is in use or free
+  /// whether the chunk is in use or free. This size includes the overhead
+  /// associated with the chunk
   size_t size;
+
+  // The struct elements below are only used when the chunk is free
+
   /// Pointer to the next free chunk
   struct chunk_t *next;
   /// Pointer to the previous free chunk

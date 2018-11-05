@@ -152,7 +152,8 @@ void *__tagged_malloc(tag_t tag, size_t size) {
 
     free_chunk->prev = free_chunk->next = NULL;
 
-    DEBUG_MSG("chunk created at %p (size %lu bytes)\n", chunk, chunk_size);
+    DEBUG_MSG("initial chunk created at %p (size %lu bytes)\n", chunk,
+              chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu bytes)\n", free_chunk,
               CHUNK_SIZE(free_chunk));
 
@@ -164,7 +165,8 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     // This is the first memory allocation for this allocation site, so save
     // the allocation pool ID into the pool map
     pool_id = GET_POOL_ID(pool_base);
-    DEBUG_MSG("tag %u -> pool ID 0x%x\n", tag, pool_id);
+    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_id,
+              pool_size, tag);
     pool_map[tag] = pool_id;
 
     mem = CHUNK_TO_MEM(chunk);
@@ -204,8 +206,8 @@ void *__tagged_malloc(tag_t tag, size_t size) {
       pool->free_list = free_chunk;
     }
 
-    DEBUG_MSG("chunk created at %p (size %lu)\n", chunk, chunk_size);
-    DEBUG_MSG("next free chunk at %p (size %lu)\n", free_chunk,
+    DEBUG_MSG("chunk created at %p (size %lu bytes)\n", chunk, chunk_size);
+    DEBUG_MSG("next free chunk at %p (size %lu bytes)\n", free_chunk,
               CHUNK_SIZE(free_chunk));
 
     mem = CHUNK_TO_MEM(chunk);
@@ -322,8 +324,8 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
              orig_chunk_size - CHUNK_OVERHEAD);
       free(ptr);
 
-      DEBUG_MSG("chunk moved from %p (size %lu) to %p (size %lu)\n", orig_chunk,
-                orig_chunk_size, new_chunk, new_chunk_size);
+      DEBUG_MSG("chunk moved from %p (size %lu bytes) to %p (size %lu bytes)\n",
+                orig_chunk, orig_chunk_size, new_chunk, new_chunk_size);
 
       mem = CHUNK_TO_MEM(new_chunk);
     }
