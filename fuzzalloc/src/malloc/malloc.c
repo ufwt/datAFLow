@@ -68,14 +68,6 @@ static inline void in_use_sanity_check(struct chunk_t *chunk) {
 
 do_abort:
   abort();
-
-  if (CHUNK_IN_USE(chunk) && PREV_CHUNK_IN_USE(next_chunk) &&
-      (chunk_size == PREV_CHUNK_SIZE(next_chunk))) {
-    return;
-  } else {
-    DEBUG_MSG("chunk in use sanity check failed (chunk = %p)\n", chunk);
-    abort();
-  }
 }
 
 void *__tagged_malloc(tag_t tag, size_t size) {
