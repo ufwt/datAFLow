@@ -30,7 +30,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "tag-malloc"
+#define DEBUG_TYPE "tag-dyn-alloc"
 
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
@@ -45,9 +45,9 @@ static const char *const TaggedMallocName = "__tagged_malloc";
 static const char *const TaggedCallocName = "__tagged_calloc";
 static const char *const TaggedReallocName = "__tagged_realloc";
 
-/// TagMalloc: tag \p malloc and \p calloc calls with a randomly-generated
-/// identifier and call fuzzalloc's \p malloc (or \p calloc) wrapper function
-/// with this tag.
+/// TagMalloc: tag \p malloc, \p calloc and \p realloc calls with a
+/// randomly-generated identifier and call fuzzalloc's \p malloc (or \p calloc,
+/// or \p realloc) wrapper function with this tag.
 class TagMalloc : public ModulePass {
 public:
   static char ID;
@@ -105,7 +105,8 @@ bool TagMalloc::runOnModule(Module &M) {
   Function *ReallocWrapperF = checkAllocWrapperFunction(M.getOrInsertFunction(
       TaggedReallocName, Int8PtrTy, TagTy, Int8PtrTy, SizeTTy));
 
-  // Maps malloc/calloc calls to the appropriate malloc/calloc wrapper function
+  // Maps malloc/calloc/realloc calls to the appropriate malloc/calloc/realloc
+  // wrapper function
   std::map<CallInst *, Function *> AllocCalls;
 
   for (auto &F : M.functions()) {
@@ -151,7 +152,8 @@ bool TagMalloc::runOnModule(Module &M) {
   return true;
 }
 
-static RegisterPass<TagMalloc> X("tag-malloc",
-                                 "Tag malloc calls and replace them with a "
-                                 "call to fuzzalloc's malloc wrapper",
+static RegisterPass<TagMalloc> X("tag-dyn-alloc",
+                                 "Tag dynamic allocation function calls and "
+                                 "replace them with a call to fuzzalloc's "
+                                 "wrapper functions",
                                  false, false);
