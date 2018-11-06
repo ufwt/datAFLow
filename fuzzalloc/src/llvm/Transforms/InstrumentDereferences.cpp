@@ -30,6 +30,8 @@ STATISTIC(NumOfInstrumentedDereferences,
 
 namespace {
 
+static const char *const InstrumentationName = "__ptr_deref";
+
 class InstrumentDereference : public ModulePass {
 public:
   static char ID;
@@ -42,20 +44,46 @@ public:
 
 char InstrumentDereference::ID = 0;
 
+// Adapted from llvm::checkSanitizerInterfaceFunction
+static Function *checkInstrumentationFunction(Constant *FuncOrBitcast) {
+  if (isa<Function>(FuncOrBitcast)) {
+    return cast<Function>(FuncOrBitcast);
+  }
+
+  FuncOrBitcast->print(errs());
+  errs() << '\n';
+  std::string Err;
+  raw_string_ostream Stream(Err);
+  Stream << "Instrumentation function redefined: " << *FuncOrBitcast;
+  report_fatal_error(Err);
+}
+
 bool InstrumentDereference::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
+  Type *VoidTy = Type::getVoidTy(C);
   IntegerType *Int64Ty = Type::getInt64Ty(C);
+  IntegerType *TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   IntegerType *SizeTTy = DL.getIntPtrType(C);
 
   ConstantInt *TagShiftSize =
       ConstantInt::get(SizeTTy, NUM_USABLE_BITS - NUM_TAG_BITS);
-  ConstantInt *TagMask = ConstantInt::get(SizeTTy, (1 << NUM_TAG_BITS) - 1);
+  ConstantInt *TagMask = ConstantInt::get(TagTy, (1 << NUM_TAG_BITS) - 1);
+
+  Function *InstrumentationF = checkInstrumentationFunction(
+      M.getOrInsertFunction(InstrumentationName, VoidTy, TagTy));
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Load = dyn_cast<LoadInst>(&*I)) {
+        // For every load instruction (i.e., memory access):
+        //
+        // 1. Cast the address to an integer
+        // 2. Right-shift and mask the address to get the allocation pool ID
+        // 3. Call the instrumentation function, passing the pool ID as an
+        //    argument
+
         auto *Pointer = Load->getPointerOperand();
 
         // XXX is this check redundant?
@@ -68,6 +96,10 @@ bool InstrumentDereference::runOnModule(Module &M) {
         auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, Int64Ty);
         auto *PoolId =
             IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, TagShiftSize), TagMask);
+        auto *PoolIdCast = IRB.CreateIntCast(PoolId, TagTy, false);
+        auto *InstCall = IRB.CreateCall(InstrumentationF, PoolIdCast);
+
+        NumOfInstrumentedDereferences++;
       }
     }
   }

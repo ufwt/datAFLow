@@ -3,4 +3,5 @@ if(POOL_SIZE)
   add_definitions(-DPOOL_SIZE=${POOL_SIZE})
 endif(POOL_SIZE)
 
-add_library(fuzzalloc SHARED malloc.c)
+add_library(fuzzalloc SHARED malloc.c
+                             deref.c)
