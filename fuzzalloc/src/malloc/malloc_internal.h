@@ -129,7 +129,7 @@ struct pool_t {
 /// Size of pool overhead (in bytes)
 #define POOL_OVERHEAD (sizeof(struct chunk_t *))
 
-/// Default pool size. Configurable at compile-time
+/// Default pool size (in bytes). Configurable at compile-time
 #ifndef POOL_SIZE
 #define POOL_SIZE 20000UL
 #endif
@@ -140,7 +140,7 @@ struct pool_t {
 
 /// Extract the pool identifier from the allocated pool
 #define GET_POOL_ID(p)                                                         \
-  ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
+  ((tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 /// Get the allocation pool address from an identifier
 #define GET_POOL(id)                                                           \

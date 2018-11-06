@@ -18,9 +18,9 @@
 // Forward declarations
 void free(void *ptr);
 
-/// Maps malloc/calloc tags (inserted during compilation) to allocation pool
-/// IDs
-static uint16_t pool_map[TAG_MAX + 1];
+/// Maps malloc/calloc/realloc tags (inserted during compilation) to allocation
+/// pool IDs
+static tag_t tag_to_pool_map[TAG_MAX + 1];
 
 // XXX should this be a constant?
 static int page_size;
@@ -78,7 +78,7 @@ void *__tagged_malloc(tag_t tag, size_t size) {
 
   void *mem = NULL;
   size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
-  uint16_t pool_id = pool_map[tag];
+  tag_t pool_id = tag_to_pool_map[tag];
 
   if (pool_id == 0) {
     // This allocation site has not been used before. Create a new "allocation
@@ -166,7 +166,7 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     pool_id = GET_POOL_ID(pool_base);
     DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_id,
               pool_size, tag);
-    pool_map[tag] = pool_id;
+    tag_to_pool_map[tag] = pool_id;
 
     mem = CHUNK_TO_MEM(chunk);
   } else {
@@ -181,16 +181,15 @@ void *__tagged_malloc(tag_t tag, size_t size) {
       DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                 "allocation pool 0x%x\n",
                 chunk_size, pool_id);
-      errno = ENOMEM;
-      return NULL;
+      // TODO grow the allocation pool
+      abort();
     }
     size_t free_chunk_size = CHUNK_SIZE(chunk);
 
     // Unlink the chunk from the free list
     SET_CHUNK_IN_USE_SIZE(chunk, chunk_size);
-    // TODO fixme
-    // chunk->prev->next = chunk->next;
-    // chunk->next->prev = chunk->prev;
+    if (chunk->prev) chunk->prev->next = chunk->next;
+    if (chunk->next) chunk->next->prev = chunk->prev;
 
     // Turn whatever space is left following the newly-allocated chunk into a
     // new free chunk. Insert this free chunk into the allocation pool's free
@@ -293,16 +292,15 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
         DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                   "allocation pool 0x%x\n",
                   new_chunk_size, GET_POOL_ID(pool));
-        errno = ENOMEM;
-        return NULL;
+        // TODO grow the allocation pool
+        abort();
       }
       size_t free_chunk_size = CHUNK_SIZE(new_chunk);
 
       // Unlink the chunk from the free list
       SET_CHUNK_IN_USE_SIZE(new_chunk, new_chunk_size);
-      // TODO fixme
-      // chunk->prev->next = chunk->next;
-      // chunk->next->prev = chunk->prev;
+      if (new_chunk->prev) new_chunk->prev->next = new_chunk->next;
+      if (new_chunk->next) new_chunk->next->prev = new_chunk->prev;
 
       // Turn whatever free space is left following the newly-allocated chunk
       // into a new free chunk. Insert this free chunk into the allocation
