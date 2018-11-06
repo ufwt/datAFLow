@@ -13,7 +13,6 @@
 #include <sys/mman.h> // for mmap
 #include <unistd.h>   // for getpagesize
 
-#include "fuzzalloc.h"
 #include "malloc_internal.h"
 
 // Forward declarations

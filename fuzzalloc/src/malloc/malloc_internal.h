@@ -14,6 +14,8 @@
 
 #include <stdint.h>
 
+#include "fuzzalloc.h"
+
 // TODO delete
 #define DEBUG 1
 
@@ -132,23 +134,17 @@ struct pool_t {
 #define POOL_SIZE 20000UL
 #endif
 
-/// The number of usable bits on the X86-64 architecture
-#define NUM_USABLE_BITS 48
-
-/// The number of (most upper) bits used to identify an allocation site's pool
-#define NUM_POOL_ID_BITS 16
-
-/// Pool alignment. This ensures that the upper \p NUM_POOL_ID_BITS of the pool
+/// Pool alignment. This ensures that the upper \p NUM_TAG_BITS of the pool
 /// address are unique to a single pool
-#define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_POOL_ID_BITS))
+#define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
 
 /// Extract the pool identifier from the allocated pool
 #define GET_POOL_ID(p)                                                         \
-  ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
+  ((uint16_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 /// Get the allocation pool address from an identifier
 #define GET_POOL(id)                                                           \
-  ((struct pool_t *)((uintptr_t)id << (NUM_USABLE_BITS - NUM_POOL_ID_BITS)))
+  ((struct pool_t *)((uintptr_t)id << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 ///////////////////////////////////////////////////////////////////////////////
 

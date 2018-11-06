@@ -53,7 +53,7 @@ public:
   static char ID;
   TagMalloc() : ModulePass(ID) {}
 
-  bool runOnModule(Module &F) override;
+  bool runOnModule(Module &M) override;
 };
 
 } // end anonymous namespace
@@ -89,7 +89,7 @@ bool TagMalloc::runOnModule(Module &M) {
   const DataLayout &DL = M.getDataLayout();
 
   PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
-  IntegerType *TagTy = Type::getIntNTy(C, TAG_NUM_BITS);
+  IntegerType *TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   IntegerType *SizeTTy = DL.getIntPtrType(C);
 
   TargetLibraryInfoImpl TLII;
