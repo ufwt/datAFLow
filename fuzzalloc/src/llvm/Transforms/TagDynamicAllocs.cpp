@@ -53,6 +53,7 @@ public:
   static char ID;
   TagMalloc() : ModulePass(ID) {}
 
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
   bool runOnModule(Module &M) override;
 };
 
@@ -84,6 +85,10 @@ static CallInst *extractReallocCall(Value *I, const TargetLibraryInfo *TLI) {
 
 char TagMalloc::ID = 0;
 
+void TagMalloc::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<TargetLibraryInfoWrapperPass>();
+}
+
 bool TagMalloc::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
@@ -92,8 +97,8 @@ bool TagMalloc::runOnModule(Module &M) {
   IntegerType *TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   IntegerType *SizeTTy = DL.getIntPtrType(C);
 
-  TargetLibraryInfoImpl TLII;
-  TargetLibraryInfo TLI(TLII);
+  const TargetLibraryInfo *TLI =
+      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
   // The malloc/calloc/realloc wrapper functions take the same arguments as the
   // original function, except that the first argument is tag that represents
@@ -111,13 +116,13 @@ bool TagMalloc::runOnModule(Module &M) {
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *MallocCall = extractMallocCall(&*I, &TLI)) {
+      if (auto *MallocCall = extractMallocCall(&*I, TLI)) {
         AllocCalls.emplace(MallocCall, MallocWrapperF);
         NumOfTaggedMalloc++;
-      } else if (auto *CallocCall = extractCallocCall(&*I, &TLI)) {
+      } else if (auto *CallocCall = extractCallocCall(&*I, TLI)) {
         AllocCalls.emplace(CallocCall, CallocWrapperF);
         NumOfTaggedCalloc++;
-      } else if (auto *ReallocCall = extractReallocCall(&*I, &TLI)) {
+      } else if (auto *ReallocCall = extractReallocCall(&*I, TLI)) {
         AllocCalls.emplace(ReallocCall, ReallocWrapperF);
         NumOfTaggedRealloc++;
       }

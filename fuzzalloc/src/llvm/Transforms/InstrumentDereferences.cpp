@@ -14,6 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
@@ -37,6 +39,7 @@ public:
   static char ID;
   InstrumentDereference() : ModulePass(ID) {}
 
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
   bool runOnModule(Module &M) override;
 };
 
@@ -58,9 +61,30 @@ static Function *checkInstrumentationFunction(Constant *FuncOrBitcast) {
   report_fatal_error(Err);
 }
 
+// Adapted from llvm::AddressSanitizer::isSafeAccess
+static bool instrumentCheck(ObjectSizeOffsetVisitor &ObjSizeVis, Value *Addr,
+                            uint64_t TypeSize) {
+  SizeOffsetType SizeOffset = ObjSizeVis.compute(Addr);
+  if (!ObjSizeVis.bothKnown(SizeOffset)) {
+    return true;
+  }
+
+  uint64_t Size = SizeOffset.first.getZExtValue();
+  int64_t Offset = SizeOffset.second.getSExtValue();
+
+  return Offset < 0 || Size < uint64_t(Offset) ||
+         Size - uint64_t(Offset) < TypeSize / CHAR_BIT;
+}
+
+void InstrumentDereference::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<TargetLibraryInfoWrapperPass>();
+}
+
 bool InstrumentDereference::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
+  const TargetLibraryInfo *TLI =
+      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
   Type *VoidTy = Type::getVoidTy(C);
   IntegerType *Int64Ty = Type::getInt64Ty(C);
@@ -73,6 +97,11 @@ bool InstrumentDereference::runOnModule(Module &M) {
 
   Function *InstrumentationF = checkInstrumentationFunction(
       M.getOrInsertFunction(InstrumentationName, VoidTy, TagTy));
+
+  // For determining whether to instrument a memory dereference
+  ObjectSizeOpts ObjSizeOpts;
+  ObjSizeOpts.RoundToAlign = true;
+  ObjectSizeOffsetVisitor ObjSizeVis(DL, TLI, C, ObjSizeOpts);
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -88,6 +117,12 @@ bool InstrumentDereference::runOnModule(Module &M) {
 
         // XXX is this check redundant?
         if (!Pointer->getType()->isPointerTy()) {
+          continue;
+        }
+
+        // Determine whether we should instrument this load instruction
+        uint64_t TypeSize = DL.getTypeStoreSizeInBits(Load->getType());
+        if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
           continue;
         }
 
