@@ -188,8 +188,12 @@ void *__tagged_malloc(tag_t tag, size_t size) {
 
     // Unlink the chunk from the free list
     SET_CHUNK_IN_USE_SIZE(chunk, chunk_size);
-    if (chunk->prev) chunk->prev->next = chunk->next;
-    if (chunk->next) chunk->next->prev = chunk->prev;
+    if (chunk->prev) {
+      chunk->prev->next = chunk->next;
+    }
+    if (chunk->next) {
+      chunk->next->prev = chunk->prev;
+    }
 
     // Turn whatever space is left following the newly-allocated chunk into a
     // new free chunk. Insert this free chunk into the allocation pool's free
@@ -299,8 +303,12 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
 
       // Unlink the chunk from the free list
       SET_CHUNK_IN_USE_SIZE(new_chunk, new_chunk_size);
-      if (new_chunk->prev) new_chunk->prev->next = new_chunk->next;
-      if (new_chunk->next) new_chunk->next->prev = new_chunk->prev;
+      if (new_chunk->prev) {
+        new_chunk->prev->next = new_chunk->next;
+      }
+      if (new_chunk->next) {
+        new_chunk->next->prev = new_chunk->prev;
+      }
 
       // Turn whatever free space is left following the newly-allocated chunk
       // into a new free chunk. Insert this free chunk into the allocation
@@ -357,7 +365,25 @@ void free(void *ptr) {
 
   SET_CHUNK_FREE(chunk);
 
-  // TODO coalesce
+  // If the next chunk is free, coalesce
+  struct chunk_t *next_chunk = NEXT_CHUNK(chunk);
+  if (CHUNK_FREE(next_chunk)) {
+    chunk_size += CHUNK_SIZE(next_chunk);
+    SET_CHUNK_FREE_SIZE(chunk, chunk_size);
+
+    next_chunk = NEXT_CHUNK(next_chunk);
+    SET_PREV_CHUNK_FREE_SIZE(next_chunk, chunk_size);
+  }
+
+  // If the previous chunk is free, coalesce
+  struct chunk_t *prev_chunk = PREV_CHUNK(chunk);
+  if (CHUNK_FREE(prev_chunk)) {
+    chunk_size += CHUNK_SIZE(prev_chunk);
+    SET_CHUNK_FREE_SIZE(chunk, chunk_size);
+
+    chunk = prev_chunk;
+    SET_PREV_CHUNK_FREE_SIZE(next_chunk, chunk_size);
+  }
 
   // Insert the newly-freed chunk at the head of the allocation pool's free
   // list

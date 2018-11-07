@@ -109,7 +109,7 @@ struct chunk_t {
 #define NEXT_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c) + CHUNK_SIZE(c)))
 
 /// Pointer to previous chunk
-#define PREV_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c)-CHUNK_PREV_SIZE(c)))
+#define PREV_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c)-PREV_CHUNK_SIZE(c)))
 
 /// Convert memory address (as seen by the user) to a chunk
 #define MEM_TO_CHUNK(p) ((struct chunk_t *)((uint8_t *)(p)-CHUNK_OVERHEAD))
