@@ -20,7 +20,8 @@ typedef uint16_t tag_t;
 /// The maximum possible tag value
 #define TAG_MAX ((1 << NUM_TAG_BITS) - 1)
 
-/// The default malloc/calloc tag. Used by default for non-instrumented code
+/// The default malloc/calloc/realloc tag. Used by default for non-instrumented
+/// code
 #define DEFAULT_TAG 0
 
 #endif

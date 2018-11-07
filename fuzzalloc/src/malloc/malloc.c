@@ -18,9 +18,9 @@
 // Forward declarations
 void free(void *ptr);
 
-/// Maps malloc/calloc/realloc tags (inserted during compilation) to allocation
-/// pool IDs
-static tag_t tag_to_pool_map[TAG_MAX + 1];
+/// Maps malloc/calloc/realloc allocation site tags (inserted during
+/// compilation) to allocation pool tags
+static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 
 // XXX should this be a constant?
 static int page_size;
@@ -69,8 +69,8 @@ do_abort:
   abort();
 }
 
-void *__tagged_malloc(tag_t tag, size_t size) {
-  DEBUG_MSG("__tagged_malloc(%u, %lu)\n", tag, size);
+void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
+  DEBUG_MSG("__tagged_malloc(%u, %lu)\n", alloc_site_tag, size);
 
   if (size == 0) {
     return NULL;
@@ -78,9 +78,9 @@ void *__tagged_malloc(tag_t tag, size_t size) {
 
   void *mem = NULL;
   size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
-  tag_t pool_id = tag_to_pool_map[tag];
+  tag_t pool_tag = alloc_site_to_pool_map[alloc_site_tag];
 
-  if (pool_id == 0) {
+  if (pool_tag == 0) {
     // This allocation site has not been used before. Create a new "allocation
     // pool" for this site
 
@@ -106,7 +106,7 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     }
     DEBUG_MSG("mmap base at %p\n", mmap_base);
 
-    // Adjust the mmap'd memory so that it is aligned with a valid pool ID. If
+    // Adjust the mmap'd memory so that it is aligned with a valid pool tag. If
     // necessary, unmap wasted memory between the original mapping and the
     // aligned mapping. munmap works at a page granularity, meaning all pages
     // containing a part of the indicated range are unmapped. To prevent
@@ -123,7 +123,7 @@ void *__tagged_malloc(tag_t tag, size_t size) {
       pool_size -= adjust;
     }
 
-    // To ensure alignment with a valid pool ID, we mmap much more memory than
+    // To ensure alignment with a valid pool tag, we mmap much more memory than
     // we actually require. Adjust the amount of mmap'd memory to the default
     // pool size
     adjust = (pool_size - POOL_SIZE - POOL_OVERHEAD) * page_size / page_size;
@@ -162,25 +162,25 @@ void *__tagged_malloc(tag_t tag, size_t size) {
     pool->free_list = free_chunk;
 
     // This is the first memory allocation for this allocation site, so save
-    // the allocation pool ID into the pool map
-    pool_id = GET_POOL_ID(pool_base);
-    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_id,
-              pool_size, tag);
-    tag_to_pool_map[tag] = pool_id;
+    // the allocation pool tag into the pool map
+    pool_tag = GET_POOL_TAG(pool_base);
+    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_tag,
+              pool_size, alloc_site_tag);
+    alloc_site_to_pool_map[alloc_site_tag] = pool_tag;
 
     mem = CHUNK_TO_MEM(chunk);
   } else {
     // Reuse of an existing allocation site. Try and fit the new memory request
     // into the existing allocation pool
 
-    struct pool_t *pool = GET_POOL(pool_id);
+    struct pool_t *pool = GET_POOL(pool_tag);
 
     // Find a suitably-sized free chunk in the allocation pool for this tag
     struct chunk_t *chunk = find_free_chunk(pool, chunk_size);
     if (!chunk) {
       DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                 "allocation pool 0x%x\n",
-                chunk_size, pool_id);
+                chunk_size, pool_tag);
       // TODO grow the allocation pool
       abort();
     }
@@ -218,8 +218,8 @@ void *__tagged_malloc(tag_t tag, size_t size) {
   return mem;
 }
 
-void *__tagged_calloc(tag_t tag, size_t nmemb, size_t size) {
-  DEBUG_MSG("__tagged_calloc(%u, %lu, %lu)\n", tag, nmemb, size);
+void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
+  DEBUG_MSG("__tagged_calloc(%u, %lu, %lu)\n", alloc_site_tag, nmemb, size);
 
   // Adapted from muslc
 
@@ -229,7 +229,7 @@ void *__tagged_calloc(tag_t tag, size_t nmemb, size_t size) {
   }
 
   size *= nmemb;
-  void *mem = __tagged_malloc(tag, size);
+  void *mem = __tagged_malloc(alloc_site_tag, size);
   if (!mem) {
     return mem;
   }
@@ -237,8 +237,8 @@ void *__tagged_calloc(tag_t tag, size_t nmemb, size_t size) {
   return memset(mem, 0, size);
 }
 
-void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
-  DEBUG_MSG("__tagged_realloc(%u, %p, %lu)\n", tag, ptr, size);
+void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
+  DEBUG_MSG("__tagged_realloc(%u, %p, %lu)\n", alloc_site_tag, ptr, size);
 
   void *mem = NULL;
 
@@ -246,7 +246,7 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
     // Per realloc manual: "if ptr is NULL, then the call is equivalent to
     // malloc(size), for all values of size. This will create a new allocation
     // pool (as this is essentially a new allocation site)
-    mem = __tagged_malloc(tag, size);
+    mem = __tagged_malloc(alloc_site_tag, size);
   } else if (size == 0) {
     // Per realloc manual: "if size is equal to zero, and ptr is not NULL, then
     // the call is equivalent to free(ptr)
@@ -257,7 +257,7 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
     // Sanity check that the chunk metadata hasn't been corrupted in some way
     in_use_sanity_check(orig_chunk);
 
-    struct pool_t *pool = GET_POOL(GET_POOL_ID(orig_chunk));
+    struct pool_t *pool = GET_POOL(GET_POOL_TAG(orig_chunk));
 
     size_t orig_chunk_size = CHUNK_SIZE(orig_chunk);
     size_t new_chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
@@ -295,7 +295,7 @@ void *__tagged_realloc(tag_t tag, void *ptr, size_t size) {
       if (!new_chunk) {
         DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                   "allocation pool 0x%x\n",
-                  new_chunk_size, GET_POOL_ID(pool));
+                  new_chunk_size, GET_POOL_TAG(pool));
         // TODO grow the allocation pool
         abort();
       }
@@ -387,7 +387,7 @@ void free(void *ptr) {
 
   // Insert the newly-freed chunk at the head of the allocation pool's free
   // list
-  struct chunk_t *free_list = GET_POOL(GET_POOL_ID(chunk))->free_list;
+  struct chunk_t *free_list = GET_POOL(GET_POOL_TAG(chunk))->free_list;
   chunk->prev = free_list->prev;
   chunk->next = free_list;
   free_list = chunk;
