@@ -36,6 +36,27 @@ using namespace llvm;
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
+static cl::OptionCategory
+    WrapperFuncCat("Memory allocation wrapper functions",
+                   "Sometimes malloc/calloc/realloc aren't called directly, "
+                   "but via a wrapper function. This lets us instrument the "
+                   "wrapper function instead");
+
+static cl::opt<std::string> ClMallocWrapperName(
+    "malloc-wrapper-func",
+    cl::desc("Malloc wrapper function to instrument instead of malloc"),
+    cl::cat(WrapperFuncCat));
+
+static cl::opt<std::string> ClCallocWrapperName(
+    "calloc-wrapper-func",
+    cl::desc("Calloc wrapper function to instrument instead of calloc"),
+    cl::cat(WrapperFuncCat));
+
+static cl::opt<std::string> ClReallocWrapperName(
+    "realloc-wrapper-func",
+    cl::desc("Realloc wrapper function to instrument instead of realloc"),
+    cl::cat(WrapperFuncCat));
+
 STATISTIC(NumOfTaggedMalloc, "Number of malloc calls tagged.");
 STATISTIC(NumOfTaggedCalloc, "Number of calloc calls tagged.");
 STATISTIC(NumOfTaggedRealloc, "Number of realloc calls tagged.");
@@ -117,15 +138,35 @@ bool TagMalloc::runOnModule(Module &M) {
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *MallocCall = extractMallocCall(&*I, TLI)) {
-        AllocCalls.emplace(MallocCall, MallocWrapperF);
-        NumOfTaggedMalloc++;
-      } else if (auto *CallocCall = extractCallocCall(&*I, TLI)) {
-        AllocCalls.emplace(CallocCall, CallocWrapperF);
-        NumOfTaggedCalloc++;
-      } else if (auto *ReallocCall = extractReallocCall(&*I, TLI)) {
-        AllocCalls.emplace(ReallocCall, ReallocWrapperF);
-        NumOfTaggedRealloc++;
+      if (auto *Call = dyn_cast<CallInst>(&*I)) {
+        auto *CalledF = Call->getCalledFunction();
+
+        if (!ClMallocWrapperName.empty() && CalledF &&
+            CalledF->getName() == ClMallocWrapperName) {
+          AllocCalls.emplace(Call, MallocWrapperF);
+          NumOfTaggedMalloc++;
+        } else if (auto *MallocCall = extractMallocCall(Call, TLI)) {
+          AllocCalls.emplace(MallocCall, MallocWrapperF);
+          NumOfTaggedMalloc++;
+        }
+
+        if (!ClCallocWrapperName.empty() && CalledF &&
+            CalledF->getName() == ClCallocWrapperName) {
+          AllocCalls.emplace(Call, CallocWrapperF);
+          NumOfTaggedCalloc++;
+        } else if (auto *CallocCall = extractCallocCall(Call, TLI)) {
+          AllocCalls.emplace(CallocCall, CallocWrapperF);
+          NumOfTaggedCalloc++;
+        }
+
+        if (!ClReallocWrapperName.empty() && CalledF &&
+            CalledF->getName() == ClReallocWrapperName) {
+          AllocCalls.emplace(Call, ReallocWrapperF);
+          NumOfTaggedRealloc++;
+        } else if (auto *ReallocCall = extractReallocCall(Call, TLI)) {
+          AllocCalls.emplace(ReallocCall, ReallocWrapperF);
+          NumOfTaggedRealloc++;
+        }
       }
     }
   }
