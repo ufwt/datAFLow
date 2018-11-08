@@ -25,6 +25,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
 #include "fuzzalloc.h"
 
@@ -142,16 +143,13 @@ bool TagMalloc::runOnModule(Module &M) {
       WrapperArgs.push_back(&*Arg);
     }
 
-    CallInst *AllocWrapperCall =
-        CallInst::Create(WrapperF, WrapperArgs, "", AllocCall);
-
-    // Replace all uses of the original function return value with the return
-    // value from the wrapped function
-    for (auto *U : AllocCall->users()) {
-      U->replaceUsesOfWith(AllocCall, AllocWrapperCall);
+    CallInst *AllocWrapperCall = CallInst::Create(WrapperF, WrapperArgs);
+    AllocWrapperCall->setCallingConv(WrapperF->getCallingConv());
+    if (!AllocCall->use_empty()) {
+      AllocCall->replaceAllUsesWith(AllocWrapperCall);
     }
 
-    AllocCall->eraseFromParent();
+    ReplaceInstWithInst(AllocCall, AllocWrapperCall);
   }
 
   return true;
