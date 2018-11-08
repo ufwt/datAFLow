@@ -18,7 +18,7 @@
 // Forward declarations
 void free(void *ptr);
 
-/// Maps malloc/calloc/realloc allocation site tags (inserted during
+/// Maps malloc/calloc/realloc allocation call site tags (inserted during
 /// compilation) to allocation pool tags
 static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 
@@ -70,7 +70,7 @@ do_abort:
 }
 
 void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
-  DEBUG_MSG("__tagged_malloc(%u, %lu)\n", alloc_site_tag, size);
+  DEBUG_MSG("__tagged_malloc(0x%x, %lu)\n", alloc_site_tag, size);
 
   if (size == 0) {
     return NULL;
@@ -162,11 +162,13 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     pool->free_list = free_chunk;
 
     // This is the first memory allocation for this allocation site, so save
-    // the allocation pool tag into the pool map
+    // the allocation pool tag into the pool map (and likewise the allocation
+    // site tag into the site map)
     pool_tag = GET_POOL_TAG(pool_base);
     DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_tag,
               pool_size, alloc_site_tag);
     alloc_site_to_pool_map[alloc_site_tag] = pool_tag;
+    __pool_to_alloc_site_map[pool_tag] = alloc_site_tag;
 
     mem = CHUNK_TO_MEM(chunk);
   } else {
@@ -219,7 +221,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 }
 
 void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
-  DEBUG_MSG("__tagged_calloc(%u, %lu, %lu)\n", alloc_site_tag, nmemb, size);
+  DEBUG_MSG("__tagged_calloc(0x%x, %lu, %lu)\n", alloc_site_tag, nmemb, size);
 
   // Adapted from muslc
 
@@ -238,7 +240,7 @@ void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
 }
 
 void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
-  DEBUG_MSG("__tagged_realloc(%u, %p, %lu)\n", alloc_site_tag, ptr, size);
+  DEBUG_MSG("__tagged_realloc(0x%x, %p, %lu)\n", alloc_site_tag, ptr, size);
 
   void *mem = NULL;
 

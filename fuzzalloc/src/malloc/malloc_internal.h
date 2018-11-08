@@ -33,7 +33,7 @@
 #define FALSE 0
 #define TRUE !FALSE
 
-///////////////////////////////////////////////////////////////////////////////
+//===-- Malloc chunk format -----------------------------------------------===//
 
 struct chunk_t {
   /// Size of the previous chunk (in bytes). The least-significant bit
@@ -117,7 +117,7 @@ struct chunk_t {
 /// Convert chunk to a memory address (as seen by the user)
 #define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + CHUNK_OVERHEAD))
 
-///////////////////////////////////////////////////////////////////////////////
+//===-- Allocation pool format --------------------------------------------===//
 
 struct pool_t {
   /// Free list for this pool
@@ -146,6 +146,8 @@ struct pool_t {
 #define GET_POOL(tag)                                                          \
   ((struct pool_t *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
-///////////////////////////////////////////////////////////////////////////////
+//===-- Global variables --------------------------------------------------===//
+
+extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
 
 #endif
