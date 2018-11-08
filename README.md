@@ -1,4 +1,4 @@
-# Data-flow guided fuzzing
+# datAFLow
 
 Most popular fuzzers (e.g., AFL, libFuzzer, honggfuzz, VUzzer, etc.) are
 _code-coverage_ guided. This means that they select and mutate seeds with the
