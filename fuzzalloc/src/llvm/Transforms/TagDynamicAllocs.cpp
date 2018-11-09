@@ -67,13 +67,13 @@ static const char *const TaggedMallocName = "__tagged_malloc";
 static const char *const TaggedCallocName = "__tagged_calloc";
 static const char *const TaggedReallocName = "__tagged_realloc";
 
-/// TagMalloc: tag \p malloc, \p calloc and \p realloc calls with a
+/// TagDynamicAlloc: tag \p malloc, \p calloc and \p realloc calls with a
 /// randomly-generated identifier and call fuzzalloc's \p malloc (or \p calloc,
 /// or \p realloc) wrapper function with this tag.
-class TagMalloc : public ModulePass {
+class TagDynamicAlloc : public ModulePass {
 public:
   static char ID;
-  TagMalloc() : ModulePass(ID) {}
+  TagDynamicAlloc() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override;
   bool runOnModule(Module &M) override;
@@ -105,13 +105,13 @@ static CallInst *extractReallocCall(Value *I, const TargetLibraryInfo *TLI) {
   return isReallocLikeFn(I, TLI) ? cast<CallInst>(I) : nullptr;
 }
 
-char TagMalloc::ID = 0;
+char TagDynamicAlloc::ID = 0;
 
-void TagMalloc::getAnalysisUsage(AnalysisUsage &AU) const {
+void TagDynamicAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool TagMalloc::runOnModule(Module &M) {
+bool TagDynamicAlloc::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
@@ -196,8 +196,9 @@ bool TagMalloc::runOnModule(Module &M) {
   return true;
 }
 
-static RegisterPass<TagMalloc> X("tag-dyn-alloc",
-                                 "Tag dynamic allocation function calls and "
-                                 "replace them with a call to fuzzalloc's "
-                                 "wrapper functions",
-                                 false, false);
+static RegisterPass<TagDynamicAlloc>
+    X("tag-dyn-alloc",
+      "Tag dynamic allocation function calls and "
+      "replace them with a call to fuzzalloc's "
+      "wrapper functions",
+      false, false);
