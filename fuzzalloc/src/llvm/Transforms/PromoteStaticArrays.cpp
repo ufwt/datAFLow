@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
@@ -120,6 +121,7 @@ Value *PromoteStaticArrays::updateArrayGEP(Instruction *MallocPtr,
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
   for (auto *U : Users) {
+    errs() << "    GEP user -> " << *U << '\n';
     U->replaceUsesOfWith(GEP, NewGEP);
   }
 
@@ -164,6 +166,8 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
 
   uint64_t ArrayNumElems = ArrayTy->getArrayNumElements();
 
+  errs() << "replacing " << *Alloca << '\n';
+
   IRBuilder<> IRB(Alloca);
 
   // This will transform something like this:
@@ -191,6 +195,7 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // Update all the users of the original array to use the dynamically
   // allocated array
   for (auto *U : Users) {
+    errs() << "  user -> " << *U << '\n';
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // GEPs are handled separately to ensure that they are correctly typed
       updateArrayGEP(NewAlloca, GEP);
@@ -319,14 +324,16 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
         Type *AllocaTy = Alloca->getAllocatedType();
 
         if (isa<ArrayType>(AllocaTy)) {
-          // TODO perform an escape analysis to determine which array allocas
-          // to promote
+          bool AllocaEscapes = PointerMayBeCaptured(Alloca, false, true);
+          // TODO do something with escape analysis result
+
           ArrayAllocasToPromote.push_back(Alloca);
           NumOfAllocaPromotion++;
         } else if (auto *StructTy = dyn_cast<StructType>(AllocaTy)) {
           if (structContainsArray(StructTy)) {
-            // TODO perform an escape analysis to determine which struct
-            // allocas to promote
+            bool AllocaEscapes = PointerMayBeCaptured(Alloca, false, true);
+            // TODO do something with escape analysis result
+
             StructAllocasToPromote.push_back(Alloca);
             NumOfAllocaPromotion++;
           }
@@ -349,36 +356,36 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  for (auto *Alloca : StructAllocasToPromote) {
-    std::pair<AllocaInst *, std::vector<unsigned>> NewAllocaWithIndices =
-        promoteStructAlloca(Alloca);
-    Alloca->eraseFromParent();
-
-    auto *NewAlloca = NewAllocaWithIndices.first;
-    std::vector<unsigned> PromotedIndices = NewAllocaWithIndices.second;
-
-    // The struct may have contained multiple static arrays that were promoted
-    // to dynamically allocated arrays. Since the indices of these arrays (now
-    // pointers) were recorded during promotion, we can iterate over these
-    // pointers and free the memory that they point to.
-    //
-    // The index is used to create a GEP instruction that points to the
-    // dynamically allocated array in the struct
-    for (unsigned StructIndex : PromotedIndices) {
-      for (auto *Return : ReturnsToInsertFree) {
-        IRBuilder<> IRB(Return);
-
-        // As per https://llvm.org/docs/GetElementPtr.html, struct member
-        // indices always use i32
-        Value *GEPIndices[] = {ConstantInt::get(this->Int32Ty, 0),
-                               ConstantInt::get(this->Int32Ty, StructIndex)};
-        auto *NewStructGEP = cast<GetElementPtrInst>(
-            IRB.CreateInBoundsGEP(NewAlloca, GEPIndices));
-
-        insertFree(NewStructGEP, Return);
-      }
-    }
-  }
+//  for (auto *Alloca : StructAllocasToPromote) {
+//    std::pair<AllocaInst *, std::vector<unsigned>> NewAllocaWithIndices =
+//        promoteStructAlloca(Alloca);
+//    Alloca->eraseFromParent();
+//
+//    auto *NewAlloca = NewAllocaWithIndices.first;
+//    std::vector<unsigned> PromotedIndices = NewAllocaWithIndices.second;
+//
+//    // The struct may have contained multiple static arrays that were promoted
+//    // to dynamically allocated arrays. Since the indices of these arrays (now
+//    // pointers) were recorded during promotion, we can iterate over these
+//    // pointers and free the memory that they point to.
+//    //
+//    // The index is used to create a GEP instruction that points to the
+//    // dynamically allocated array in the struct
+//    for (unsigned StructIndex : PromotedIndices) {
+//      for (auto *Return : ReturnsToInsertFree) {
+//        IRBuilder<> IRB(Return);
+//
+//        // As per https://llvm.org/docs/GetElementPtr.html, struct member
+//        // indices always use i32
+//        Value *GEPIndices[] = {ConstantInt::get(this->Int32Ty, 0),
+//                               ConstantInt::get(this->Int32Ty, StructIndex)};
+//        auto *NewStructGEP = cast<GetElementPtrInst>(
+//            IRB.CreateInBoundsGEP(NewAlloca, GEPIndices));
+//
+//        insertFree(NewStructGEP, Return);
+//      }
+//    }
+//  }
 
   // TODO promote global static arrays
 
