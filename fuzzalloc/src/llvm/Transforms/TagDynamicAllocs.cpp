@@ -67,9 +67,9 @@ STATISTIC(NumOfTaggedRealloc, "Number of realloc calls tagged.");
 
 namespace {
 
-static const char *const TaggedMallocName = "__tagged_malloc";
-static const char *const TaggedCallocName = "__tagged_calloc";
-static const char *const TaggedReallocName = "__tagged_realloc";
+static constexpr char *const TaggedMallocName = "__tagged_malloc";
+static constexpr char *const TaggedCallocName = "__tagged_calloc";
+static constexpr char *const TaggedReallocName = "__tagged_realloc";
 
 /// TagDynamicAlloc: Tag \p malloc, \p calloc and \p realloc calls with a
 /// randomly-generated identifier (to identify their call site) and call
@@ -105,7 +105,7 @@ public:
 } // end anonymous namespace
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
-static Function *checkFuzzallocFunction(Constant *FuncOrBitcast) {
+static Function *checkFuzzallocFunc(Constant *FuncOrBitcast) {
   if (isa<Function>(FuncOrBitcast)) {
     return cast<Function>(FuncOrBitcast);
   }
@@ -199,6 +199,7 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *AllocCall,
 /// through to the fuzzalloc library.
 Function *TagDynamicAlloc::tagAllocWrapperFunc(Function *OrigF,
                                                const TargetLibraryInfo *TLI) {
+  assert(OrigF && "'alloc wrapper function is null");
   FunctionType *OrigFTy = OrigF->getFunctionType();
 
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
@@ -253,11 +254,11 @@ bool TagDynamicAlloc::doInitialization(Module &M) {
   // Fuzzalloc's malloc/calloc/realloc functions take the same arguments as the
   // original dynamic allocation function, except that the first argument is a
   // tag that identifies the allocation site
-  this->FuzzallocMallocF = checkFuzzallocFunction(M.getOrInsertFunction(
+  this->FuzzallocMallocF = checkFuzzallocFunc(M.getOrInsertFunction(
       TaggedMallocName, Int8PtrTy, this->TagTy, this->SizeTTy));
-  this->FuzzallocCallocF = checkFuzzallocFunction(M.getOrInsertFunction(
+  this->FuzzallocCallocF = checkFuzzallocFunc(M.getOrInsertFunction(
       TaggedCallocName, Int8PtrTy, this->TagTy, this->SizeTTy, this->SizeTTy));
-  this->FuzzallocReallocF = checkFuzzallocFunction(M.getOrInsertFunction(
+  this->FuzzallocReallocF = checkFuzzallocFunc(M.getOrInsertFunction(
       TaggedReallocName, Int8PtrTy, this->TagTy, Int8PtrTy, this->SizeTTy));
 
   return false;

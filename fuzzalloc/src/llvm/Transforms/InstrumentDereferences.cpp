@@ -32,7 +32,7 @@ STATISTIC(NumOfInstrumentedDereferences,
 
 namespace {
 
-static const char *const InstrumentationName = "__ptr_deref";
+static constexpr char *const InstrumentationName = "__ptr_deref";
 
 class InstrumentDereference : public ModulePass {
 public:
@@ -48,7 +48,7 @@ public:
 char InstrumentDereference::ID = 0;
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
-static Function *checkInstrumentationFunction(Constant *FuncOrBitcast) {
+static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
   if (isa<Function>(FuncOrBitcast)) {
     return cast<Function>(FuncOrBitcast);
   }
@@ -95,7 +95,7 @@ bool InstrumentDereference::runOnModule(Module &M) {
       ConstantInt::get(SizeTTy, NUM_USABLE_BITS - NUM_TAG_BITS);
   ConstantInt *TagMask = ConstantInt::get(TagTy, (1 << NUM_TAG_BITS) - 1);
 
-  Function *InstrumentationF = checkInstrumentationFunction(
+  Function *InstrumentationF = checkInstrumentationFunc(
       M.getOrInsertFunction(InstrumentationName, VoidTy, TagTy));
 
   // For determining whether to instrument a memory dereference
