@@ -39,7 +39,7 @@ using namespace llvm;
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
 static cl::OptionCategory
-    WrapperFuncCat("Memory allocation wrapper functions",
+    WrapperFuncCat("Memory allocation wrapper function options",
                    "Sometimes malloc/calloc/realloc aren't called directly, "
                    "but via a custom wrapper function. These options let us "
                    "tag the wrapper function instead");
@@ -59,15 +59,38 @@ static cl::opt<std::string>
                              cl::desc("Realloc wrapper function to tag"),
                              cl::cat(WrapperFuncCat));
 
+static cl::OptionCategory
+    WrapperVarCat("Memory allocation wrapper variable options",
+                  "Sometimes malloc/calloc/realloc aren't called directly, "
+                  "but via a custom wrapper function that is stored in a "
+                  "global variable. This lets us replace the wrapper function "
+                  "stored in the global variable with a tagged version "
+                  "instead");
+
+static cl::opt<std::string>
+    ClMallocWrapperVarName("malloc-wrapper-var",
+                           cl::desc("Malloc wrapper variable to tag"),
+                           cl::cat(WrapperVarCat));
+
+static cl::opt<std::string>
+    ClCallocWrapperVarName("calloc-wrapper-var",
+                           cl::desc("Calloc wrapper variable to tag"),
+                           cl::cat(WrapperVarCat));
+
+static cl::opt<std::string>
+    ClReallocWrapperVarName("realloc-wrapper-var",
+                            cl::desc("Realloc wrapper variable to tag"),
+                            cl::cat(WrapperVarCat));
+
 STATISTIC(NumOfTaggedMalloc, "Number of malloc calls tagged.");
 STATISTIC(NumOfTaggedCalloc, "Number of calloc calls tagged.");
 STATISTIC(NumOfTaggedRealloc, "Number of realloc calls tagged.");
 
 namespace {
 
-static constexpr char *const TaggedMallocName = "__tagged_malloc";
-static constexpr char *const TaggedCallocName = "__tagged_calloc";
-static constexpr char *const TaggedReallocName = "__tagged_realloc";
+static constexpr char *const FuzzallocMallocFuncName = "__tagged_malloc";
+static constexpr char *const FuzzallocCallocFuncName = "__tagged_calloc";
+static constexpr char *const FuzzallocReallocFuncName = "__tagged_realloc";
 
 /// TagDynamicAlloc: Tag dynamic memory allocation function calls (\p malloc,
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
@@ -78,18 +101,22 @@ private:
   Function *FuzzallocCallocF;
   Function *FuzzallocReallocF;
 
-  Function *TaggedCustomMallocF;
-  Function *TaggedCustomCallocF;
-  Function *TaggedCustomReallocF;
+  Function *TaggedMallocWrapperF;
+  Function *TaggedCallocWrapperF;
+  Function *TaggedReallocWrapperF;
+
+  GlobalVariable *TaggedMallocWrapperGV;
+  GlobalVariable *TaggedCallocWrapperGV;
+  GlobalVariable *TaggedReallocWrapperGV;
 
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  std::map<CallInst *, Function *>
-  getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI);
-  CallInst *tagDynAllocCall(CallInst *AllocCall, Function *WrapperF,
-                            Value *Tag);
-  Function *tagDynAllocWrapperFunc(Function *F, const TargetLibraryInfo *TLI);
+  std::map<CallInst *, GlobalObject *>
+  getDynAllocCalls(Function *, const TargetLibraryInfo *);
+  CallInst *tagDynAllocCall(CallInst *, GlobalObject *, Value *);
+  Function *tagDynAllocWrapperFunc(Function *, const TargetLibraryInfo *);
+  GlobalVariable *tagDynAllocWrapperVar(Module &, GlobalVariable *, Function *);
 
 public:
   static char ID;
@@ -126,9 +153,9 @@ char TagDynamicAlloc::ID = 0;
 
 /// Maps all dynamic memory allocation function calls in the function `F` to
 /// the appropriate fuzzalloc function call.
-std::map<CallInst *, Function *>
+std::map<CallInst *, GlobalObject *>
 TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
-  std::map<CallInst *, Function *> AllocCalls;
+  std::map<CallInst *, GlobalObject *> AllocCalls;
 
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
     if (auto *Call = dyn_cast<CallInst>(&*I)) {
@@ -136,25 +163,43 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 
       if (!ClMallocWrapperFuncName.empty() && CalledFunc &&
           CalledFunc->getName() == ClMallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedCustomMallocF);
+        AllocCalls.emplace(Call, this->TaggedMallocWrapperF);
         NumOfTaggedMalloc++;
       } else if (isMallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocMallocF);
         NumOfTaggedMalloc++;
       } else if (!ClCallocWrapperFuncName.empty() && CalledFunc &&
                  CalledFunc->getName() == ClCallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedCustomCallocF);
+        AllocCalls.emplace(Call, this->TaggedCallocWrapperF);
         NumOfTaggedCalloc++;
       } else if (isCallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocCallocF);
         NumOfTaggedCalloc++;
       } else if (!ClReallocWrapperFuncName.empty() && CalledFunc &&
                  CalledFunc->getName() == ClReallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedCustomReallocF);
+        AllocCalls.emplace(Call, this->TaggedReallocWrapperF);
         NumOfTaggedRealloc++;
       } else if (isReallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocReallocF);
         NumOfTaggedRealloc++;
+      } else if (!CalledFunc) {
+        if (auto *Load = dyn_cast<LoadInst>(Call->getCalledValue())) {
+          if (auto *GV = dyn_cast<GlobalVariable>(Load->getPointerOperand())) {
+            if (!ClMallocWrapperVarName.empty() &&
+                GV->getName() == ClMallocWrapperVarName) {
+              AllocCalls.emplace(Call, this->TaggedMallocWrapperGV);
+              NumOfTaggedMalloc++;
+            } else if (!ClCallocWrapperVarName.empty() &&
+                       GV->getName() == ClCallocWrapperVarName) {
+              AllocCalls.emplace(Call, this->TaggedCallocWrapperGV);
+              NumOfTaggedCalloc++;
+            } else if (!ClReallocWrapperVarName.empty() &&
+                       GV->getName() == ClReallocWrapperVarName) {
+              AllocCalls.emplace(Call, this->TaggedReallocWrapperGV);
+              NumOfTaggedRealloc++;
+            }
+          }
+        }
       }
     }
   }
@@ -165,22 +210,48 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 /// Tag dynamic memory allocation function calls with a call site identifier
 /// (the `Tag` argument) and replace the call (the `Call` argument) with a call
 /// to the appropriate fuzzalloc function (the `FuzzallocF` argument)
-CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *Call, Function *FuzzallocF,
+CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
+                                           GlobalObject *FuzzallocGO,
                                            Value *Tag) {
   // Copy the original allocation function call's arguments so that the tag is
   // the first argument passed to the fuzzalloc function
-  SmallVector<Value *, 3> WrapperArgs = {Tag};
-  WrapperArgs.insert(WrapperArgs.end(), Call->arg_begin(), Call->arg_end());
+  SmallVector<Value *, 3> FuzzallocArgs = {Tag};
+  FuzzallocArgs.insert(FuzzallocArgs.end(), OrigCall->arg_begin(),
+                       OrigCall->arg_end());
 
-  CallInst *AllocWrapperCall = CallInst::Create(FuzzallocF, WrapperArgs);
-  AllocWrapperCall->setCallingConv(FuzzallocF->getCallingConv());
-  if (!Call->use_empty()) {
-    Call->replaceAllUsesWith(AllocWrapperCall);
+  CallInst *FuzzallocCall;
+
+  if (auto *FuzzallocF = dyn_cast<Function>(FuzzallocGO)) {
+    // If the dynamic memory allocation function call is a direct function
+    // call, just call the appropriate function
+    FuzzallocCall = CallInst::Create(FuzzallocF, FuzzallocArgs);
+    FuzzallocCall->setCallingConv(FuzzallocF->getCallingConv());
+  } else if (auto *FuzzallocV = dyn_cast<GlobalVariable>(FuzzallocGO)) {
+    // if the dynamic memory allocation function call is an indirect function
+    // call via a global variable, load the function from the global variable
+    // and then call the loaded variable
+
+    auto *OrigLoad = cast<LoadInst>(OrigCall->getCalledValue());
+    auto *LoadFuzzallocV = new LoadInst(FuzzallocV, "", OrigLoad);
+    FuzzallocCall = CallInst::Create(LoadFuzzallocV, FuzzallocArgs);
+
+    // Replace the original load instruction's uses with an undef value so we
+    // can safely delete the load
+    if (!OrigLoad->use_empty()) {
+      OrigLoad->replaceAllUsesWith(UndefValue::get(OrigLoad->getType()));
+    }
+    OrigLoad->eraseFromParent();
   }
 
-  ReplaceInstWithInst(Call, AllocWrapperCall);
+  // Replace the original dynamic memory allocation function call
+  if (!OrigCall->use_empty()) {
+    OrigCall->replaceAllUsesWith(FuzzallocCall);
+  }
+  ReplaceInstWithInst(OrigCall, FuzzallocCall);
 
-  return AllocWrapperCall;
+  assert(FuzzallocCall && "Fuzzalloc function call should not be null");
+
+  return FuzzallocCall;
 }
 
 /// Sometimes a PUT does not call a dynamic memory allocation function
@@ -233,17 +304,37 @@ TagDynamicAlloc::tagDynAllocWrapperFunc(Function *OrigF,
   // Get all the dynamic memory allocation function calls that this custom
   // allocation wrapper function makes and replace them with a call to the
   // appropriate fuzzalloc function
-  std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(TaggedF, TLI);
+  std::map<CallInst *, GlobalObject *> AllocCalls =
+      getDynAllocCalls(TaggedF, TLI);
 
   Value *TagArg = TaggedF->arg_begin();
-  for (auto &AllocCallWithWrapperF : AllocCalls) {
-    CallInst *AllocCall = AllocCallWithWrapperF.first;
-    Function *WrapperF = AllocCallWithWrapperF.second;
+  for (auto &CallWithFuzzallocF : AllocCalls) {
+    CallInst *Call = CallWithFuzzallocF.first;
+    GlobalObject *FuzzallocGO = CallWithFuzzallocF.second;
 
-    tagDynAllocCall(AllocCall, WrapperF, TagArg);
+    tagDynAllocCall(Call, FuzzallocGO, TagArg);
   }
 
   return TaggedF;
+}
+
+// TODO document
+GlobalVariable *TagDynamicAlloc::tagDynAllocWrapperVar(Module &M,
+                                                       GlobalVariable *OrigGV,
+                                                       Function *FuzzallocF) {
+  assert(OrigGV->hasInitializer() &&
+         "Allocation wrapper variable has no initializer");
+  assert(isa<Function>(OrigGV->getInitializer()) &&
+         "Allocation wrapper variable's initializer is not a function");
+
+  Constant *C = M.getOrInsertGlobal(("__tagged_" + OrigGV->getName()).str(),
+                                    FuzzallocF->getType());
+  assert(isa<GlobalVariable>(C) && "Did not create a global variable");
+  GlobalVariable *NewGV = cast<GlobalVariable>(C);
+  NewGV->copyAttributesFrom(OrigGV);
+  NewGV->setInitializer(FuzzallocF);
+
+  return NewGV;
 }
 
 void TagDynamicAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -263,11 +354,13 @@ bool TagDynamicAlloc::doInitialization(Module &M) {
   // original dynamic memory allocation function, except that the first
   // argument is a tag that identifies the allocation site
   this->FuzzallocMallocF = checkFuzzallocFunc(M.getOrInsertFunction(
-      TaggedMallocName, Int8PtrTy, this->TagTy, this->SizeTTy));
-  this->FuzzallocCallocF = checkFuzzallocFunc(M.getOrInsertFunction(
-      TaggedCallocName, Int8PtrTy, this->TagTy, this->SizeTTy, this->SizeTTy));
-  this->FuzzallocReallocF = checkFuzzallocFunc(M.getOrInsertFunction(
-      TaggedReallocName, Int8PtrTy, this->TagTy, Int8PtrTy, this->SizeTTy));
+      FuzzallocMallocFuncName, Int8PtrTy, this->TagTy, this->SizeTTy));
+  this->FuzzallocCallocF = checkFuzzallocFunc(
+      M.getOrInsertFunction(FuzzallocCallocFuncName, Int8PtrTy, this->TagTy,
+                            this->SizeTTy, this->SizeTTy));
+  this->FuzzallocReallocF = checkFuzzallocFunc(
+      M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
+                            Int8PtrTy, this->SizeTTy));
 
   return false;
 }
@@ -286,54 +379,94 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
   //
   // Note that we have to do this here and not in `doInitialization` because we
   // cannot call `getAnalysis` in `doInitialization`
-  Function *CustomMallocF = nullptr;
-  Function *CustomCallocF = nullptr;
-  Function *CustomReallocF = nullptr;
+  Function *MallocWrapperF = nullptr;
+  Function *CallocWrapperF = nullptr;
+  Function *ReallocWrapperF = nullptr;
 
   if (!ClMallocWrapperFuncName.empty()) {
-    CustomMallocF = M.getFunction(ClMallocWrapperFuncName);
-    this->TaggedCustomMallocF = tagDynAllocWrapperFunc(CustomMallocF, TLI);
+    MallocWrapperF = M.getFunction(ClMallocWrapperFuncName);
+    this->TaggedMallocWrapperF = tagDynAllocWrapperFunc(MallocWrapperF, TLI);
   }
   if (!ClCallocWrapperFuncName.empty()) {
-    CustomCallocF = M.getFunction(ClCallocWrapperFuncName);
-    this->TaggedCustomCallocF = tagDynAllocWrapperFunc(CustomCallocF, TLI);
+    CallocWrapperF = M.getFunction(ClCallocWrapperFuncName);
+    this->TaggedCallocWrapperF = tagDynAllocWrapperFunc(CallocWrapperF, TLI);
   }
   if (!ClReallocWrapperFuncName.empty()) {
-    CustomReallocF = M.getFunction(ClReallocWrapperFuncName);
-    this->TaggedCustomReallocF = tagDynAllocWrapperFunc(CustomReallocF, TLI);
+    ReallocWrapperF = M.getFunction(ClReallocWrapperFuncName);
+    this->TaggedReallocWrapperF = tagDynAllocWrapperFunc(ReallocWrapperF, TLI);
+  }
+
+  // TODO document
+  GlobalVariable *MallocWrapperV = nullptr;
+  GlobalVariable *CallocWrapperV = nullptr;
+  GlobalVariable *ReallocWrapperV = nullptr;
+
+  if (!ClMallocWrapperVarName.empty()) {
+    MallocWrapperV = M.getGlobalVariable(ClMallocWrapperVarName);
+    if (MallocWrapperV) {
+      this->TaggedMallocWrapperGV =
+          tagDynAllocWrapperVar(M, MallocWrapperV, this->FuzzallocMallocF);
+    }
+  }
+  if (ClCallocWrapperVarName.empty()) {
+    CallocWrapperV = M.getGlobalVariable(ClCallocWrapperVarName);
+    if (CallocWrapperV) {
+      this->TaggedCallocWrapperGV =
+          tagDynAllocWrapperVar(M, CallocWrapperV, this->FuzzallocCallocF);
+    }
+  }
+  if (ClReallocWrapperVarName.empty()) {
+    GlobalVariable *ReallocWrapperV =
+        M.getGlobalVariable(ClReallocWrapperVarName);
+    if (ReallocWrapperV) {
+      this->TaggedReallocWrapperGV =
+          tagDynAllocWrapperVar(M, ReallocWrapperV, this->FuzzallocReallocF);
+    }
   }
 
   for (auto &F : M.functions()) {
     // Maps calls to malloc/calloc/realloc to the appropriate fuzzalloc
     // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
     // respectively)
-    std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
+    std::map<CallInst *, GlobalObject *> AllocCalls = getDynAllocCalls(&F, TLI);
 
     // Tag all of the dynamic allocation function calls with a random value
     // that represents the allocation site
-    for (auto &AllocCallWithWrapperF : AllocCalls) {
-      CallInst *AllocCall = AllocCallWithWrapperF.first;
-      Function *WrapperF = AllocCallWithWrapperF.second;
+    for (auto &CallWithFuzzallocF : AllocCalls) {
+      CallInst *Call = CallWithFuzzallocF.first;
+      GlobalObject *FuzzallocGO = CallWithFuzzallocF.second;
 
       // Generate the random tag
       ConstantInt *Tag =
           ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
 
-      tagDynAllocCall(AllocCall, WrapperF, Tag);
+      tagDynAllocCall(Call, FuzzallocGO, Tag);
     }
   }
 
-  // Delete the (untagged) custom dynamic allocation wrapper functions - they
-  // are now no longer called
-  if (CustomMallocF) {
-    CustomMallocF->eraseFromParent();
+  // Delete the (untagged) custom allocation wrapper functions - they are now
+  // no longer called
+  if (MallocWrapperF) {
+    MallocWrapperF->eraseFromParent();
   }
-  if (CustomCallocF) {
-    CustomCallocF->eraseFromParent();
+  if (CallocWrapperF) {
+    CallocWrapperF->eraseFromParent();
   }
-  if (CustomReallocF) {
-    CustomReallocF->eraseFromParent();
+  if (ReallocWrapperF) {
+    ReallocWrapperF->eraseFromParent();
   }
+
+  // Delete the (untagged) allocation wrapper variables - they are now no
+  // longer used
+  //  if (MallocWrapperV) {
+  //    MallocWrapperV->eraseFromParent();
+  //  }
+  //  if (CallocWrapperV) {
+  //    CallocWrapperV->eraseFromParent();
+  //  }
+  //  if (ReallocWrapperV) {
+  //    ReallocWrapperV->eraseFromParent();
+  //  }
 
   return true;
 }
