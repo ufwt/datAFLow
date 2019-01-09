@@ -85,6 +85,7 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
+  FunctionType *createTaggedFuncType(FunctionType *);
   std::map<CallInst *, Function *> getDynAllocCalls(Function *,
                                                     const TargetLibraryInfo *);
   CallInst *tagDynAllocCall(CallInst *, Function *, Value *);
@@ -123,6 +124,17 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
 
 char TagDynamicAlloc::ID = 0;
 
+/// Inserts the tag (i.e., the call site identifier) as the first argument to
+/// the given function type
+FunctionType *TagDynamicAlloc::createTaggedFuncType(FunctionType *OrigFTy) {
+  SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
+  TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
+                       OrigFTy->param_end());
+
+  return FunctionType::get(OrigFTy->getReturnType(), TaggedFParams,
+                           OrigFTy->isVarArg());
+}
+
 /// Maps all dynamic memory allocation function calls in the function `F` to
 /// the appropriate fuzzalloc function call.
 std::map<CallInst *, Function *>
@@ -131,7 +143,10 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
     if (auto *Call = dyn_cast<CallInst>(&*I)) {
-      auto *CalledFunc = Call->getCalledFunction();
+      // The result of a dynamic memory allocation function call is typically
+      // cast. To determine the actual function being called, we must remove
+      // these casts
+      auto *CalledFunc = Call->getCalledValue()->stripPointerCasts();
 
       if (!ClMallocWrapperFuncName.empty() && CalledFunc &&
           CalledFunc->getName() == ClMallocWrapperFuncName) {
@@ -172,16 +187,47 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
   FuzzallocArgs.insert(FuzzallocArgs.end(), OrigCall->arg_begin(),
                        OrigCall->arg_end());
 
-  CallInst *FuzzallocCall = CallInst::Create(FuzzallocF, FuzzallocArgs);
+  Value *FuzzallocCallee;
+  IRBuilder<> IRB(OrigCall);
+
+  if (auto *ConstExpr = dyn_cast<ConstantExpr>(OrigCall->getCalledValue())) {
+    // Sometimes the result of the original dynamic memory allocation function
+    // call is cast to some other pointer type. Because this is a function
+    // call, the underlying type should still be a FunctionType (which we check
+    // in the various asserts)
+
+    // I think that we can safely assume that function calls to dynamic memory
+    // allocation functions can only be bitcast
+    auto *BitCast = cast<BitCastInst>(ConstExpr->getAsInstruction());
+
+    assert(isa<FunctionType>(BitCast->getDestTy()->getPointerElementType()) &&
+           "Must be bitcast of a function call");
+    Type *OrigBitCastTy = BitCast->getDestTy()->getPointerElementType();
+
+    // Add the tag (i.e., the call site identifier) as the first argument to
+    // the cast function type
+    Type *NewBitCastTy =
+        createTaggedFuncType(cast<FunctionType>(OrigBitCastTy));
+
+    // The callee is a cast version of the fuzzalloc function
+    FuzzallocCallee =
+        IRB.CreateBitCast(FuzzallocF, NewBitCastTy->getPointerTo());
+
+    // getAsInstruction() leaves the instruction floating around and unattached
+    // to anything, so we must manually delete it
+    delete BitCast;
+  } else {
+    // The function call result was not cast, so there is no need to do
+    // anything to the callee
+    FuzzallocCallee = FuzzallocF;
+  }
+
+  auto *FuzzallocCall = IRB.CreateCall(FuzzallocCallee, FuzzallocArgs);
   FuzzallocCall->setCallingConv(FuzzallocF->getCallingConv());
 
   // Replace the original dynamic memory allocation function call
-  if (!OrigCall->use_empty()) {
-    OrigCall->replaceAllUsesWith(FuzzallocCall);
-  }
-  ReplaceInstWithInst(OrigCall, FuzzallocCall);
-
-  assert(FuzzallocCall && "Fuzzalloc function call should not be null");
+  OrigCall->replaceAllUsesWith(FuzzallocCall);
+  OrigCall->eraseFromParent();
 
   return FuzzallocCall;
 }
@@ -202,16 +248,10 @@ Function *
 TagDynamicAlloc::tagDynAllocWrapperFunc(Function *OrigF,
                                         const TargetLibraryInfo *TLI) {
   assert(OrigF && "Custom allocation wrapper function is null");
-  FunctionType *OrigFTy = OrigF->getFunctionType();
 
   // Add the tag (i.e., call site identifier) as the first argument to the
   // custom allocation wrapper function
-  SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
-  TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
-                       OrigFTy->param_end());
-
-  FunctionType *TaggedFTy = FunctionType::get(
-      OrigFTy->getReturnType(), TaggedFParams, OrigFTy->isVarArg());
+  FunctionType *TaggedFTy = createTaggedFuncType(OrigF->getFunctionType());
 
   // Make a new version of the custom allocation wrapper function, with
   // "__tagged_" preprended to the name and that accepts a tag as the first
