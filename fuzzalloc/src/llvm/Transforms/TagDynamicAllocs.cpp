@@ -9,8 +9,9 @@
 ///
 /// \file
 /// This pass tags calls to dynamic memory allocation functions (e.g.,
-/// \p malloc, \p calloc, etc.) with a randomly-generated identifier. The
-/// original function calls are redirected to the fuzzalloc version.
+/// \p malloc, \p calloc, etc.) with a randomly-generated identifier that is
+/// understood by the fuzzalloc memory allocation library. The original
+/// function calls are redirected to their corresponding fuzzalloc version.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -26,6 +27,8 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
@@ -38,30 +41,11 @@ using namespace llvm;
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
-static cl::OptionCategory
-    WrapperFuncCat("Memory allocation wrapper function options",
-                   "Sometimes malloc/calloc/realloc aren't called directly, "
-                   "but via a custom wrapper function. These options let us "
-                   "tag the wrapper function instead");
-
 static cl::opt<std::string>
-    ClMallocWrapperFuncName("malloc-wrapper-func",
-                            cl::desc("Malloc wrapper function to tag"),
-                            cl::cat(WrapperFuncCat));
+    ClWhitelist("alloc-whitelist",
+                cl::desc("Path to memory allocation whitelist file"));
 
-static cl::opt<std::string>
-    ClCallocWrapperFuncName("calloc-wrapper-func",
-                            cl::desc("Calloc wrapper function to tag"),
-                            cl::cat(WrapperFuncCat));
-
-static cl::opt<std::string>
-    ClReallocWrapperFuncName("realloc-wrapper-func",
-                             cl::desc("Realloc wrapper function to tag"),
-                             cl::cat(WrapperFuncCat));
-
-STATISTIC(NumOfTaggedMalloc, "Number of malloc calls tagged.");
-STATISTIC(NumOfTaggedCalloc, "Number of calloc calls tagged.");
-STATISTIC(NumOfTaggedRealloc, "Number of realloc calls tagged.");
+STATISTIC(NumOfTaggedCalls, "Number of tagged function calls.");
 
 namespace {
 
@@ -69,27 +53,42 @@ static constexpr char *const FuzzallocMallocFuncName = "__tagged_malloc";
 static constexpr char *const FuzzallocCallocFuncName = "__tagged_calloc";
 static constexpr char *const FuzzallocReallocFuncName = "__tagged_realloc";
 
+/// Whitelist of custom dynamic memory allocation wrapper functions
+class FuzzallocWhitelist {
+private:
+  std::unique_ptr<SpecialCaseList> SCL;
+
+public:
+  FuzzallocWhitelist() = default;
+
+  FuzzallocWhitelist(std::unique_ptr<SpecialCaseList> List)
+      : SCL(std::move(List)){};
+
+  bool isIn(const Function &F) const {
+    return SCL && SCL->inSection("fuzzalloc", "fun", F.getName());
+  }
+};
+
 /// TagDynamicAlloc: Tag dynamic memory allocation function calls (\p malloc,
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
-/// their call site) and call the fuzzalloc function instead.
+/// their call site) and call the fuzzalloc function instead
 class TagDynamicAlloc : public ModulePass {
 private:
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
   Function *FuzzallocReallocF;
 
-  Function *TaggedMallocWrapperF;
-  Function *TaggedCallocWrapperF;
-  Function *TaggedReallocWrapperF;
+  FuzzallocWhitelist Whitelist;
 
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  FunctionType *createTaggedFuncType(FunctionType *);
+  FunctionType *translateTaggedFuncType(FunctionType *);
+  Function *translateTaggedFunc(Function *);
   std::map<CallInst *, Function *> getDynAllocCalls(Function *,
                                                     const TargetLibraryInfo *);
   CallInst *tagDynAllocCall(CallInst *, Function *, Value *);
-  Function *tagDynAllocWrapperFunc(Function *, const TargetLibraryInfo *);
+  Function *tagDynAllocFunc(Function *, const TargetLibraryInfo *);
 
 public:
   static char ID;
@@ -122,11 +121,28 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
          !isAllocLikeFn(V, TLI, LookThroughBitCast);
 }
 
+static FuzzallocWhitelist getWhitelist() {
+  if (ClWhitelist.empty()) {
+    return FuzzallocWhitelist();
+  }
+
+  if (!sys::fs::exists(ClWhitelist)) {
+    std::string Err;
+    raw_string_ostream Stream(Err);
+    Stream << "fuzzalloc whitelist does not exist at " << ClWhitelist;
+    report_fatal_error(Err);
+  }
+
+  return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
+}
+
 char TagDynamicAlloc::ID = 0;
 
-/// Inserts the tag (i.e., the call site identifier) as the first argument to
-/// the given function type
-FunctionType *TagDynamicAlloc::createTaggedFuncType(FunctionType *OrigFTy) {
+/// Translates a function type to its tagged version.
+///
+/// This inserts a tag (i.e., the call site identifier) as the first argument
+/// to the given function type.
+FunctionType *TagDynamicAlloc::translateTaggedFuncType(FunctionType *OrigFTy) {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
   TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
                        OrigFTy->param_end());
@@ -135,8 +151,25 @@ FunctionType *TagDynamicAlloc::createTaggedFuncType(FunctionType *OrigFTy) {
                            OrigFTy->isVarArg());
 }
 
+/// Translates a function to its tagged version.
+///
+/// This inserts a tag (i.e., the call site identifier) as the first argument
+/// and prepends the function name with "__tagged_".
+Function *TagDynamicAlloc::translateTaggedFunc(Function *OrigF) {
+  FunctionType *NewFTy = translateTaggedFuncType(OrigF->getFunctionType());
+  Twine NewFName = "__tagged_" + OrigF->getName();
+
+  auto *NewF = OrigF->getParent()->getOrInsertFunction(NewFName.str(), NewFTy);
+  assert(isa<Function>(NewF) && "Translated tagged function not a function");
+
+  return cast<Function>(NewF);
+}
+
 /// Maps all dynamic memory allocation function calls in the function `F` to
-/// the appropriate fuzzalloc function call.
+/// the appropriate tagged function call.
+///
+/// For example, `malloc` maps to `__tagged_malloc`, while functions listed in
+/// the fuzzalloc whitelist are mapped to their tagged versions.
 std::map<CallInst *, Function *>
 TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
   std::map<CallInst *, Function *> AllocCalls;
@@ -146,29 +179,22 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
       // The result of a dynamic memory allocation function call is typically
       // cast. To determine the actual function being called, we must remove
       // these casts
-      auto *CalledFunc = Call->getCalledValue()->stripPointerCasts();
+      auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
 
-      if (!ClMallocWrapperFuncName.empty() && CalledFunc &&
-          CalledFunc->getName() == ClMallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedMallocWrapperF);
-        NumOfTaggedMalloc++;
-      } else if (isMallocLikeFn(Call, TLI)) {
+      if (isMallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocMallocF);
-        NumOfTaggedMalloc++;
-      } else if (!ClCallocWrapperFuncName.empty() && CalledFunc &&
-                 CalledFunc->getName() == ClCallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedCallocWrapperF);
-        NumOfTaggedCalloc++;
+        NumOfTaggedCalls++;
       } else if (isCallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocCallocF);
-        NumOfTaggedCalloc++;
-      } else if (!ClReallocWrapperFuncName.empty() && CalledFunc &&
-                 CalledFunc->getName() == ClReallocWrapperFuncName) {
-        AllocCalls.emplace(Call, this->TaggedReallocWrapperF);
-        NumOfTaggedRealloc++;
+        NumOfTaggedCalls++;
       } else if (isReallocLikeFn(Call, TLI)) {
         AllocCalls.emplace(Call, this->FuzzallocReallocF);
-        NumOfTaggedRealloc++;
+        NumOfTaggedCalls++;
+      } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
+        if (this->Whitelist.isIn(*CalledFunc)) {
+          AllocCalls.emplace(Call, translateTaggedFunc(CalledFunc));
+          NumOfTaggedCalls++;
+        }
       }
     }
   }
@@ -178,11 +204,11 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 
 /// Tag dynamic memory allocation function calls with a call site identifier
 /// (the `Tag` argument) and replace the call (the `Call` argument) with a call
-/// to the appropriate fuzzalloc function (the `FuzzallocF` argument)
+/// to the appropriate tagged function (the `TaggedF` argument)
 CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
-                                           Function *FuzzallocF, Value *Tag) {
+                                           Function *TaggedF, Value *Tag) {
   // Copy the original allocation function call's arguments so that the tag is
-  // the first argument passed to the fuzzalloc function
+  // the first argument passed to the tagged function
   SmallVector<Value *, 3> FuzzallocArgs = {Tag};
   FuzzallocArgs.insert(FuzzallocArgs.end(), OrigCall->arg_begin(),
                        OrigCall->arg_end());
@@ -207,11 +233,10 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
     // Add the tag (i.e., the call site identifier) as the first argument to
     // the cast function type
     Type *NewBitCastTy =
-        createTaggedFuncType(cast<FunctionType>(OrigBitCastTy));
+        translateTaggedFuncType(cast<FunctionType>(OrigBitCastTy));
 
-    // The callee is a cast version of the fuzzalloc function
-    FuzzallocCallee =
-        IRB.CreateBitCast(FuzzallocF, NewBitCastTy->getPointerTo());
+    // The callee is a cast version of the tagged function
+    FuzzallocCallee = IRB.CreateBitCast(TaggedF, NewBitCastTy->getPointerTo());
 
     // getAsInstruction() leaves the instruction floating around and unattached
     // to anything, so we must manually delete it
@@ -219,11 +244,11 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
   } else {
     // The function call result was not cast, so there is no need to do
     // anything to the callee
-    FuzzallocCallee = FuzzallocF;
+    FuzzallocCallee = TaggedF;
   }
 
   auto *FuzzallocCall = IRB.CreateCall(FuzzallocCallee, FuzzallocArgs);
-  FuzzallocCall->setCallingConv(FuzzallocF->getCallingConv());
+  FuzzallocCall->setCallingConv(TaggedF->getCallingConv());
 
   // Replace the original dynamic memory allocation function call
   OrigCall->replaceAllUsesWith(FuzzallocCall);
@@ -244,23 +269,15 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
 /// \p realloc is eventually (if at all) called by the custom allocation
 /// wrapper function, the already-generated tag is passed through to the
 /// appropriate fuzzalloc function.
-Function *
-TagDynamicAlloc::tagDynAllocWrapperFunc(Function *OrigF,
-                                        const TargetLibraryInfo *TLI) {
-  assert(OrigF && "Custom allocation wrapper function is null");
-
-  // Add the tag (i.e., call site identifier) as the first argument to the
-  // custom allocation wrapper function
-  FunctionType *TaggedFTy = createTaggedFuncType(OrigF->getFunctionType());
-
+///
+/// A whitelist of custom allocation wrapper functions can be passed through a
+/// command-line argument.
+Function *TagDynamicAlloc::tagDynAllocFunc(Function *OrigF,
+                                           const TargetLibraryInfo *TLI) {
   // Make a new version of the custom allocation wrapper function, with
   // "__tagged_" preprended to the name and that accepts a tag as the first
   // argument to the function
-  Function *TaggedF =
-      Function::Create(TaggedFTy, OrigF->getLinkage(),
-                       "__tagged_" + OrigF->getName(), OrigF->getParent());
-  TaggedF->setCallingConv(OrigF->getCallingConv());
-  TaggedF->setAttributes(OrigF->getAttributes());
+  Function *TaggedF = translateTaggedFunc(OrigF);
 
   // Map the original function arguments to the new version of the custom
   // allocation wrapper function. Skip the tag argument (i.e., first argument)
@@ -275,15 +292,13 @@ TagDynamicAlloc::tagDynAllocWrapperFunc(Function *OrigF,
 
   // Get all the dynamic memory allocation function calls that this custom
   // allocation wrapper function makes and replace them with a call to the
-  // appropriate fuzzalloc function
+  // appropriate tagged function (which may a fuzzalloc function or another
+  // whitelisted function)
   std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(TaggedF, TLI);
 
   Value *TagArg = TaggedF->arg_begin();
-  for (auto &CallWithFuzzallocF : AllocCalls) {
-    CallInst *Call = CallWithFuzzallocF.first;
-    Function *FuzzallocF = CallWithFuzzallocF.second;
-
-    tagDynAllocCall(Call, FuzzallocF, TagArg);
+  for (auto &CallWithTaggedF : AllocCalls) {
+    tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, TagArg);
   }
 
   return TaggedF;
@@ -301,6 +316,8 @@ bool TagDynamicAlloc::doInitialization(Module &M) {
 
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   this->SizeTTy = DL.getIntPtrType(C);
+
+  this->Whitelist = getWhitelist();
 
   // Fuzzalloc's malloc/calloc/realloc functions take the same arguments as the
   // original dynamic memory allocation function, except that the first
@@ -324,60 +341,39 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
-  // Sometimes the PUT may use a custom memory allocator (that may or may not
-  // wrap the standard malloc/calloc/realloc functions). The user can specify
-  // the names of the custom memory allocator functions (as command-line args)
-  // and calls to these functions will be tagged instead.
-  //
-  // Note that we have to do this here and not in `doInitialization` because we
-  // cannot call `getAnalysis` in `doInitialization`
-  Function *MallocWrapperF = nullptr;
-  Function *CallocWrapperF = nullptr;
-  Function *ReallocWrapperF = nullptr;
-
-  if (!ClMallocWrapperFuncName.empty()) {
-    MallocWrapperF = M.getFunction(ClMallocWrapperFuncName);
-    this->TaggedMallocWrapperF = tagDynAllocWrapperFunc(MallocWrapperF, TLI);
-  }
-  if (!ClCallocWrapperFuncName.empty()) {
-    CallocWrapperF = M.getFunction(ClCallocWrapperFuncName);
-    this->TaggedCallocWrapperF = tagDynAllocWrapperFunc(CallocWrapperF, TLI);
-  }
-  if (!ClReallocWrapperFuncName.empty()) {
-    ReallocWrapperF = M.getFunction(ClReallocWrapperFuncName);
-    this->TaggedReallocWrapperF = tagDynAllocWrapperFunc(ReallocWrapperF, TLI);
-  }
+  SmallVector<Function *, 8> FuncsToDelete;
 
   for (auto &F : M.functions()) {
-    // Maps calls to malloc/calloc/realloc to the appropriate fuzzalloc
-    // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
-    // respectively)
-    std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
+    if (this->Whitelist.isIn(F)) {
+      // Replace whitelisted functions with a tagged version
+      tagDynAllocFunc(&F, TLI);
+      FuncsToDelete.push_back(&F);
+    } else {
+      // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc
+      // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
+      // respectively), as well as whitelisted function calls to their tagged
+      // versions
+      std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
 
-    // Tag all of the dynamic allocation function calls with a random value
-    // that represents the allocation site
-    for (auto &CallWithFuzzallocF : AllocCalls) {
-      CallInst *Call = CallWithFuzzallocF.first;
-      Function *FuzzallocF = CallWithFuzzallocF.second;
+      // Tag all of the dynamic allocation function calls with a random value
+      // that represents the allocation site
+      for (auto &CallWithTaggedF : AllocCalls) {
+        // Generate the random tag
+        ConstantInt *Tag =
+            ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
 
-      // Generate the random tag
-      ConstantInt *Tag =
-          ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
-
-      tagDynAllocCall(Call, FuzzallocF, Tag);
+        // Tag the function call
+        tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, Tag);
+      }
     }
   }
 
-  // Delete the (untagged) custom allocation wrapper functions - they are now
-  // no longer called
-  if (MallocWrapperF) {
-    MallocWrapperF->eraseFromParent();
-  }
-  if (CallocWrapperF) {
-    CallocWrapperF->eraseFromParent();
-  }
-  if (ReallocWrapperF) {
-    ReallocWrapperF->eraseFromParent();
+  // Delete the old (untagged) memory allocation functions
+  for (auto *F : FuncsToDelete) {
+    for (auto *U : F->users()) {
+      U->dropAllReferences();
+    }
+    F->eraseFromParent();
   }
 
   return true;
