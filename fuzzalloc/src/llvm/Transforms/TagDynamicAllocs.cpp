@@ -41,6 +41,9 @@ using namespace llvm;
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
+static cl::opt<bool> ClRandomTags("random-tags",
+                                  cl::desc("Generate tags randomly"));
+
 static cl::opt<std::string>
     ClWhitelist("alloc-whitelist",
                 cl::desc("Path to memory allocation whitelist file"));
@@ -343,6 +346,8 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
 
   SmallVector<Function *, 8> FuncsToDelete;
 
+  tag_t TagVal = DEFAULT_TAG;
+
   for (auto &F : M.functions()) {
     if (this->Whitelist.isIn(F)) {
       // Replace whitelisted functions with a tagged version
@@ -358,9 +363,11 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
       // Tag all of the dynamic allocation function calls with a random value
       // that represents the allocation site
       for (auto &CallWithTaggedF : AllocCalls) {
-        // Generate the random tag
-        ConstantInt *Tag =
-            ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
+        // Either generate a random tag or increment a counter
+        TagVal = ClRandomTags ? RAND(DEFAULT_TAG + 1, TAG_MAX) : TagVal + 1;
+
+        // Generate the tag
+        ConstantInt *Tag = ConstantInt::get(this->TagTy, TagVal);
 
         // Tag the function call
         tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, Tag);
