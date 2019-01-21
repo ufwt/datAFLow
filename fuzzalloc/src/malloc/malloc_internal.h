@@ -145,7 +145,7 @@ struct pool_t {
 
 /// Default pool size (in bytes). Configurable at compile-time
 #ifndef POOL_SIZE
-#define POOL_SIZE 20000UL
+#define POOL_SIZE 80000UL
 #endif
 
 /// Pool alignment. This ensures that the upper \p NUM_TAG_BITS of the pool

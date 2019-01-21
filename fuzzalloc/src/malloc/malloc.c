@@ -76,7 +76,8 @@ do_abort:
 }
 
 void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
-  DEBUG_MSG("__tagged_malloc(0x%x, %lu)\n", alloc_site_tag, size);
+  DEBUG_MSG("__tagged_malloc(0x%x, %lu) called from %p\n", alloc_site_tag, size,
+            __builtin_return_address(0));
 
   if (size == 0) {
     return NULL;
@@ -158,6 +159,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
     SET_CHUNK_SIZE(free_chunk, pool_size - chunk_size);
     SET_CHUNK_FREE(free_chunk);
+    SET_PREV_CHUNK_IN_USE(free_chunk);
 
     free_chunk->prev = free_chunk->next = NULL;
 
@@ -217,6 +219,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
     SET_CHUNK_SIZE(free_chunk, free_chunk_size - chunk_size);
     SET_CHUNK_FREE(free_chunk);
+    SET_PREV_CHUNK_IN_USE(free_chunk);
 
     free_chunk->prev = chunk->prev;
     free_chunk->next = chunk->next;
@@ -235,7 +238,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 }
 
 void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
-  DEBUG_MSG("__tagged_calloc(0x%x, %lu, %lu)\n", alloc_site_tag, nmemb, size);
+  DEBUG_MSG("__tagged_calloc(0x%x, %lu, %lu) called from %p\n", alloc_site_tag,
+            nmemb, size, __builtin_return_address(0));
 
   // Adapted from muslc
 
@@ -254,7 +258,8 @@ void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
 }
 
 void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
-  DEBUG_MSG("__tagged_realloc(0x%x, %p, %lu)\n", alloc_site_tag, ptr, size);
+  DEBUG_MSG("__tagged_realloc(0x%x, %p, %lu) called from %p\n", alloc_site_tag,
+            ptr, size, __builtin_return_address(0));
 
   void *mem = NULL;
 
@@ -295,6 +300,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       struct chunk_t *free_chunk = NEXT_CHUNK(orig_chunk);
       SET_CHUNK_SIZE(free_chunk, orig_chunk_size - new_chunk_size);
       SET_CHUNK_FREE(free_chunk);
+      SET_PREV_CHUNK_IN_USE(free_chunk);
 
       free_chunk->prev = pool->free_list->prev;
       free_chunk->next = pool->free_list;
@@ -339,6 +345,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       struct chunk_t *free_chunk = NEXT_CHUNK(new_chunk);
       SET_CHUNK_SIZE(free_chunk, free_chunk_size - new_chunk_size);
       SET_CHUNK_FREE(free_chunk);
+      SET_PREV_CHUNK_IN_USE(free_chunk);
 
       free_chunk->prev = new_chunk->prev;
       free_chunk->next = new_chunk->next;
@@ -373,7 +380,7 @@ void *realloc(void *ptr, size_t size) {
 }
 
 void free(void *ptr) {
-  DEBUG_MSG("free(%p)\n", ptr);
+  DEBUG_MSG("free(%p) called from %p\n", ptr, __builtin_return_address(0));
 
   if (!ptr) {
     return;
@@ -391,6 +398,8 @@ void free(void *ptr) {
   // If the previous chunk is free, coalesce
   if (PREV_CHUNK_FREE(chunk)) {
     struct chunk_t *prev_chunk = PREV_CHUNK(chunk);
+    DEBUG_MSG("previous chunk at %p (size %lu bytes) is free - coalescing\n",
+              prev_chunk, PREV_CHUNK_SIZE(chunk));
 
     // Free chunks must always be preceeded by an in use chunk
     assert(PREV_CHUNK_IN_USE(prev_chunk));
@@ -401,6 +410,9 @@ void free(void *ptr) {
 
   // If the next chunk is free, coalesce
   if (CHUNK_FREE(next_chunk)) {
+    DEBUG_MSG("next chunk at %p (size %lu bytes) is free - coalescing\n",
+              next_chunk, CHUNK_SIZE(next_chunk));
+
     chunk_size += CHUNK_SIZE(next_chunk);
     next_chunk = NEXT_CHUNK(next_chunk);
 

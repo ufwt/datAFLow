@@ -48,7 +48,8 @@ static cl::opt<std::string>
     ClWhitelist("alloc-whitelist",
                 cl::desc("Path to memory allocation whitelist file"));
 
-STATISTIC(NumOfTaggedCalls, "Number of tagged function calls.");
+STATISTIC(NumOfTaggedCalls,
+          "Number of tagged dynamic memory allocation function calls.");
 
 namespace {
 
