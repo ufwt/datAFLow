@@ -23,8 +23,8 @@
 #include <assert.h>
 #include <stdio.h>
 
-#define DEBUG_MSG(format, ...)                                                 \
-  fprintf(stderr, "%s(): " format, __func__, ##__VA_ARGS__)
+#define DEBUG_MSG(format, args...)                                             \
+  fprintf(stderr, "[%s:%d] %s: " format, __FILE__, __LINE__, __func__, ##args)
 #else
 #define DEBUG_MSG(format, ...)
 #define assert(x)
@@ -129,6 +129,8 @@ struct chunk_t {
 //===-- Allocation pool format --------------------------------------------===//
 
 struct pool_t {
+  /// Pool size (in bytes)
+  size_t size;
   /// Free list for this pool
   struct chunk_t *free_list;
   /// First chunk in this pool

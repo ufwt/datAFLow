@@ -120,7 +120,6 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // SIGSEGVs by unmapping a page that is partly used, only unmap at the page
     // level
     void *pool_base = (void *)align((uintptr_t)mmap_base, POOL_ALIGNMENT);
-    DEBUG_MSG("allocation pool base at %p\n", pool_base);
 
     ptrdiff_t adjust = (pool_base - mmap_base) / page_size * page_size;
     if (adjust > 0) {
@@ -141,6 +140,9 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
       pool_size -= adjust;
     }
 
+    DEBUG_MSG("allocation pool base at %p (size %lu bytes)\n", pool_base,
+              pool_size);
+
     // Create an entry chunk that can hold the amount of data requested by the
     // user. Chunks have their own alignment constraints that must satisfy the
     // malloc API
@@ -157,6 +159,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // Create the initial free chunk following the newly-created entry chunk.
     // This chunk will later be insert into the allocation pool's free list
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
+    // The initial free chunk should not be outside of the allocation pool
+    assert((ptrdiff_t)free_chunk < (ptrdiff_t)pool_base + pool_size);
     SET_CHUNK_SIZE(free_chunk, pool_size - chunk_size);
     SET_CHUNK_FREE(free_chunk);
     SET_PREV_CHUNK_IN_USE(free_chunk);
@@ -171,6 +175,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // Finally, initialise the allocation pool's metadata and insert the free
     // chunk into the pool's free list
     struct pool_t *pool = (void *)pool_base;
+    pool->size = pool_size;
     pool->entry = chunk;
     pool->free_list = free_chunk;
 
@@ -217,6 +222,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // new free chunk. Insert this free chunk into the allocation pool's free
     // list
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
+    // The new free chunk should not be outside of the allocation pool
+    assert((ptrdiff_t)free_chunk < (ptrdiff_t)pool + pool->size);
     SET_CHUNK_SIZE(free_chunk, free_chunk_size - chunk_size);
     SET_CHUNK_FREE(free_chunk);
     SET_PREV_CHUNK_IN_USE(free_chunk);
@@ -298,6 +305,9 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       // new free chunk. Insert this free chunk into the head of the allocation
       // pool's free list
       struct chunk_t *free_chunk = NEXT_CHUNK(orig_chunk);
+      // Because the allocated memory has shrunk, the remaining memory (and now
+      // newly-free chunk) should not be outside of the allocation pool
+      assert((ptrdiff_t)free_chunk < (ptrdiff_t)pool + pool->size);
       SET_CHUNK_SIZE(free_chunk, orig_chunk_size - new_chunk_size);
       SET_CHUNK_FREE(free_chunk);
       SET_PREV_CHUNK_IN_USE(free_chunk);
@@ -343,6 +353,8 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       // into a new free chunk. Insert this free chunk into the allocation
       // pool's free list
       struct chunk_t *free_chunk = NEXT_CHUNK(new_chunk);
+      // TODO handle this
+      assert((ptrdiff_t)free_chunk < (ptrdiff_t)pool + pool->size);
       SET_CHUNK_SIZE(free_chunk, free_chunk_size - new_chunk_size);
       SET_CHUNK_FREE(free_chunk);
       SET_PREV_CHUNK_IN_USE(free_chunk);
@@ -393,13 +405,18 @@ void free(void *ptr) {
   // Sanity check that the chunk metadata hasn't been corrupted in some way
   in_use_sanity_check(chunk);
 
+  struct pool_t *pool = GET_POOL(GET_POOL_TAG(chunk));
+
   struct chunk_t *next_chunk = NEXT_CHUNK(chunk);
+  // TODO handle this
+  assert((ptrdiff_t)next_chunk < (ptrdiff_t)pool + pool->size);
 
   // If the previous chunk is free, coalesce
   if (PREV_CHUNK_FREE(chunk)) {
     struct chunk_t *prev_chunk = PREV_CHUNK(chunk);
-    DEBUG_MSG("previous chunk at %p (size %lu bytes) is free - coalescing\n",
-              prev_chunk, PREV_CHUNK_SIZE(chunk));
+    DEBUG_MSG(
+        "previous chunk at %p (size %lu bytes) is also free - coalescing\n",
+        prev_chunk, PREV_CHUNK_SIZE(chunk));
 
     // Free chunks must always be preceeded by an in use chunk
     assert(PREV_CHUNK_IN_USE(prev_chunk));
@@ -410,22 +427,31 @@ void free(void *ptr) {
 
   // If the next chunk is free, coalesce
   if (CHUNK_FREE(next_chunk)) {
-    DEBUG_MSG("next chunk at %p (size %lu bytes) is free - coalescing\n",
+    DEBUG_MSG("next chunk at %p (size %lu bytes) is also free - coalescing\n",
               next_chunk, CHUNK_SIZE(next_chunk));
 
     chunk_size += CHUNK_SIZE(next_chunk);
-    next_chunk = NEXT_CHUNK(next_chunk);
 
-    // Free chunks must always be followed by an in use chunk
-    assert(CHUNK_IN_USE(next_chunk));
+    next_chunk = NEXT_CHUNK(next_chunk);
+    if ((ptrdiff_t)next_chunk >= (ptrdiff_t)pool + pool->size) {
+      next_chunk = NULL;
+    } else {
+      // Free chunks must always be followed by an in use chunk
+      assert(CHUNK_IN_USE(next_chunk));
+    }
   }
 
   // Update the size of the current chunk (about to be free)
   SET_CHUNK_SIZE(chunk, chunk_size);
   // Mark the current chunk as free
   SET_CHUNK_FREE(chunk);
-  // Mark the next chunk's previous chunk (i.e., the current chunk) as free
-  SET_PREV_CHUNK_FREE(next_chunk);
+  // Mark the next chunk's (if it exists) previous chunk (i.e., the current
+  // chunk) as free
+  if (next_chunk) {
+    SET_PREV_CHUNK_FREE(next_chunk);
+  }
+
+  DEBUG_MSG("new freed chunk at %p (size %lu bytes)\n", chunk, chunk_size);
 
   // Insert the newly-freed chunk at the head of the allocation pool's free
   // list
