@@ -98,9 +98,9 @@ public:
   static char ID;
   TagDynamicAlloc() : ModulePass(ID) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-  bool doInitialization(Module &M) override;
-  bool runOnModule(Module &M) override;
+  void getAnalysisUsage(AnalysisUsage &) const override;
+  bool doInitialization(Module &) override;
+  bool runOnModule(Module &) override;
 };
 
 } // end anonymous namespace

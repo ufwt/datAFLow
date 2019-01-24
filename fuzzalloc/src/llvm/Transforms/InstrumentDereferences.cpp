@@ -27,6 +27,11 @@ using namespace llvm;
 
 #define DEBUG_TYPE "instrument-deref"
 
+static cl::opt<bool> ClInstrumentLoads("instrument-loads",
+                                       cl::desc("Instrument loads"));
+static cl::opt<bool> ClInstrumentStores("instrument-stores",
+                                        cl::desc("Instrument stores"));
+
 STATISTIC(NumOfInstrumentedDereferences,
           "Number of pointer dereferences instrumented.");
 
@@ -35,12 +40,24 @@ namespace {
 static constexpr char *const InstrumentationName = "__ptr_deref";
 
 class InstrumentDereference : public ModulePass {
+private:
+  IntegerType *Int64Ty;
+  IntegerType *TagTy;
+
+  ConstantInt *TagShiftSize;
+  ConstantInt *TagMask;
+
+  Function *InstrumentationF;
+
+  void doInstrumentDeref(Instruction *, Value *);
+
 public:
   static char ID;
   InstrumentDereference() : ModulePass(ID) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-  bool runOnModule(Module &M) override;
+  bool doInitialization(Module &) override;
+  void getAnalysisUsage(AnalysisUsage &) const override;
+  bool runOnModule(Module &) override;
 };
 
 } // end anonymous namespace
@@ -76,27 +93,51 @@ static bool instrumentCheck(ObjectSizeOffsetVisitor &ObjSizeVis, Value *Addr,
          Size - uint64_t(Offset) < TypeSize / CHAR_BIT;
 }
 
+/// Instrument the Instruction `I` that dereferences `Pointer`.
+void InstrumentDereference::doInstrumentDeref(Instruction *I, Value *Pointer) {
+  IRBuilder<> IRB(I);
+
+  auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
+  auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
+                               this->TagMask);
+  auto *PoolIdCast = IRB.CreateIntCast(PoolId, this->TagTy, false);
+  auto *InstCall = IRB.CreateCall(this->InstrumentationF, PoolIdCast);
+
+  NumOfInstrumentedDereferences++;
+}
+
 void InstrumentDereference::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
+bool InstrumentDereference::doInitialization(Module &M) {
+  LLVMContext &C = M.getContext();
+  const DataLayout &DL = M.getDataLayout();
+
+  IntegerType *SizeTTy = DL.getIntPtrType(C);
+
+  this->Int64Ty = Type::getInt64Ty(C);
+  this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
+  this->TagShiftSize =
+      ConstantInt::get(SizeTTy, NUM_USABLE_BITS - NUM_TAG_BITS);
+  this->TagMask = ConstantInt::get(this->TagTy, (1 << NUM_TAG_BITS) - 1);
+
+  return false;
+}
+
 bool InstrumentDereference::runOnModule(Module &M) {
+  assert(ClInstrumentLoads ||
+         ClInstrumentStores && "Must instrument either loads or stores");
+
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
   Type *VoidTy = Type::getVoidTy(C);
-  IntegerType *Int64Ty = Type::getInt64Ty(C);
-  IntegerType *TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
-  IntegerType *SizeTTy = DL.getIntPtrType(C);
 
-  ConstantInt *TagShiftSize =
-      ConstantInt::get(SizeTTy, NUM_USABLE_BITS - NUM_TAG_BITS);
-  ConstantInt *TagMask = ConstantInt::get(TagTy, (1 << NUM_TAG_BITS) - 1);
-
-  Function *InstrumentationF = checkInstrumentationFunc(
-      M.getOrInsertFunction(InstrumentationName, VoidTy, TagTy));
+  this->InstrumentationF = checkInstrumentationFunc(
+      M.getOrInsertFunction(InstrumentationName, VoidTy, this->TagTy));
 
   // For determining whether to instrument a memory dereference
   ObjectSizeOpts ObjSizeOpts;
@@ -105,36 +146,46 @@ bool InstrumentDereference::runOnModule(Module &M) {
 
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+      // For every load and/or store instruction (i.e., memory access):
+      //
+      // 1. Cast the address to an integer
+      // 2. Right-shift and mask the address to get the allocation pool ID
+      // 3. Call the instrumentation function, passing the pool ID as an
+      //    argument
       if (auto *Load = dyn_cast<LoadInst>(&*I)) {
-        // For every load instruction (i.e., memory access):
-        //
-        // 1. Cast the address to an integer
-        // 2. Right-shift and mask the address to get the allocation pool ID
-        // 3. Call the instrumentation function, passing the pool ID as an
-        //    argument
+        if (ClInstrumentLoads) {
+          auto *Pointer = Load->getPointerOperand();
 
-        auto *Pointer = Load->getPointerOperand();
+          // XXX is this check redundant?
+          if (!Pointer->getType()->isPointerTy()) {
+            continue;
+          }
 
-        // XXX is this check redundant?
-        if (!Pointer->getType()->isPointerTy()) {
-          continue;
+          // Determine whether we should instrument this load instruction
+          uint64_t TypeSize = DL.getTypeStoreSizeInBits(Pointer->getType());
+          if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
+            continue;
+          }
+
+          doInstrumentDeref(Load, Pointer);
         }
+      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
+        if (ClInstrumentStores) {
+          auto *Pointer = Store->getPointerOperand();
 
-        // Determine whether we should instrument this load instruction
-        uint64_t TypeSize = DL.getTypeStoreSizeInBits(Load->getType());
-        if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
-          continue;
+          // XXX is this check redundant?
+          if (!Pointer->getType()->isPointerTy()) {
+            continue;
+          }
+
+          // Determine whether we should instrument this load instruction
+          uint64_t TypeSize = DL.getTypeStoreSizeInBits(Pointer->getType());
+          if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
+            continue;
+          }
+
+          doInstrumentDeref(Store, Pointer);
         }
-
-        IRBuilder<> IRB(Load);
-
-        auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, Int64Ty);
-        auto *PoolId =
-            IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, TagShiftSize), TagMask);
-        auto *PoolIdCast = IRB.CreateIntCast(PoolId, TagTy, false);
-        auto *InstCall = IRB.CreateCall(InstrumentationF, PoolIdCast);
-
-        NumOfInstrumentedDereferences++;
       }
     }
   }
