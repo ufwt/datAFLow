@@ -93,6 +93,7 @@ private:
                                                     const TargetLibraryInfo *);
   CallInst *tagDynAllocCall(CallInst *, Function *, Value *);
   Function *tagDynAllocFunc(Function *, const TargetLibraryInfo *);
+  GlobalAlias *tagDynAllocGlobalAlias(GlobalAlias *);
 
 public:
   static char ID;
@@ -308,6 +309,26 @@ Function *TagDynamicAlloc::tagDynAllocFunc(Function *OrigF,
   return TaggedF;
 }
 
+/// A dynamic memory allocation function could be assigned to a global alias.
+/// If so, the global alias must be updated to point to a tagged version of the
+/// dynamic memory allocation function.
+GlobalAlias *TagDynamicAlloc::tagDynAllocGlobalAlias(GlobalAlias *OrigGA) {
+  Constant *Aliasee = OrigGA->getAliasee();
+
+  assert(isa<Function>(Aliasee) && "The aliasee must be a function");
+  auto *NewF = translateTaggedFunc(cast<Function>(Aliasee));
+
+  auto *NewGA = GlobalAlias::create(
+      NewF->getType()->getPointerElementType(),
+      NewF->getType()->getAddressSpace(), OrigGA->getLinkage(),
+      "__tagged_" + OrigGA->getName(), NewF, OrigGA->getParent());
+
+  // TODO handle users
+  assert(OrigGA->getNumUses() == 0);
+
+  return NewGA;
+}
+
 void TagDynamicAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
@@ -347,41 +368,58 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
 
   SmallVector<Function *, 8> FuncsToDelete;
 
-  tag_t TagVal = DEFAULT_TAG;
-
+  // Replace whitelisted memory allocation functions with a tagged version.
+  // Mark the original function for deletion
   for (auto &F : M.functions()) {
     if (this->Whitelist.isIn(F)) {
-      // Replace whitelisted functions with a tagged version
       tagDynAllocFunc(&F, TLI);
       FuncsToDelete.push_back(&F);
-    } else {
-      // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc
-      // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
-      // respectively), as well as whitelisted function calls to their tagged
-      // versions
-      std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
+    }
+  }
 
-      // Tag all of the dynamic allocation function calls with a random value
-      // that represents the allocation site
-      for (auto &CallWithTaggedF : AllocCalls) {
-        // Either generate a random tag or increment a counter
-        TagVal = ClRandomTags ? RAND(DEFAULT_TAG + 1, TAG_MAX) : TagVal + 1;
-
-        // Generate the tag
-        ConstantInt *Tag = ConstantInt::get(this->TagTy, TagVal);
-
-        // Tag the function call
-        tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, Tag);
+  // Check the users of the functions to delete. If a function is assigned to
+  // a global variable, rewrite the global variable with a tagged version
+  for (auto *F : FuncsToDelete) {
+    for (auto *U : F->users()) {
+      if (auto *GA = dyn_cast<GlobalAlias>(U)) {
+        tagDynAllocGlobalAlias(GA);
+        GA->eraseFromParent();
       }
     }
   }
 
-  // Delete the old (untagged) memory allocation functions
+  // Delete the old (untagged) memory allocation functions. Make sure that the
+  // only users are call instructions
   for (auto *F : FuncsToDelete) {
     for (auto *U : F->users()) {
+      assert(isa<CallInst>(U) && "Only call instructions should be users of "
+                                 "memory allocation functions");
       U->dropAllReferences();
     }
     F->eraseFromParent();
+  }
+
+  tag_t TagVal = DEFAULT_TAG;
+
+  for (auto &F : M.functions()) {
+    // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc
+    // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
+    // respectively), as well as whitelisted function calls to their tagged
+    // versions
+    std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
+
+    // Tag all of the dynamic allocation function calls with an integer value
+    // that represents the allocation site
+    for (auto &CallWithTaggedF : AllocCalls) {
+      // Either generate a random tag or increment a counter
+      TagVal = ClRandomTags ? RAND(DEFAULT_TAG + 1, TAG_MAX) : TagVal + 1;
+
+      // Generate the tag
+      ConstantInt *Tag = ConstantInt::get(this->TagTy, TagVal);
+
+      // Tag the function call
+      tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, Tag);
+    }
   }
 
   return true;
