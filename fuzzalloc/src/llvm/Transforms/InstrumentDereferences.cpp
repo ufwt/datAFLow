@@ -16,10 +16,12 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
 #include "fuzzalloc.h"
 
@@ -27,10 +29,15 @@ using namespace llvm;
 
 #define DEBUG_TYPE "instrument-deref"
 
-static cl::opt<bool> ClInstrumentLoads("instrument-loads",
-                                       cl::desc("Instrument loads"));
-static cl::opt<bool> ClInstrumentStores("instrument-stores",
-                                        cl::desc("Instrument stores"));
+static cl::opt<bool>
+    ClInstrumentWrites("instrument-writes",
+                       cl::desc("Instrument write instructions"));
+static cl::opt<bool>
+    ClInstrumentReads("instrument-reads",
+                      cl::desc("Instrument read instructionss"));
+static cl::opt<bool> ClInstrumentAtomics(
+    "instrument-atomics",
+    cl::desc("Instrument atomic instructions (rmw, cmpxchg)"));
 
 STATISTIC(NumOfInstrumentedDereferences,
           "Number of pointer dereferences instrumented.");
@@ -79,18 +86,158 @@ static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
 }
 
 // Adapted from llvm::AddressSanitizer::isSafeAccess
-static bool instrumentCheck(ObjectSizeOffsetVisitor &ObjSizeVis, Value *Addr,
-                            uint64_t TypeSize) {
+static bool isSafeAccess(ObjectSizeOffsetVisitor &ObjSizeVis, Value *Addr,
+                         uint64_t TypeSize) {
   SizeOffsetType SizeOffset = ObjSizeVis.compute(Addr);
   if (!ObjSizeVis.bothKnown(SizeOffset)) {
-    return true;
+    return false;
   }
 
   uint64_t Size = SizeOffset.first.getZExtValue();
   int64_t Offset = SizeOffset.second.getSExtValue();
 
-  return Offset < 0 || Size < uint64_t(Offset) ||
-         Size - uint64_t(Offset) < TypeSize / CHAR_BIT;
+  // Three checks are required to ensure safety:
+  // - Offset >= 0 (since the offset is given from the base ptr)
+  // - Size >= Offset (unsigned)
+  // - Size - Offset >= NeededSize (unsigned)
+  return Offset >= 0 && Size >= uint64_t(Offset) &&
+         Size - uint64_t(Offset) >= TypeSize / CHAR_BIT;
+}
+
+// Adapted from llvm::AddressSanitizer::getAllocaSizeInBytes
+static uint64_t getAllocaSizeInBytes(const AllocaInst &AI) {
+  uint64_t ArraySize = 1;
+
+  if (AI.isArrayAllocation()) {
+    const ConstantInt *CI = dyn_cast<ConstantInt>(AI.getArraySize());
+    assert(CI && "Non-constant array size");
+    ArraySize = CI->getZExtValue();
+  }
+
+  Type *Ty = AI.getAllocatedType();
+  uint64_t SizeInBytes = AI.getModule()->getDataLayout().getTypeAllocSize(Ty);
+
+  return SizeInBytes * ArraySize;
+}
+
+// Adapted from llvm::AddressSanitizer::isInterestingAlloca
+static bool isInterestingAlloca(const AllocaInst &AI) {
+  return AI.getAllocatedType()->isSized() &&
+         // alloca() may be called with 0 size, ignore it
+         ((!AI.isStaticAlloca()) || getAllocaSizeInBytes(AI) > 0) &&
+         // We are only interested in allocas not promotable to registers
+         !isAllocaPromotable(&AI) &&
+         // inalloca allocas are not treated as static, and we don't want
+         // dynamic alloca instrumentation for them also
+         !AI.isUsedWithInAlloca() &&
+         // swifterror allocas are register promoted by ISel
+         !AI.isSwiftError();
+}
+
+// Adapted from llvm::AddressSanitizer::isInterestingMemoryAccess
+static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
+                                        uint64_t *TypeSize, unsigned *Alignment,
+                                        Value **MaybeMask = nullptr) {
+  Value *PtrOperand = nullptr;
+  const DataLayout &DL = I->getModule()->getDataLayout();
+
+  if (auto *LI = dyn_cast<LoadInst>(I)) {
+    if (!ClInstrumentReads) {
+      return nullptr;
+    }
+
+    *IsWrite = false;
+    *TypeSize = DL.getTypeStoreSizeInBits(LI->getType());
+    *Alignment = LI->getAlignment();
+    PtrOperand = LI->getPointerOperand();
+  } else if (auto *SI = dyn_cast<StoreInst>(I)) {
+    if (!ClInstrumentWrites) {
+      return nullptr;
+    }
+
+    *IsWrite = true;
+    *TypeSize = DL.getTypeStoreSizeInBits(SI->getValueOperand()->getType());
+    *Alignment = SI->getAlignment();
+    PtrOperand = SI->getPointerOperand();
+  } else if (auto *RMW = dyn_cast<AtomicRMWInst>(I)) {
+    if (!ClInstrumentAtomics) {
+      return nullptr;
+    }
+
+    *IsWrite = true;
+    *TypeSize = DL.getTypeStoreSizeInBits(RMW->getValOperand()->getType());
+    *Alignment = 0;
+    PtrOperand = RMW->getPointerOperand();
+  } else if (auto *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
+    if (!ClInstrumentAtomics) {
+      return nullptr;
+    }
+
+    *IsWrite = true;
+    *TypeSize = DL.getTypeStoreSizeInBits(XCHG->getCompareOperand()->getType());
+    *Alignment = 0;
+    PtrOperand = XCHG->getPointerOperand();
+  } else if (auto *CI = dyn_cast<CallInst>(I)) {
+    auto *F = dyn_cast<Function>(CI->getCalledValue());
+    if (F && (F->getName().startswith("llvm.masked.load.") ||
+              F->getName().startswith("llvm.masked.store."))) {
+      unsigned OpOffset = 0;
+
+      if (F->getName().startswith("llvm.masked.store.")) {
+        if (!ClInstrumentWrites) {
+          return nullptr;
+        }
+
+        // Masked store has an initial operand for the value
+        OpOffset = 1;
+        *IsWrite = true;
+      } else {
+        if (!ClInstrumentReads) {
+          return nullptr;
+        }
+
+        *IsWrite = false;
+      }
+
+      auto *BasePtr = CI->getOperand(0 + OpOffset);
+      auto *Ty = cast<PointerType>(BasePtr->getType())->getElementType();
+      *TypeSize = DL.getTypeStoreSizeInBits(Ty);
+
+      if (auto *AlignmentConstant =
+              dyn_cast<ConstantInt>(CI->getOperand(1 + OpOffset))) {
+        *Alignment = (unsigned)AlignmentConstant->getZExtValue();
+      } else {
+        *Alignment = 1; // No alignment guarantees
+      }
+
+      if (MaybeMask) {
+        *MaybeMask = CI->getOperand(2 + OpOffset);
+        PtrOperand = BasePtr;
+      }
+    }
+  }
+
+  if (PtrOperand) {
+    // Do not instrument accesses from different address spaces; we cannot
+    // deal with them
+    Type *PtrTy = cast<PointerType>(PtrOperand->getType()->getScalarType());
+    if (PtrTy->getPointerAddressSpace() != 0) {
+      return nullptr;
+    }
+
+    // Ignore swifterror addresses
+    if (PtrOperand->isSwiftError()) {
+      return nullptr;
+    }
+  }
+
+  // Treat memory accesses to promotable allocas as non-interesting since they
+  // will not cause memory violations
+  if (auto *AI = dyn_cast_or_null<AllocaInst>(PtrOperand)) {
+    return isInterestingAlloca(*AI) ? AI : nullptr;
+  }
+
+  return PtrOperand;
 }
 
 /// Instrument the Instruction `I` that dereferences `Pointer`.
@@ -126,8 +273,8 @@ bool InstrumentDereference::doInitialization(Module &M) {
 }
 
 bool InstrumentDereference::runOnModule(Module &M) {
-  assert(ClInstrumentLoads ||
-         ClInstrumentStores && "Must instrument either loads or stores");
+  assert(ClInstrumentReads ||
+         ClInstrumentWrites && "Must instrument either loads or stores");
 
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
@@ -145,47 +292,66 @@ bool InstrumentDereference::runOnModule(Module &M) {
   ObjectSizeOffsetVisitor ObjSizeVis(DL, TLI, C, ObjSizeOpts);
 
   for (auto &F : M.functions()) {
-    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      // For every load and/or store instruction (i.e., memory access):
-      //
-      // 1. Cast the address to an integer
-      // 2. Right-shift and mask the address to get the allocation pool ID
-      // 3. Call the instrumentation function, passing the pool ID as an
-      //    argument
-      if (auto *Load = dyn_cast<LoadInst>(&*I)) {
-        if (ClInstrumentLoads) {
-          auto *Pointer = Load->getPointerOperand();
+    // We only want to instrument every address only once per basic block
+    // (unless there are calls between uses)
+    SmallPtrSet<Value *, 16> TempsToInstrument;
+    SmallVector<Instruction *, 16> ToInstrument;
+    bool IsWrite;
+    unsigned Alignment;
+    uint64_t TypeSize;
 
-          // XXX is this check redundant?
-          if (!Pointer->getType()->isPointerTy()) {
-            continue;
+    for (auto &BB : F) {
+      TempsToInstrument.clear();
+
+      for (auto &I : BB) {
+        Value *MaybeMask = nullptr;
+
+        if (Value *Addr = isInterestingMemoryAccess(&I, &IsWrite, &TypeSize,
+                                                    &Alignment, &MaybeMask)) {
+          // If we have a mask, skip instrumentation if we've already
+          // instrumented the full object. But don't add to TempsToInstrument
+          // because we might get another load/store with a different mask
+          if (MaybeMask) {
+            if (TempsToInstrument.count(Addr)) {
+              // We've seen this (whole) temp in the current BB
+              continue;
+            }
+          } else {
+            if (!TempsToInstrument.insert(Addr).second) {
+              // We've seen this temp in the current BB
+              continue;
+            }
           }
-
-          // Determine whether we should instrument this load instruction
-          uint64_t TypeSize = DL.getTypeStoreSizeInBits(Pointer->getType());
-          if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
-            continue;
-          }
-
-          doInstrumentDeref(Load, Pointer);
         }
-      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
-        if (ClInstrumentStores) {
-          auto *Pointer = Store->getPointerOperand();
+        // TODO pointer comparisons?
+        else {
+          CallSite CS(&I);
 
-          // XXX is this check redundant?
-          if (!Pointer->getType()->isPointerTy()) {
-            continue;
+          if (CS) {
+            // A call inside BB
+            TempsToInstrument.clear();
           }
 
-          // Determine whether we should instrument this load instruction
-          uint64_t TypeSize = DL.getTypeStoreSizeInBits(Pointer->getType());
-          if (!instrumentCheck(ObjSizeVis, Pointer, TypeSize)) {
-            continue;
-          }
-
-          doInstrumentDeref(Store, Pointer);
+          continue;
         }
+
+        ToInstrument.push_back(&I);
+      }
+    }
+
+    // Instrument memory operations
+    for (auto *I : ToInstrument) {
+      if (Value *Addr =
+              isInterestingMemoryAccess(I, &IsWrite, &TypeSize, &Alignment)) {
+        // A direct inbounds access to a stack variable is always valid
+        if (isa<AllocaInst>(GetUnderlyingObject(Addr, DL)) &&
+            isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
+          continue;
+        }
+
+        doInstrumentDeref(I, Addr);
+      } else {
+        // TODO instrumentMemIntrinsic
       }
     }
   }
