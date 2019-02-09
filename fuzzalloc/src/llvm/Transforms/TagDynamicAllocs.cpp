@@ -181,6 +181,11 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
     if (auto *Call = dyn_cast<CallInst>(&*I)) {
+      // It's not going to be an intrinsic
+      if (isa<IntrinsicInst>(Call)) {
+        continue;
+      }
+
       // The result of a dynamic memory allocation function call is typically
       // cast. To determine the actual function being called, we must remove
       // these casts
@@ -377,28 +382,6 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
     }
   }
 
-  // Check the users of the functions to delete. If a function is assigned to
-  // a global variable, rewrite the global variable with a tagged version
-  for (auto *F : FuncsToDelete) {
-    for (auto *U : F->users()) {
-      if (auto *GA = dyn_cast<GlobalAlias>(U)) {
-        tagDynAllocGlobalAlias(GA);
-        GA->eraseFromParent();
-      }
-    }
-  }
-
-  // Delete the old (untagged) memory allocation functions. Make sure that the
-  // only users are call instructions
-  for (auto *F : FuncsToDelete) {
-    for (auto *U : F->users()) {
-      assert(isa<CallInst>(U) && "Only call instructions should be users of "
-                                 "memory allocation functions");
-      U->dropAllReferences();
-    }
-    F->eraseFromParent();
-  }
-
   tag_t TagVal = DEFAULT_TAG;
 
   for (auto &F : M.functions()) {
@@ -420,6 +403,26 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
       // Tag the function call
       tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, Tag);
     }
+  }
+
+  // Check the users of the functions to delete. If a function is assigned to
+  // a global variable, rewrite the global variable with a tagged version
+  for (auto *F : FuncsToDelete) {
+    for (auto *U : F->users()) {
+      if (auto *GA = dyn_cast<GlobalAlias>(U)) {
+        tagDynAllocGlobalAlias(GA);
+        GA->eraseFromParent();
+      }
+    }
+  }
+
+  // Delete the old (untagged) memory allocation functions. Make sure that the
+  // only users are call instructions
+  for (auto *F : FuncsToDelete) {
+    for (auto *U : F->users()) {
+      U->dropAllReferences();
+    }
+    F->eraseFromParent();
   }
 
   return true;
