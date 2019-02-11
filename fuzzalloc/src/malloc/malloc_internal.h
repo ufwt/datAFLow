@@ -16,10 +16,7 @@
 
 #include "fuzzalloc.h"
 
-// TODO delete
-#define DEBUG 1
-
-#ifdef DEBUG
+#if !defined(NDEBUG)
 #include <assert.h>
 #include <stdio.h>
 
