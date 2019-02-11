@@ -10,9 +10,13 @@ LLVM passes to transform your program under test (PUT) to use `libfuzzalloc`.
 ```console
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS="`llvm-config --cxxflags`" ..
 make -j
 ```
+
+To compile with AFL instrumentation, set the `AFL_INSTRUMENT` CMake flag (i.e.,
+add `-DAFL_INSTRUMENT=On` to the `cmake` command above) and set the `AFL_PATH`
+environment variable to the AFL source code directory.
 
 # Usage
 
