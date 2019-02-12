@@ -30,13 +30,13 @@ using namespace llvm;
 #define DEBUG_TYPE "instrument-deref"
 
 static cl::opt<bool>
-    ClInstrumentWrites("instrument-writes",
+    ClInstrumentWrites("fuzzalloc-instrument-writes",
                        cl::desc("Instrument write instructions"));
 static cl::opt<bool>
-    ClInstrumentReads("instrument-reads",
+    ClInstrumentReads("fuzzalloc-instrument-reads",
                       cl::desc("Instrument read instructionss"));
 static cl::opt<bool> ClInstrumentAtomics(
-    "instrument-atomics",
+    "fuzzalloc-instrument-atomics",
     cl::desc("Instrument atomic instructions (rmw, cmpxchg)"));
 
 STATISTIC(NumOfInstrumentedDereferences,

@@ -41,11 +41,11 @@ using namespace llvm;
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
-static cl::opt<bool> ClRandomTags("random-tags",
+static cl::opt<bool> ClRandomTags("fuzzalloc-random-tags",
                                   cl::desc("Generate tags randomly"));
 
 static cl::opt<std::string>
-    ClWhitelist("alloc-whitelist",
+    ClWhitelist("fuzzalloc-whitelist",
                 cl::desc("Path to memory allocation whitelist file"));
 
 STATISTIC(NumOfTaggedCalls,
