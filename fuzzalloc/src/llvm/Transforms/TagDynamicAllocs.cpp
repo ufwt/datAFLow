@@ -384,12 +384,15 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
 
   tag_t TagVal = DEFAULT_TAG;
 
+  std::map<CallInst *, Function *> AllocCalls;
   for (auto &F : M.functions()) {
+    AllocCalls.clear();
+
     // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc
     // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
     // respectively), as well as whitelisted function calls to their tagged
     // versions
-    std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(&F, TLI);
+    AllocCalls = getDynAllocCalls(&F, TLI);
 
     // Tag all of the dynamic allocation function calls with an integer value
     // that represents the allocation site
