@@ -13,8 +13,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include <map>
-#include <vector>
+#include <set>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -22,6 +21,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/TypeFinder.h"
 #include "llvm/Pass.h"
 
 using namespace llvm;
@@ -31,42 +31,29 @@ using namespace llvm;
 static cl::opt<int> ClMinArraySize(
     "static-array-prom-min-size",
     cl::desc("The minimum size of a static array to promote to malloc"),
-    cl::init(-1));
+    cl::init(1));
 
-STATISTIC(NumOfAllocaPromotion, "Number of array promotions.");
+STATISTIC(NumOfArrayPromotion, "Number of array promotions.");
+STATISTIC(NumOfStructPromotion, "Number of struct promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
-
-struct PromotedStruct {
-  const StructType *Ty;
-  const std::map<ArrayType *, unsigned> ArrayElemIndices;
-
-  PromotedStruct(StructType *Ty, std::map<ArrayType *, unsigned> ArrayElemIdxs)
-      : Ty(Ty), ArrayElemIndices(ArrayElemIdxs) {}
-};
 
 /// PromoteStaticArrays: instrument the code in a module to promote static,
 /// fixed-size arrays (both global and stack-based) to dynamically allocated
 /// arrays via \p malloc.
 class PromoteStaticArrays : public ModulePass {
 private:
-  using AllocaWithPromotedIndices = std::pair<AllocaInst *, ArrayRef<unsigned>>;
-
   DataLayout *DL;
   IntegerType *IntPtrTy;
-  IntegerType *Int32Ty;
 
-  std::map<StructType *, PromotedStruct> PromotedStructs;
+  Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t);
+  Instruction *createStructMalloc(IRBuilder<> &, StructType *);
 
-  Instruction *createMalloc(Instruction *, Type *, uint64_t);
-
-  Value *updateArrayGEP(GetElementPtrInst *, Instruction *);
+  Value *updateGEP(GetElementPtrInst *, Instruction *, bool);
 
   AllocaInst *promoteArrayAlloca(AllocaInst *);
-  AllocaWithPromotedIndices promoteStructAlloca(AllocaInst *);
-
-  Function *promoteFunction(Function *);
+  AllocaInst *promoteStructAlloca(AllocaInst *);
 
 public:
   static char ID;
@@ -85,74 +72,16 @@ public:
 /// Nested structs are also checked.
 static bool structContainsArray(const StructType *StructTy) {
   for (auto *Elem : StructTy->elements()) {
-    if (auto *StructElem = dyn_cast<StructType>(Elem)) {
-      return structContainsArray(StructElem);
-    } else if (auto *ArrayElem = dyn_cast<ArrayType>(Elem)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/// Returns \p true if the given type contains an array.
-///
-/// If the type is a struct, each element in the struct is (recursively)
-/// checked. If the type is a function, the return and parameter types are
-/// checked.
-static bool containsArray(const Type *Ty) {
-  if (Ty->isArrayTy()) {
-    return true;
-  } else if (auto *Struct = dyn_cast<StructType>(Ty)) {
-    if (std::any_of(Struct->element_begin(), Struct->element_end(),
-                    &containsArray)) {
-      return true;
-    }
-  } else if (auto *Func = dyn_cast<FunctionType>(Ty)) {
-    if (containsArray(Func->getReturnType())) {
-      return true;
-    }
-
-    if (std::any_of(Func->param_begin(), Func->param_end(), &containsArray)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-static PromotedStruct promoteStruct(const StructType *StructTy) {
-  // Maps the type of a static array (that will be promoted to a dynamically
-  // allocated array) to its position in (i.e., the index of) the struct
-  std::map<ArrayType *, unsigned> ArrayElemsWithIndices;
-
-  // The elements of the new struct (i.e., with static arrays replaced by
-  // pointers to dynamically allocated memory)
-  SmallVector<Type *, 8> NewStructElems;
-
-  // Record all of the static arrays (and their index/position in the struct)
-  // that are to be promoted to dynamically allocated arrays
-  {
-    unsigned Index = 0;
-    for (auto *Elem : StructTy->elements()) {
-      if (auto *ArrayElem = dyn_cast<ArrayType>(Elem)) {
-        ArrayElemsWithIndices.emplace(ArrayElem, Index);
-        NewStructElems.push_back(
-            ArrayElem->getArrayElementType()->getPointerTo());
-      } else {
-        NewStructElems.push_back(Elem);
+    if (auto *ArrayElem = dyn_cast<ArrayType>(Elem)) {
+      if (ArrayElem->getNumElements() >= ClMinArraySize) {
+        return true;
       }
-
-      Index++;
+    } else if (auto *StructElem = dyn_cast<StructType>(Elem)) {
+      return structContainsArray(StructElem);
     }
   }
 
-  // The new struct type (with static arrays replaced by pointers)
-  StructType *NewStructTy = StructType::create(
-      StructTy->getContext(), NewStructElems,
-      StructTy->getName().str() + "_prom", StructTy->isPacked());
-
-  return PromotedStruct(NewStructTy, ArrayElemsWithIndices);
+  return false;
 }
 
 static void insertFree(Instruction *MallocPtr, ReturnInst *Return) {
@@ -165,37 +94,44 @@ static void insertFree(Instruction *MallocPtr, ReturnInst *Return) {
 
 char PromoteStaticArrays::ID = 0;
 
-Instruction *PromoteStaticArrays::createMalloc(Instruction *InsertBefore,
-                                               Type *AllocTy,
-                                               uint64_t ArrayNumElems) {
+Instruction *PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB,
+                                                    Type *AllocTy,
+                                                    uint64_t ArrayNumElems) {
   uint64_t TypeSize = this->DL->getTypeAllocSize(AllocTy);
 
-  return CallInst::CreateMalloc(InsertBefore, this->IntPtrTy, AllocTy,
+  return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), this->IntPtrTy, AllocTy,
                                 ConstantInt::get(this->IntPtrTy, TypeSize),
                                 ConstantInt::get(this->IntPtrTy, ArrayNumElems),
                                 nullptr);
 }
 
-Value *PromoteStaticArrays::updateArrayGEP(GetElementPtrInst *GEP,
-                                           Instruction *MallocPtr) {
+Instruction *PromoteStaticArrays::createStructMalloc(IRBuilder<> &IRB,
+                                                     StructType *AllocTy) {
+  Constant *SizeOfStruct = ConstantExpr::getSizeOf(AllocTy);
+
+  return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), this->IntPtrTy, AllocTy,
+                                SizeOfStruct,
+                                ConstantInt::get(this->IntPtrTy, 1), nullptr);
+}
+
+Value *PromoteStaticArrays::updateGEP(GetElementPtrInst *GEP,
+                                      Instruction *MallocPtr, bool IsArray) {
   // Cache uses
   SmallVector<User *, 8> Users(GEP->user_begin(), GEP->user_end());
 
   IRBuilder<> IRB(GEP);
 
   // Load the pointer to the dynamically allocated array and create a new GEP
-  // instruction (based on the original static array GEP). The initial "offset
-  // 0" that is used when accessing static arrays is ignored
+  // instruction. Static arrays use an initial "offset 0" that must be ignored
   auto *Load = IRB.CreateLoad(MallocPtr);
-  auto *NewGEP = IRB.CreateInBoundsGEP(
-      Load, SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
-      GEP->getName() + "_prom");
+  auto IdxBegin = GEP->idx_begin() + (IsArray ? 1 : 0);
+  auto *NewGEP = cast<GetElementPtrInst>(IRB.CreateInBoundsGEP(
+      Load, SmallVector<Value *, 4>(IdxBegin, GEP->idx_end()),
+      GEP->getName() + "_prom"));
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
-  for (auto *U : Users) {
-    U->replaceUsesOfWith(GEP, NewGEP);
-  }
+  GEP->replaceAllUsesWith(NewGEP);
 
   return NewGEP;
 }
@@ -204,10 +140,10 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
-  Type *ArrayTy = Alloca->getAllocatedType();
+  ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
   Type *ElemTy = ArrayTy->getArrayElementType();
 
-  uint64_t ArrayNumElems = ArrayTy->getArrayNumElements();
+  uint64_t ArrayNumElems = ArrayTy->getNumElements();
 
   IRBuilder<> IRB(Alloca);
 
@@ -231,17 +167,31 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   //    `NumElements * sizeof(Ty)`)
   auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo(), nullptr,
                                      Alloca->getName() + "_prom");
-  auto *MallocCall =
-      createMalloc(&*IRB.GetInsertPoint(), ElemTy, ArrayNumElems);
+  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
 
   // Update all the users of the original array to use the dynamically
   // allocated array
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
-      // GEPs are handled separately to ensure that they are correctly typed
-      updateArrayGEP(GEP, NewAlloca);
+      // Ensure GEPs are correctly typed
+      updateGEP(GEP, NewAlloca, /* IsArray */ true);
       GEP->eraseFromParent();
+    } else if (auto *Store = dyn_cast<StoreInst>(U)) {
+      // Sometimes the original array may be stored to some temporary variable
+      // generated by LLVM (e.g., from a GEP instruction).
+      //
+      // In this case, we can just cast the new dynamically allocated alloca
+      // (which is a pointer) to a the original static array type
+
+      // The original array can only be the store's value operand (I think...)
+      assert(Store->getValueOperand() == Alloca);
+
+      auto *StorePtrTy = Store->getPointerOperandType();
+      auto *BitCastNewAlloca = new BitCastInst(
+          NewAlloca, StorePtrTy->getPointerElementType(), "", Store);
+
+      U->replaceUsesOfWith(Alloca, BitCastNewAlloca);
     } else {
       U->replaceUsesOfWith(Alloca, NewAlloca);
     }
@@ -250,81 +200,39 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   return NewAlloca;
 }
 
-// TODO generalise for nested structs
-PromoteStaticArrays::AllocaWithPromotedIndices
-PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
+AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
   // This is safe because we already know that the alloca has a struct type
   StructType *StructTy = cast<StructType>(Alloca->getAllocatedType());
 
-  // Create a new type for the promoted struct if it does not already exist
-  if (this->PromotedStructs.find(StructTy) == this->PromotedStructs.end()) {
-    this->PromotedStructs.emplace(StructTy, promoteStruct(StructTy));
-  }
-  PromotedStruct PromStruct = this->PromotedStructs.find(StructTy)->second;
-
   IRBuilder<> IRB(Alloca);
 
-  auto *NewAlloca = IRB.CreateAlloca(const_cast<StructType *>(PromStruct.Ty),
-                                     nullptr, Alloca->getName() + "_prom");
+  auto *NewAlloca = IRB.CreateAlloca(StructTy->getPointerTo(), nullptr,
+                                     Alloca->getName() + "_prom");
+  auto *MallocCall = createStructMalloc(IRB, StructTy);
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
 
-  // Keep track of the position (i.e., index) of a promoted array in the struct
-  SmallVector<unsigned, 8> PromotedElemIndices;
-
-  // Promote each of the static arrays found in the struct to a dynamically
-  // allocated array
-  for (auto &ArrayElemIndices : PromStruct.ArrayElemIndices) {
-    ArrayType *ArrayTy = ArrayElemIndices.first;
-    unsigned ElemIndex = ArrayElemIndices.second;
-
-    // As per https://llvm.org/docs/GetElementPtr.html, struct element indices
-    // always use i32
-    Value *GEPIndices[] = {ConstantInt::get(this->Int32Ty, 0),
-                           ConstantInt::get(this->Int32Ty, ElemIndex)};
-
-    Type *ElemTy = ArrayTy->getArrayElementType();
-    uint64_t ArrayNumElems = ArrayTy->getArrayNumElements();
-
-    auto *MallocCall =
-        createMalloc(&*IRB.GetInsertPoint(), ElemTy, ArrayNumElems);
-    auto *NewStructGEP = IRB.CreateInBoundsGEP(NewAlloca, GEPIndices);
-    auto *MallocStore = IRB.CreateStore(MallocCall, NewStructGEP);
-
-    // Save the element index of the newly-promoted array
-    PromotedElemIndices.push_back(ElemIndex);
-  }
-
-  // Update all the users of the original struct to use the new struct
+  // Update all the users of the original struct to use the dynamically
+  // allocated structs
   for (auto *U : Users) {
-    U->replaceUsesOfWith(Alloca, NewAlloca);
+    if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
+      // Ensure GEPs are correctly typed
+      updateGEP(GEP, NewAlloca, /* IsArray */ false);
+      GEP->eraseFromParent();
+    } else if (auto *Call = dyn_cast<CallInst>(U)) {
+      // Dereference escaped structs
+      // TODO escape analysis
+      auto *MallocLoad =
+          new LoadInst(NewAlloca, NewAlloca->getName() + "_deref", Call);
+      U->replaceUsesOfWith(Alloca, MallocLoad);
+    } else {
+      U->replaceUsesOfWith(Alloca, NewAlloca);
+    }
   }
 
-  return std::make_pair(NewAlloca, PromotedElemIndices);
-}
-
-Function *PromoteStaticArrays::promoteFunction(Function *OrigF) {
-  for (auto &Arg : OrigF->args()) {
-    if (!containsArray(Arg.getType())) {
-      continue;
-    }
-
-    // Cache uses
-    SmallVector<User *, 8> Users(Arg.user_begin(), Arg.user_end());
-
-    // This is safe because we already know that the argument has a struct type
-    StructType *StructTy = cast<StructType>(Arg.getType());
-
-    if (this->PromotedStructs.find(StructTy) == this->PromotedStructs.end()) {
-      this->PromotedStructs.emplace(StructTy, promotedStruct(StructTy));
-    }
-    PromotedStruct PromStruct = this->PromotedStructs.find(StructTy)->second;
-
-    // TODO finish this off
-  }
-
-  return OrigF;
+  return NewAlloca;
 }
 
 bool PromoteStaticArrays::doInitialization(Module &M) {
@@ -332,7 +240,6 @@ bool PromoteStaticArrays::doInitialization(Module &M) {
 
   this->DL = new DataLayout(M.getDataLayout());
   this->IntPtrTy = this->DL->getIntPtrType(C);
-  this->Int32Ty = Type::getInt32Ty(C);
 
   return false;
 }
@@ -344,14 +251,23 @@ bool PromoteStaticArrays::doFinalization(Module &) {
 }
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
-  SmallVector<Function *, 8> FuncsToDelete;
+  std::set<StructType *> StructsToPromote;
+
+  TypeFinder StructTypes;
+  StructTypes.run(M, /* OnlyNamed */ false);
+
+  for (auto *Ty : StructTypes) {
+    if (structContainsArray(Ty)) {
+      StructsToPromote.insert(Ty);
+    }
+  }
 
   for (auto &F : M.functions()) {
     // List of static array allocations to promote
     SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
 
     // List of struct allocations that contain a static array to promote
-    std::vector<AllocaInst *> StructAllocasToPromote;
+    SmallVector<AllocaInst *, 8> StructAllocasToPromote;
 
     // List of return instructions that require calls to free to be inserted
     // before them
@@ -363,18 +279,20 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
         Type *AllocaTy = Alloca->getAllocatedType();
 
         if (isa<ArrayType>(AllocaTy)) {
-          bool AllocaEscapes = PointerMayBeCaptured(Alloca, false, true);
+          bool AllocaEscapes = PointerMayBeCaptured(
+              Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
           // TODO do something with escape analysis result
 
           ArrayAllocasToPromote.push_back(Alloca);
-          NumOfAllocaPromotion++;
+          NumOfArrayPromotion++;
         } else if (auto *StructTy = dyn_cast<StructType>(AllocaTy)) {
-          if (containsArray(StructTy)) {
-            bool AllocaEscapes = PointerMayBeCaptured(Alloca, false, true);
+          if (StructsToPromote.find(StructTy) != StructsToPromote.end()) {
+            bool AllocaEscapes = PointerMayBeCaptured(
+                Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
             // TODO do something with escape analysis result
 
             StructAllocasToPromote.push_back(Alloca);
-            NumOfAllocaPromotion++;
+            NumOfStructPromotion++;
           }
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
@@ -396,38 +314,12 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
       Alloca->eraseFromParent();
     }
 
-    // Promote static arrays nested within structs to dynamically allocated
-    // arrays
+    // Promote structs containing static arrays to dynamically allocated
+    // structs
     for (auto *Alloca : StructAllocasToPromote) {
-      AllocaWithPromotedIndices NewAllocaWithIndices =
-          promoteStructAlloca(Alloca);
+      auto *NewAlloca = promoteStructAlloca(Alloca);
 
-      auto *NewAlloca = NewAllocaWithIndices.first;
-      ArrayRef<unsigned> PromotedIndices = NewAllocaWithIndices.second;
-
-      // The struct may have contained multiple static arrays that were
-      // promoted to dynamically allocated arrays. Since the indices of these
-      // arrays (now pointers) were recorded during promotion, we can iterate
-      // over these pointers and free the memory that they point to.
-      //
-      // The index is used to create a GEP instruction that points to the
-      // dynamically allocated array in the struct
-      for (unsigned StructIndex : PromotedIndices) {
-        //        for (auto *Return : ReturnsToInsertFree) {
-        //          IRBuilder<> IRB(Return);
-        //
-        //          // As per https://llvm.org/docs/GetElementPtr.html, struct
-        //          member
-        //          // indices always use i32
-        //          Value *GEPIndices[] = {ConstantInt::get(this->Int32Ty, 0),
-        //                                 ConstantInt::get(this->Int32Ty,
-        //                                 StructIndex)};
-        //          auto *NewStructGEP = cast<GetElementPtrInst>(
-        //              IRB.CreateInBoundsGEP(NewAlloca, GEPIndices));
-        //
-        //          insertFree(NewStructGEP, Return);
-        //        }
-      }
+      // TODO insert frees
 
       Alloca->eraseFromParent();
     }
