@@ -25,6 +25,8 @@
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/Pass.h"
 
+#include "PromoteCommon.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "static-struct-prom"
@@ -213,7 +215,11 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
     for (auto *Alloca : StructAllocasToPromote) {
       auto *NewAlloca = promoteStructAlloca(Alloca);
 
-      // TODO insert frees
+      // Ensure that the promoted alloca (now dynamically allocated) is freed
+      // when the function returns
+      for (auto *Return : ReturnsToInsertFree) {
+        insertFree(NewAlloca, Return);
+      }
 
       Alloca->eraseFromParent();
     }

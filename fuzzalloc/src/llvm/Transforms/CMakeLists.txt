@@ -1,4 +1,5 @@
-add_library(fuzzalloc-llvm MODULE PromoteStaticArrays.cpp
+add_library(fuzzalloc-llvm MODULE TagDynamicAllocs.cpp
+                                  PromoteCommon.cpp
+                                  PromoteStaticArrays.cpp
                                   PromoteStaticStructs.cpp
-                                  TagDynamicAllocs.cpp
                                   InstrumentDereferences.cpp)

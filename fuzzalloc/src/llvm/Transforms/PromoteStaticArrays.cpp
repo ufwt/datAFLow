@@ -21,6 +21,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
+#include "PromoteCommon.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "static-array-prom"
@@ -57,14 +59,6 @@ public:
 };
 
 } // end anonymous namespace
-
-static void insertFree(Instruction *MallocPtr, ReturnInst *Return) {
-  IRBuilder<> IRB(Return);
-
-  // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = IRB.CreateLoad(MallocPtr);
-  CallInst::CreateFree(LoadMalloc, Return);
-}
 
 char PromoteStaticArrays::ID = 0;
 
