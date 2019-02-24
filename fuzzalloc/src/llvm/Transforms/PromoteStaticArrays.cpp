@@ -8,8 +8,9 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass promotes static arrays (both global and stack-based) to
-/// dynamically allocated arrays via \p malloc.
+/// This pass promotes static arrays (both global and stack-based) and structs
+/// containing statis arrays to dynamically allocated arrays/structs via \p
+/// malloc.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -33,6 +34,10 @@ static cl::opt<int> ClMinArraySize(
     cl::desc("The minimum size of a static array to promote to malloc"),
     cl::init(1));
 
+static cl::opt<bool> ClPromoteStructs(
+    "static-array-prom-struct",
+    cl::desc("Promote structs containing static array elements"));
+
 STATISTIC(NumOfArrayPromotion, "Number of array promotions.");
 STATISTIC(NumOfStructPromotion, "Number of struct promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
@@ -40,8 +45,8 @@ STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 namespace {
 
 /// PromoteStaticArrays: instrument the code in a module to promote static,
-/// fixed-size arrays (both global and stack-based) to dynamically allocated
-/// arrays via \p malloc.
+/// fixed-size arrays (both global and stack-based) and structs containing
+/// static arrays to dynamically allocated arrays/structs via \p malloc.
 class PromoteStaticArrays : public ModulePass {
 private:
   DataLayout *DL;
@@ -187,11 +192,16 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
       // The original array can only be the store's value operand (I think...)
       assert(Store->getValueOperand() == Alloca);
 
-      auto *StorePtrTy = Store->getPointerOperandType();
-      auto *BitCastNewAlloca = new BitCastInst(
-          NewAlloca, StorePtrTy->getPointerElementType(), "", Store);
+      auto *StorePtrElemTy =
+          Store->getPointerOperandType()->getPointerElementType();
 
-      U->replaceUsesOfWith(Alloca, BitCastNewAlloca);
+      // Only cast the new alloca if the types don't match
+      auto *AllocaReplace =
+          (StorePtrElemTy == NewAlloca->getType())
+              ? static_cast<Instruction *>(NewAlloca)
+              : new BitCastInst(NewAlloca, StorePtrElemTy, "", Store);
+
+      U->replaceUsesOfWith(Alloca, AllocaReplace);
     } else {
       U->replaceUsesOfWith(Alloca, NewAlloca);
     }
@@ -209,6 +219,20 @@ AllocaInst *PromoteStaticArrays::promoteStructAlloca(AllocaInst *Alloca) {
 
   IRBuilder<> IRB(Alloca);
 
+  // This will transform something like this:
+  //
+  // %1 = alloca StructTy
+  //
+  // where `StructTy` contains a static array, into something like this:
+  //
+  // %1 = alloca StructTy*
+  // %2 = call i8* @malloc(StructTy)
+  // %2 = bitcast i8* %2 to StructTy*
+  // store StructTy* %3, StructTy** %1
+  //
+  // Where:
+  //
+  //  - `StructTy` is a struct type containing a static array
   auto *NewAlloca = IRB.CreateAlloca(StructTy->getPointerTo(), nullptr,
                                      Alloca->getName() + "_prom");
   auto *MallocCall = createStructMalloc(IRB, StructTy);
@@ -253,20 +277,22 @@ bool PromoteStaticArrays::doFinalization(Module &) {
 bool PromoteStaticArrays::runOnModule(Module &M) {
   std::set<StructType *> StructsToPromote;
 
-  TypeFinder StructTypes;
-  StructTypes.run(M, /* OnlyNamed */ false);
+  if (ClPromoteStructs) {
+    TypeFinder StructTypes;
+    StructTypes.run(M, /* OnlyNamed */ false);
 
-  for (auto *Ty : StructTypes) {
-    if (structContainsArray(Ty)) {
-      StructsToPromote.insert(Ty);
+    for (auto *Ty : StructTypes) {
+      if (structContainsArray(Ty)) {
+        StructsToPromote.insert(Ty);
+      }
     }
   }
 
   for (auto &F : M.functions()) {
-    // List of static array allocations to promote
+    // Static array allocations to promote
     SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
 
-    // List of struct allocations that contain a static array to promote
+    // Struct allocations that contain a static array to promote
     SmallVector<AllocaInst *, 8> StructAllocasToPromote;
 
     // List of return instructions that require calls to free to be inserted
@@ -279,17 +305,17 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
         Type *AllocaTy = Alloca->getAllocatedType();
 
         if (isa<ArrayType>(AllocaTy)) {
+          // TODO do something with escape analysis result
           bool AllocaEscapes = PointerMayBeCaptured(
               Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
-          // TODO do something with escape analysis result
 
           ArrayAllocasToPromote.push_back(Alloca);
           NumOfArrayPromotion++;
         } else if (auto *StructTy = dyn_cast<StructType>(AllocaTy)) {
           if (StructsToPromote.find(StructTy) != StructsToPromote.end()) {
+            // TODO do something with escape analysis result
             bool AllocaEscapes = PointerMayBeCaptured(
                 Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
-            // TODO do something with escape analysis result
 
             StructAllocasToPromote.push_back(Alloca);
             NumOfStructPromotion++;
