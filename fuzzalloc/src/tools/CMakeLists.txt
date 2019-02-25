@@ -1,11 +1,3 @@
-add_library(fuzzalloc SHARED malloc.c
-                             deref.c)
-
-if(POOL_SIZE)
-  message(STATUS "Allocation pool size set to ${POOL_SIZE} bytes")
-  add_definitions(-DPOOL_SIZE=${POOL_SIZE})
-endif(POOL_SIZE)
-
 if(AFL_INSTRUMENT)
   if(NOT DEFINED AFL_PATH AND DEFINED ENV{AFL_PATH})
     set(AFL_PATH "$ENV{AFL_PATH}")
@@ -16,7 +8,7 @@ if(AFL_INSTRUMENT)
                         " Provide the AFL source path in the AFL_PATH environment variable")
   endif()
 
-  GET_FILENAME_COMPONENT(AFL_PATH ${AFL_PATH} ABSOLUTE)
+  GET_FILENAME_COMPONENT(AFL_PATH "${AFL_PATH}" ABSOLUTE)
   set(AFL_LLVM_RT "${AFL_PATH}/llvm_mode/afl-llvm-rt.o.c")
 
   if(EXISTS ${AFL_LLVM_RT})
@@ -25,10 +17,9 @@ if(AFL_INSTRUMENT)
     message(FATAL_ERROR "${AFL_LLVM_RT} not found in ${AFL_PATH}. Are you sure that this is the AFL source directory?")
   endif()
 
-  # Need to remove -Werror for afl-llvm-rt.o.c
+  # Need to remove -Werror when using AFL source code
   string(REPLACE " -Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 
-  target_sources(fuzzalloc PUBLIC ${AFL_LLVM_RT})
-  target_include_directories(fuzzalloc PRIVATE ${AFL_PATH})
-  add_definitions(-DAFL_INSTRUMENT)
+  add_executable(dataflow-clang-fast dataflow-clang-fast.c)
+  target_include_directories(dataflow-clang-fast PRIVATE ${AFL_PATH})
 endif()
