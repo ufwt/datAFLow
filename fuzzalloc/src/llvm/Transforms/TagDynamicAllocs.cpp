@@ -53,9 +53,9 @@ STATISTIC(NumOfTaggedCalls,
 
 namespace {
 
-static constexpr char *const FuzzallocMallocFuncName = "__tagged_malloc";
-static constexpr char *const FuzzallocCallocFuncName = "__tagged_calloc";
-static constexpr char *const FuzzallocReallocFuncName = "__tagged_realloc";
+static const char *const FuzzallocMallocFuncName = "__tagged_malloc";
+static const char *const FuzzallocCallocFuncName = "__tagged_calloc";
+static const char *const FuzzallocReallocFuncName = "__tagged_realloc";
 
 /// Whitelist of custom dynamic memory allocation wrapper functions
 class FuzzallocWhitelist {
@@ -365,9 +365,6 @@ bool TagDynamicAlloc::doInitialization(Module &M) {
 }
 
 bool TagDynamicAlloc::runOnModule(Module &M) {
-  LLVMContext &C = M.getContext();
-
-  PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 

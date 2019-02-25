@@ -44,7 +44,7 @@ STATISTIC(NumOfInstrumentedDereferences,
 
 namespace {
 
-static constexpr char *const InstrumentationName = "__ptr_deref";
+static const char *const InstrumentationName = "__ptr_deref";
 
 class InstrumentDereference : public ModulePass {
 private:
@@ -248,7 +248,7 @@ void InstrumentDereference::doInstrumentDeref(Instruction *I, Value *Pointer) {
   auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                this->TagMask);
   auto *PoolIdCast = IRB.CreateIntCast(PoolId, this->TagTy, false);
-  auto *InstCall = IRB.CreateCall(this->InstrumentationF, PoolIdCast);
+  IRB.CreateCall(this->InstrumentationF, PoolIdCast);
 
   NumOfInstrumentedDereferences++;
 }

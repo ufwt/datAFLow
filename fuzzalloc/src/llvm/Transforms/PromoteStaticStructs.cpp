@@ -31,7 +31,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "static-struct-prom"
 
-static cl::opt<int> ClMinArraySize(
+static cl::opt<unsigned> ClMinArraySize(
     "static-struct-prom-min-size",
     cl::desc("The minimum size of a static array to promote to malloc"),
     cl::init(1));
@@ -138,7 +138,7 @@ AllocaInst *PromoteStaticStructs::promoteStructAlloca(AllocaInst *Alloca) {
   auto *NewAlloca = IRB.CreateAlloca(StructTy->getPointerTo(), nullptr,
                                      Alloca->getName() + "_prom");
   auto *MallocCall = createStructMalloc(IRB, StructTy);
-  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
+  IRB.CreateStore(MallocCall, NewAlloca);
 
   // Update all the users of the original struct to use the dynamically
   // allocated structs
@@ -199,6 +199,7 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
             // TODO do something with escape analysis result
             bool AllocaEscapes = PointerMayBeCaptured(
                 Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
+            (void)AllocaEscapes;
 
             StructAllocasToPromote.push_back(Alloca);
             NumOfStructPromotion++;

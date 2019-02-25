@@ -126,7 +126,7 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo(), nullptr,
                                      Alloca->getName() + "_prom");
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
-  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
+  IRB.CreateStore(MallocCall, NewAlloca);
 
   // Update all the users of the original array to use the dynamically
   // allocated array
@@ -194,6 +194,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
           // TODO do something with escape analysis result
           bool AllocaEscapes = PointerMayBeCaptured(
               Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
+          (void)AllocaEscapes;
 
           ArrayAllocasToPromote.push_back(Alloca);
           NumOfArrayPromotion++;
