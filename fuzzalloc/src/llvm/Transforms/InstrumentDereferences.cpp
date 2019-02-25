@@ -34,7 +34,7 @@ static cl::opt<bool>
                        cl::desc("Instrument write instructions"));
 static cl::opt<bool>
     ClInstrumentReads("fuzzalloc-instrument-reads",
-                      cl::desc("Instrument read instructionss"));
+                      cl::desc("Instrument read instructions"));
 static cl::opt<bool> ClInstrumentAtomics(
     "fuzzalloc-instrument-atomics",
     cl::desc("Instrument atomic instructions (rmw, cmpxchg)"));
