@@ -28,7 +28,7 @@ using namespace llvm;
 #define DEBUG_TYPE "static-array-prom"
 
 static cl::opt<int> ClMinArraySize(
-    "static-array-prom-min-size",
+    "fuzzalloc-min-array-size",
     cl::desc("The minimum size of a static array to promote to malloc"),
     cl::init(1));
 

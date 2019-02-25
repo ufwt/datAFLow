@@ -31,10 +31,11 @@ using namespace llvm;
 
 #define DEBUG_TYPE "static-struct-prom"
 
-static cl::opt<unsigned> ClMinArraySize(
-    "static-struct-prom-min-size",
-    cl::desc("The minimum size of a static array to promote to malloc"),
-    cl::init(1));
+static cl::opt<unsigned>
+    ClMinArraySize("fuzzalloc-min-array-size",
+                   cl::desc("The minimum size of a static array inside a "
+                            "struct to promote to malloc"),
+                   cl::init(1));
 
 STATISTIC(NumOfStructPromotion, "Number of struct promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
