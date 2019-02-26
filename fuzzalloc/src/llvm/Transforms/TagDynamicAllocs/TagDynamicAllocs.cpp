@@ -371,7 +371,9 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
-  SmallVector<Function *, 8> FuncsToDelete;
+  SmallVector<Function *, 8> FuncsToDelete = {M.getFunction("malloc"),
+                                              M.getFunction("calloc"),
+                                              M.getFunction("realloc")};
 
   // Replace whitelisted memory allocation functions with a tagged version.
   // Mark the original function for deletion
@@ -411,6 +413,10 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // Check the users of the functions to delete. If a function is assigned to
   // a global variable, rewrite the global variable with a tagged version
   for (auto *F : FuncsToDelete) {
+    if (!F) {
+      continue;
+    }
+
     for (auto *U : F->users()) {
       if (auto *GA = dyn_cast<GlobalAlias>(U)) {
         tagDynAllocGlobalAlias(GA);
@@ -422,6 +428,10 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // Delete the old (untagged) memory allocation functions. Make sure that the
   // only users are call instructions
   for (auto *F : FuncsToDelete) {
+    if (!F) {
+      continue;
+    }
+
     for (auto *U : F->users()) {
       U->dropAllReferences();
     }
