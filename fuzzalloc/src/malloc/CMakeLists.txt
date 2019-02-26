@@ -16,13 +16,14 @@ if(AFL_INSTRUMENT)
                         " Provide the AFL source path in the AFL_PATH environment variable")
   endif()
 
-  GET_FILENAME_COMPONENT(AFL_PATH ${AFL_PATH} ABSOLUTE)
+  get_filename_component(AFL_PATH ${AFL_PATH} ABSOLUTE)
   set(AFL_LLVM_RT "${AFL_PATH}/llvm_mode/afl-llvm-rt.o.c")
 
   if(EXISTS ${AFL_LLVM_RT})
     message(STATUS "AFL source code found at ${AFL_PATH}")
   else()
-    message(FATAL_ERROR "${AFL_LLVM_RT} not found in ${AFL_PATH}. Are you sure that this is the AFL source directory?")
+    message(FATAL_ERROR "${AFL_LLVM_RT} not found in ${AFL_PATH}."
+                        " Are you sure that this is the AFL source directory?")
   endif()
 
   # Need to remove -Werror for afl-llvm-rt.o.c

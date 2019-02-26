@@ -10,7 +10,7 @@ LLVM passes to transform your program under test (PUT) to use `libfuzzalloc`.
 ```console
 mkdir build
 cd build
-cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_CXX_FLAGS="`llvm-config --cxxflags`" ..
+cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
 make -j
 ```
 
