@@ -18,14 +18,16 @@
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "PromoteCommon.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "static-array-prom"
+#define DEBUG_TYPE "prom-static-arrays"
 
 static cl::opt<int> ClMinArraySize(
     "fuzzalloc-min-array-size",
@@ -225,5 +227,18 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 }
 
 static RegisterPass<PromoteStaticArrays>
-    X("static-array-prom", "Promote static arrays to malloc calls", false,
+    X("prom-static-arrays", "Promote static arrays to malloc calls", false,
       false);
+
+static void registerPromoteStaticArraysPass(const PassManagerBuilder &,
+                                            legacy::PassManagerBase &PM) {
+  PM.add(new PromoteStaticArrays());
+}
+
+static RegisterStandardPasses
+    RegisterPromoteStaticArraysPass(PassManagerBuilder::EP_OptimizerLast,
+                                    registerPromoteStaticArraysPass);
+
+static RegisterStandardPasses
+    RegisterPromoteStaticArraysPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                     registerPromoteStaticArraysPass);

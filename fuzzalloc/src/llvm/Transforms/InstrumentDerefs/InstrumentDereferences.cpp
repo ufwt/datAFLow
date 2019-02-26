@@ -19,15 +19,17 @@
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
 #include "fuzzalloc.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "instrument-deref"
+#define DEBUG_TYPE "instrument-derefs"
 
 static cl::opt<bool>
     ClInstrumentWrites("fuzzalloc-instrument-writes",
@@ -46,7 +48,7 @@ namespace {
 
 static const char *const InstrumentationName = "__ptr_deref";
 
-class InstrumentDereference : public ModulePass {
+class InstrumentDereferences : public ModulePass {
 private:
   IntegerType *Int64Ty;
   IntegerType *TagTy;
@@ -60,7 +62,7 @@ private:
 
 public:
   static char ID;
-  InstrumentDereference() : ModulePass(ID) {}
+  InstrumentDereferences() : ModulePass(ID) {}
 
   bool doInitialization(Module &) override;
   void getAnalysisUsage(AnalysisUsage &) const override;
@@ -69,7 +71,7 @@ public:
 
 } // end anonymous namespace
 
-char InstrumentDereference::ID = 0;
+char InstrumentDereferences::ID = 0;
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
 static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
@@ -241,7 +243,7 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 }
 
 /// Instrument the Instruction `I` that dereferences `Pointer`.
-void InstrumentDereference::doInstrumentDeref(Instruction *I, Value *Pointer) {
+void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
   IRBuilder<> IRB(I);
 
   auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
@@ -253,11 +255,11 @@ void InstrumentDereference::doInstrumentDeref(Instruction *I, Value *Pointer) {
   NumOfInstrumentedDereferences++;
 }
 
-void InstrumentDereference::getAnalysisUsage(AnalysisUsage &AU) const {
+void InstrumentDereferences::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool InstrumentDereference::doInitialization(Module &M) {
+bool InstrumentDereferences::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
@@ -272,7 +274,7 @@ bool InstrumentDereference::doInitialization(Module &M) {
   return false;
 }
 
-bool InstrumentDereference::runOnModule(Module &M) {
+bool InstrumentDereferences::runOnModule(Module &M) {
   assert(ClInstrumentReads ||
          ClInstrumentWrites && "Must instrument either loads or stores");
 
@@ -359,7 +361,20 @@ bool InstrumentDereference::runOnModule(Module &M) {
   return true;
 }
 
-static RegisterPass<InstrumentDereference>
-    X("instrument-deref",
+static RegisterPass<InstrumentDereferences>
+    X("instrument-derefs",
       "Instrument pointer dereferences to find their allocation site", false,
       false);
+
+static void registerInstrumentDereferencesPass(const PassManagerBuilder &,
+                                               legacy::PassManagerBase &PM) {
+  PM.add(new InstrumentDereferences());
+}
+
+static RegisterStandardPasses
+    RegisterInstrumentDereferencesPass(PassManagerBuilder::EP_OptimizerLast,
+                                       registerInstrumentDereferencesPass);
+
+static RegisterStandardPasses RegisterInstrumentDereferencesPass0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0,
+    registerInstrumentDereferencesPass);

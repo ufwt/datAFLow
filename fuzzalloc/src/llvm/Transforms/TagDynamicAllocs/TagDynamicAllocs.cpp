@@ -1,4 +1,5 @@
-//===-- TagDynamicAllocs.cpp - Tag dynamic memory allocs with a unique ID -===//
+//===-- TagDynamicAllocss.cpp - Tag dynamic memory allocs with a unique ID
+//-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -25,10 +26,12 @@
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SpecialCaseList.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
@@ -36,7 +39,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "tag-dyn-alloc"
+#define DEBUG_TYPE "tag-dyn-allocs"
 
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
@@ -73,10 +76,10 @@ public:
   }
 };
 
-/// TagDynamicAlloc: Tag dynamic memory allocation function calls (\p malloc,
+/// TagDynamicAllocs: Tag dynamic memory allocation function calls (\p malloc,
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
 /// their call site) and call the fuzzalloc function instead
-class TagDynamicAlloc : public ModulePass {
+class TagDynamicAllocs : public ModulePass {
 private:
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
@@ -97,7 +100,7 @@ private:
 
 public:
   static char ID;
-  TagDynamicAlloc() : ModulePass(ID) {}
+  TagDynamicAllocs() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
   bool doInitialization(Module &) override;
@@ -141,13 +144,13 @@ static FuzzallocWhitelist getWhitelist() {
   return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
 }
 
-char TagDynamicAlloc::ID = 0;
+char TagDynamicAllocs::ID = 0;
 
 /// Translates a function type to its tagged version.
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// to the given function type.
-FunctionType *TagDynamicAlloc::translateTaggedFuncType(FunctionType *OrigFTy) {
+FunctionType *TagDynamicAllocs::translateTaggedFuncType(FunctionType *OrigFTy) {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
   TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
                        OrigFTy->param_end());
@@ -160,7 +163,7 @@ FunctionType *TagDynamicAlloc::translateTaggedFuncType(FunctionType *OrigFTy) {
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// and prepends the function name with "__tagged_".
-Function *TagDynamicAlloc::translateTaggedFunc(Function *OrigF) {
+Function *TagDynamicAllocs::translateTaggedFunc(Function *OrigF) {
   FunctionType *NewFTy = translateTaggedFuncType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
@@ -176,7 +179,7 @@ Function *TagDynamicAlloc::translateTaggedFunc(Function *OrigF) {
 /// For example, `malloc` maps to `__tagged_malloc`, while functions listed in
 /// the fuzzalloc whitelist are mapped to their tagged versions.
 std::map<CallInst *, Function *>
-TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
+TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
   std::map<CallInst *, Function *> AllocCalls;
 
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -215,8 +218,8 @@ TagDynamicAlloc::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 /// Tag dynamic memory allocation function calls with a call site identifier
 /// (the `Tag` argument) and replace the call (the `Call` argument) with a call
 /// to the appropriate tagged function (the `TaggedF` argument)
-CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
-                                           Function *TaggedF, Value *Tag) {
+CallInst *TagDynamicAllocs::tagDynAllocCall(CallInst *OrigCall,
+                                            Function *TaggedF, Value *Tag) {
   // Copy the original allocation function call's arguments so that the tag is
   // the first argument passed to the tagged function
   SmallVector<Value *, 3> FuzzallocArgs = {Tag};
@@ -282,8 +285,8 @@ CallInst *TagDynamicAlloc::tagDynAllocCall(CallInst *OrigCall,
 ///
 /// A whitelist of custom allocation wrapper functions can be passed through a
 /// command-line argument.
-Function *TagDynamicAlloc::tagDynAllocFunc(Function *OrigF,
-                                           const TargetLibraryInfo *TLI) {
+Function *TagDynamicAllocs::tagDynAllocFunc(Function *OrigF,
+                                            const TargetLibraryInfo *TLI) {
   // Make a new version of the custom allocation wrapper function, with
   // "__tagged_" preprended to the name and that accepts a tag as the first
   // argument to the function
@@ -317,7 +320,7 @@ Function *TagDynamicAlloc::tagDynAllocFunc(Function *OrigF,
 /// A dynamic memory allocation function could be assigned to a global alias.
 /// If so, the global alias must be updated to point to a tagged version of the
 /// dynamic memory allocation function.
-GlobalAlias *TagDynamicAlloc::tagDynAllocGlobalAlias(GlobalAlias *OrigGA) {
+GlobalAlias *TagDynamicAllocs::tagDynAllocGlobalAlias(GlobalAlias *OrigGA) {
   Constant *Aliasee = OrigGA->getAliasee();
 
   assert(isa<Function>(Aliasee) && "The aliasee must be a function");
@@ -334,11 +337,11 @@ GlobalAlias *TagDynamicAlloc::tagDynAllocGlobalAlias(GlobalAlias *OrigGA) {
   return NewGA;
 }
 
-void TagDynamicAlloc::getAnalysisUsage(AnalysisUsage &AU) const {
+void TagDynamicAllocs::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool TagDynamicAlloc::doInitialization(Module &M) {
+bool TagDynamicAllocs::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
@@ -364,7 +367,7 @@ bool TagDynamicAlloc::doInitialization(Module &M) {
   return false;
 }
 
-bool TagDynamicAlloc::runOnModule(Module &M) {
+bool TagDynamicAllocs::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
@@ -428,8 +431,21 @@ bool TagDynamicAlloc::runOnModule(Module &M) {
   return true;
 }
 
-static RegisterPass<TagDynamicAlloc>
-    X("tag-dyn-alloc",
+static RegisterPass<TagDynamicAllocs>
+    X("tag-dyn-allocs",
       "Tag dynamic allocation function calls and replace them with a call to "
       "the appropriate fuzzalloc function",
       false, false);
+
+static void registerTagDynamicAllocsPass(const PassManagerBuilder &,
+                                         legacy::PassManagerBase &PM) {
+  PM.add(new TagDynamicAllocs());
+}
+
+static RegisterStandardPasses
+    RegisterTagDynamicAllocsPass(PassManagerBuilder::EP_OptimizerLast,
+                                 registerTagDynamicAllocsPass);
+
+static RegisterStandardPasses
+    RegisterTagDynamicAllocsPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                  registerTagDynamicAllocsPass);

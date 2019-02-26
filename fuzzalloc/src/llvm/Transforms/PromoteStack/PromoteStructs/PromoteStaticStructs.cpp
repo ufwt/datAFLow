@@ -14,22 +14,23 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include <set>
-
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "PromoteCommon.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "static-struct-prom"
+#define DEBUG_TYPE "prom-static-structs"
 
 static cl::opt<unsigned>
     ClMinArraySize("fuzzalloc-min-array-size",
@@ -176,7 +177,7 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
   StructTypes.run(M, /* OnlyNamed */ false);
 
   // Struct types containing static arrays that need to be promoted
-  std::set<StructType *> StructsToPromote;
+  SmallPtrSet<StructType *, 8> StructsToPromote;
 
   for (auto *Ty : StructTypes) {
     if (structContainsArray(Ty)) {
@@ -233,6 +234,19 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
 }
 
 static RegisterPass<PromoteStaticStructs>
-    X("static-struct-prom",
+    X("prom-static-structs",
       "Promote static structs containing static arrays to malloc calls", false,
       false);
+
+static void registerPromoteStaticStructsPass(const PassManagerBuilder &,
+                                             legacy::PassManagerBase &PM) {
+  PM.add(new PromoteStaticStructs());
+}
+
+static RegisterStandardPasses
+    RegisterPromoteStaticStructsPass(PassManagerBuilder::EP_OptimizerLast,
+                                     registerPromoteStaticStructsPass);
+
+static RegisterStandardPasses
+    RegisterPromoteStaticStructsPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                      registerPromoteStaticStructsPass);
