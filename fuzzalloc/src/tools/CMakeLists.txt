@@ -29,8 +29,12 @@ if(AFL_INSTRUMENT)
                          "${CMAKE_CURRENT_BINARY_DIR}/../malloc"
                          ABSOLUTE)
 
-  add_executable(dataflow-clang-fast dataflow-clang-fast.c)
-  target_include_directories(dataflow-clang-fast PRIVATE ${AFL_PATH})
   add_definitions(-DFUZZALLOC_LLVM_DIR="${FUZZALLOC_LLVM_DIR}"
                   -DFUZZALLOC_MALLOC_DIR="${FUZZALLOC_MALLOC_DIR}")
+
+  add_executable(dataflow-clang-fast dataflow-clang-fast.c)
+  target_include_directories(dataflow-clang-fast PRIVATE ${AFL_PATH})
+
+  add_executable(dataflow-clang-fast++ dataflow-clang-fast.c)
+  target_include_directories(dataflow-clang-fast++ PRIVATE ${AFL_PATH})
 endif()
