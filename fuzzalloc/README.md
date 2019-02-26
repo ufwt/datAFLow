@@ -28,3 +28,8 @@ gcc, it's safest to pass in the flags
 ```
 
 All you have to do is link your PUT with `-lfuzzalloc`.
+
+## With AFL
+
+To use with AFL, the `dataflow-clang-fast` (and `dataflow-clang-fast++`) tools
+can be used as dropin replacements for `clang` (and `clang++`).
