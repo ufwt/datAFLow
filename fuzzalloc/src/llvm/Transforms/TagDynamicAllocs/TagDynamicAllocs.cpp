@@ -345,24 +345,10 @@ bool TagDynamicAllocs::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
-  PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
-
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   this->SizeTTy = DL.getIntPtrType(C);
 
   this->Whitelist = getWhitelist();
-
-  // Fuzzalloc's malloc/calloc/realloc functions take the same arguments as the
-  // original dynamic memory allocation function, except that the first
-  // argument is a tag that identifies the allocation site
-  this->FuzzallocMallocF = checkFuzzallocFunc(M.getOrInsertFunction(
-      FuzzallocMallocFuncName, Int8PtrTy, this->TagTy, this->SizeTTy));
-  this->FuzzallocCallocF = checkFuzzallocFunc(
-      M.getOrInsertFunction(FuzzallocCallocFuncName, Int8PtrTy, this->TagTy,
-                            this->SizeTTy, this->SizeTTy));
-  this->FuzzallocReallocF = checkFuzzallocFunc(
-      M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
-                            Int8PtrTy, this->SizeTTy));
 
   return false;
 }
@@ -384,16 +370,31 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
-  tag_t TagVal = DEFAULT_TAG;
+  // Create the tagged memory allocation functions. These functions take the
+  // take the same arguments as the original dynamic memory allocation
+  // function, except that the first argument is a tag that identifies the
+  // allocation site
+  PointerType *Int8PtrTy = Type::getInt8PtrTy(M.getContext());
 
+  this->FuzzallocMallocF = checkFuzzallocFunc(M.getOrInsertFunction(
+      FuzzallocMallocFuncName, Int8PtrTy, this->TagTy, this->SizeTTy));
+  this->FuzzallocCallocF = checkFuzzallocFunc(
+      M.getOrInsertFunction(FuzzallocCallocFuncName, Int8PtrTy, this->TagTy,
+                            this->SizeTTy, this->SizeTTy));
+  this->FuzzallocReallocF = checkFuzzallocFunc(
+      M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
+                            Int8PtrTy, this->SizeTTy));
+
+  tag_t TagVal = DEFAULT_TAG;
   std::map<CallInst *, Function *> AllocCalls;
+
+  // Collect and tag function calls as required
   for (auto &F : M.functions()) {
     AllocCalls.clear();
 
-    // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc
-    // function (__tagged_malloc, __tagged_calloc, and __tagged_realloc
-    // respectively), as well as whitelisted function calls to their tagged
-    // versions
+    // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc function
+    // (__tagged_malloc, __tagged_calloc, and __tagged_realloc respectively),
+    // as well as whitelisted function calls to their tagged versions
     AllocCalls = getDynAllocCalls(&F, TLI);
 
     // Tag all of the dynamic allocation function calls with an integer value
