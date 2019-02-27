@@ -23,11 +23,7 @@ void free(void *ptr);
 static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 
 // XXX should this be a constant?
-static int page_size;
-
-__attribute__((constructor)) static void __init_fuzzalloc(void) {
-  page_size = getpagesize();
-}
+static int page_size = 0;
 
 static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
@@ -88,6 +84,11 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
   tag_t pool_tag = alloc_site_to_pool_map[alloc_site_tag];
 
   if (pool_tag == 0) {
+    // This should only happen once
+    if (!page_size) {
+      page_size = getpagesize();
+    }
+
     // This allocation site has not been used before. Create a new "allocation
     // pool" for this site
 
