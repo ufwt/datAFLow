@@ -62,3 +62,7 @@ mkdir -p fuzzalloc-build && \
 
 # Replace common.sh with ours (because it supports datAFLow)
 ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
+
+# Add scripts to just build stuff
+ln -sf ${SRC_DIR}/build.sh ${FUZZER_TEST_SUITE}/build.sh
+ln -sf ${SRC_DIR}/build-everything.sh ${FUZZER_TEST_SUITE}/build-everything.sh

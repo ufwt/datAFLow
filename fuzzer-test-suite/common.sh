@@ -52,7 +52,7 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  export LDFLAGS="-L${FUZZALLOC_BUILD_DIR}/src/malloc -lfuzzalloc"
+  export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/malloc -lfuzzalloc"
 else
   export CFLAGS=${CFLAGS:-"$FUZZ_CXXFLAGS"}
   export CXXFLAGS=${CXXFLAGS:-"$FUZZ_CXXFLAGS"}
@@ -80,7 +80,7 @@ get_svn_revision() {
 }
 
 build_datAFLow() {
-  $CXX $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
+  clang++ $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
   ar r $LIB_FUZZING_ENGINE afl_driver.o
   rm *.o
 }
