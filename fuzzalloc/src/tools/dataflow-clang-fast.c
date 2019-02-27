@@ -132,11 +132,6 @@ static void edit_params(u32 argc, char **argv) {
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
 
-  /* Collect stats on what we've instrumented */
-
-  cc_params[cc_par_cnt++] = "-mllvm";
-  cc_params[cc_par_cnt++] = "-stats";
-
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
 
   /* Detect stray -v calls from ./configure scripts. */
