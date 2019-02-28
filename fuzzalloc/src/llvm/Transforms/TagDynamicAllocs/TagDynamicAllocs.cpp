@@ -426,16 +426,14 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
-  // Delete the old (untagged) memory allocation functions. Make sure that the
-  // only users are call instructions
+  // Delete the old (untagged) memory allocation functions
   for (auto *F : FuncsToDelete) {
     if (!F) {
       continue;
     }
 
-    for (auto *U : F->users()) {
-      U->dropAllReferences();
-    }
+    // TODO this is probably not a great idea...
+    F->replaceAllUsesWith(UndefValue::get(F->getType()));
     F->eraseFromParent();
   }
 
