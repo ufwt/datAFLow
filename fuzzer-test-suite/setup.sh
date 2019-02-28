@@ -10,6 +10,7 @@ fi
 
 ROOT_DIR=${PWD}
 SRC_DIR=$(dirname "$(readlink -f "${0}")")
+WHITELIST_DIR="${SRC_DIR}/whitelists"
 
 FUZZER_TEST_SUITE="fuzzer-test-suite"
 FUZZER_TEST_SUITE_URL="https://github.com/google/${FUZZER_TEST_SUITE}.git"
@@ -66,3 +67,8 @@ ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
 # Add scripts to just build stuff
 ln -sf ${SRC_DIR}/build.sh ${FUZZER_TEST_SUITE}/build.sh
 ln -sf ${SRC_DIR}/build-everything.sh ${FUZZER_TEST_SUITE}/build-everything.sh
+
+# Add whitelists into the appropriate directory
+for WHITELIST in $(ls ${WHITELIST_DIR}); do
+    ln -sf "${WHITELIST_DIR}/${WHITELIST}" "${FUZZER_TEST_SUITE}/${WHITELIST%.txt}/whitelist.txt"
+done

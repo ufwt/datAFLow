@@ -32,6 +32,10 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export AFL_PATH=${AFL_SRC}
   export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/malloc/:${LD_LIBRARY_PATH}"
 
+  if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
+    export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
+  fi
+
   export CC="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
   export CXX="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
 else
