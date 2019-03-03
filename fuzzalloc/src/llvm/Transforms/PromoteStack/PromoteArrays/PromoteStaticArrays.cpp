@@ -125,8 +125,9 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   //  - `PtrTy` is the target's pointer type
   //  - `Size` is the size of the allocated buffer (equivalent to
   //    `NumElements * sizeof(Ty)`)
-  auto *NewAlloca = IRB.CreateAlloca(ElemTy->getPointerTo(), nullptr,
-                                     Alloca->getName() + "_prom");
+  PointerType *NewAllocaTy = ElemTy->getPointerTo();
+  auto *NewAlloca =
+      IRB.CreateAlloca(NewAllocaTy, nullptr, Alloca->getName() + "_prom");
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
   IRB.CreateStore(MallocCall, NewAlloca);
 
@@ -144,7 +145,7 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
       // In this case, we can just cast the new dynamically allocated alloca
       // (which is a pointer) to a the original static array type
 
-      // The original array can only be the store's value operand (I think...)
+      // The original array must be the store's value operand (I think...)
       assert(Store->getValueOperand() == Alloca);
 
       auto *StorePtrElemTy =
@@ -152,9 +153,26 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
 
       // Only cast the new alloca if the types don't match
       auto *AllocaReplace =
-          (StorePtrElemTy == NewAlloca->getType())
+          (StorePtrElemTy == NewAllocaTy)
               ? static_cast<Instruction *>(NewAlloca)
               : new BitCastInst(NewAlloca, StorePtrElemTy, "", Store);
+
+      U->replaceUsesOfWith(Alloca, AllocaReplace);
+    } else if (auto *Select = dyn_cast<SelectInst>(U)) {
+      // Similarly, a temporary variable may be used in a select instruction,
+      // which also requires casting.
+
+      // The original array must be one of the select values
+      assert(Select->getTrueValue() == Alloca ||
+             Select->getFalseValue() == Alloca);
+
+      auto *SelectTy = Select->getType();
+
+      // Only cast the new alloca if the types don't match
+      auto *AllocaReplace =
+          (SelectTy == NewAllocaTy)
+              ? static_cast<Instruction *>(NewAlloca)
+              : new BitCastInst(NewAlloca, SelectTy, "", Select);
 
       U->replaceUsesOfWith(Alloca, AllocaReplace);
     } else {
