@@ -292,26 +292,31 @@ Function *TagDynamicAllocs::tagDynAllocFunc(Function *OrigF,
   // argument to the function
   Function *TaggedF = translateTaggedFunc(OrigF);
 
-  // Map the original function arguments to the new version of the custom
-  // allocation wrapper function. Skip the tag argument (i.e., first argument)
-  ValueToValueMapTy VMap;
-  auto NewFuncArgIt = TaggedF->arg_begin() + 1;
-  for (auto &Arg : OrigF->args()) {
-    VMap[&Arg] = &(*NewFuncArgIt++);
-  }
+  // We can only replace the function body if it is defined in this module
+  if (!OrigF->isDeclaration()) {
+    // Map the original function arguments to the new version of the custom
+    // allocation wrapper function. Skip the tag argument (i.e., first
+    // argument)
+    ValueToValueMapTy VMap;
+    auto NewFuncArgIt = TaggedF->arg_begin() + 1;
+    for (auto &Arg : OrigF->args()) {
+      VMap[&Arg] = &(*NewFuncArgIt++);
+    }
 
-  SmallVector<ReturnInst *, 8> Returns;
-  CloneFunctionInto(TaggedF, OrigF, VMap, true, Returns);
+    SmallVector<ReturnInst *, 8> Returns;
+    CloneFunctionInto(TaggedF, OrigF, VMap, true, Returns);
 
-  // Get all the dynamic memory allocation function calls that this custom
-  // allocation wrapper function makes and replace them with a call to the
-  // appropriate tagged function (which may a fuzzalloc function or another
-  // whitelisted function)
-  std::map<CallInst *, Function *> AllocCalls = getDynAllocCalls(TaggedF, TLI);
+    // Get all the dynamic memory allocation function calls that this custom
+    // allocation wrapper function makes and replace them with a call to the
+    // appropriate tagged function (which may a fuzzalloc function or another
+    // whitelisted function)
+    std::map<CallInst *, Function *> AllocCalls =
+        getDynAllocCalls(TaggedF, TLI);
 
-  Value *TagArg = TaggedF->arg_begin();
-  for (auto &CallWithTaggedF : AllocCalls) {
-    tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, TagArg);
+    Value *TagArg = TaggedF->arg_begin();
+    for (auto &CallWithTaggedF : AllocCalls) {
+      tagDynAllocCall(CallWithTaggedF.first, CallWithTaggedF.second, TagArg);
+    }
   }
 
   return TaggedF;
