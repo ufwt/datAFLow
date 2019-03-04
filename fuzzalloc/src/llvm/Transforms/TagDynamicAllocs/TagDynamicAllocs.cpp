@@ -357,19 +357,6 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
-  SmallVector<Function *, 8> FuncsToDelete = {M.getFunction("malloc"),
-                                              M.getFunction("calloc"),
-                                              M.getFunction("realloc")};
-
-  // Replace whitelisted memory allocation functions with a tagged version.
-  // Mark the original function for deletion
-  for (auto &F : M.functions()) {
-    if (this->Whitelist.isIn(F)) {
-      tagDynAllocFunc(&F, TLI);
-      FuncsToDelete.push_back(&F);
-    }
-  }
-
   // Create the tagged memory allocation functions. These functions take the
   // take the same arguments as the original dynamic memory allocation
   // function, except that the first argument is a tag that identifies the
@@ -384,6 +371,19 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   this->FuzzallocReallocF = checkFuzzallocFunc(
       M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
                             Int8PtrTy, this->SizeTTy));
+
+  SmallVector<Function *, 8> FuncsToDelete = {M.getFunction("malloc"),
+                                              M.getFunction("calloc"),
+                                              M.getFunction("realloc")};
+
+  // Replace whitelisted memory allocation functions with a tagged version.
+  // Mark the original function for deletion
+  for (auto &F : M.functions()) {
+    if (this->Whitelist.isIn(F)) {
+      tagDynAllocFunc(&F, TLI);
+      FuncsToDelete.push_back(&F);
+    }
+  }
 
   tag_t TagVal = DEFAULT_TAG;
   std::map<CallInst *, Function *> AllocCalls;
