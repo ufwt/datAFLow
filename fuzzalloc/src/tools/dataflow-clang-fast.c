@@ -114,8 +114,6 @@ static void edit_params(u32 argc, char **argv) {
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
                             "/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
-  cc_params[cc_par_cnt++] = "-mllvm";
-  cc_params[cc_par_cnt++] = "-fuzzalloc-random-tags";
 
   char *fuzzalloc_whitelist = getenv("FUZZALLOC_WHITELIST");
   if (fuzzalloc_whitelist) {
