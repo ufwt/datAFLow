@@ -17,14 +17,15 @@
 //===----------------------------------------------------------------------===//
 
 #include <map>
-#include <set>
 
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/PtrUseVisitor.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -93,18 +94,15 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  std::set<Function *> TaggedFuncs;
+  SmallPtrSet<Function *, 8> TaggedFuncs;
 
-  FunctionType *translateTaggedFuncType(FunctionType *);
-  Function *translateTaggedFunc(Function *);
-  GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *);
-
-  ConstantInt *generateTag() const;
+  FunctionType *translateTaggedFunctionType(FunctionType *) const;
+  Function *translateTaggedFunction(Function *) const;
+  GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
   std::map<CallInst *, Function *> getDynAllocCalls(Function *,
                                                     const TargetLibraryInfo *);
 
-  CallInst *tagCall(CallInst *, Value *, Value *);
   Function *tagFunction(Function *, const TargetLibraryInfo *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
   GlobalAlias *tagGlobalAlias(GlobalAlias *);
@@ -113,9 +111,108 @@ public:
   static char ID;
   TagDynamicAllocs() : ModulePass(ID) {}
 
+  ConstantInt *generateTag() const;
+  bool functionTagged(const Function *) const;
+  CallInst *tagCall(CallInst *, Value *, Value *) const;
+
   void getAnalysisUsage(AnalysisUsage &) const override;
   bool doInitialization(Module &) override;
   bool runOnModule(Module &) override;
+};
+
+class GlobalVariableRewriter : public PtrUseVisitor<GlobalVariableRewriter> {
+  friend class PtrUseVisitor<GlobalVariableRewriter>;
+  friend class InstVisitor<GlobalVariableRewriter>;
+
+private:
+  Type *TaggedTy;
+  LoadInst *OrigLoad;
+  LoadInst *NewLoad;
+  TagDynamicAllocs *Pass;
+
+public:
+  GlobalVariableRewriter(LoadInst *Load, GlobalVariable *TaggedGV,
+                         TagDynamicAllocs *Pass)
+      : PtrUseVisitor<GlobalVariableRewriter>(
+            TaggedGV->getParent()->getDataLayout()),
+        TaggedTy(TaggedGV->getValueType()), OrigLoad(Load),
+        // Load the global variable containing the tagged function
+        NewLoad(new LoadInst(TaggedGV, "", Load->isVolatile(),
+                             Load->getAlignment(), Load->getOrdering(),
+                             Load->getSyncScopeID(), Load)),
+        Pass(Pass) {}
+
+private:
+  /// Check that the type of the given value matches the type of the tagged
+  /// global variable.
+  bool isTaggedType(const Value *V) const {
+    return V->getType() == this->TaggedTy;
+  }
+
+  /// Replace a call to the function stored in the original global variable
+  /// with a call to the tagged version. The value of the tag depends on where
+  /// the function call is occurring: if the tagged function is being called
+  /// from within another tagged function, just pass the tag argument straight
+  /// through. Otherwise, generate a new tag.
+  CallInst *tagCall(CallInst *Call, Value *Callee) {
+    auto *ParentF = Call->getFunction();
+    Value *Tag = this->Pass->functionTagged(ParentF)
+                     ? ParentF->arg_begin()
+                     : static_cast<Value *>(this->Pass->generateTag());
+
+    return this->Pass->tagCall(Call, Callee, Tag);
+  }
+
+  void visitCallInst(CallInst &CI) {
+    auto *TaggedCall = tagCall(&CI, this->NewLoad);
+
+    // Replace the original dynamic memory allocation function call
+    CI.replaceAllUsesWith(TaggedCall);
+    CI.eraseFromParent();
+  }
+
+  void visitPHINode(PHINode &PN) {
+    PN.replaceUsesOfWith(this->OrigLoad, this->NewLoad);
+
+    // Once all of the values in the PHI node are of the same type as the
+    // tagged global variable, we can replace the PHI node
+    if (std::all_of(PN.value_op_begin(), PN.value_op_end(),
+                    [this](const Value *Val) { return isTaggedType(Val); })) {
+      // Replace the PHI node with an equivalent node of the correct type
+      // (i.e., so that it matches the type of the tagged global variable)
+      auto *NewPN =
+          PHINode::Create(this->TaggedTy, PN.getNumIncomingValues(),
+                          PN.hasName() ? "__tagged_" + PN.getName() : "", &PN);
+      for (unsigned i = 0; i < PN.getNumIncomingValues(); ++i) {
+        NewPN->addIncoming(PN.getIncomingValue(i), PN.getIncomingBlock(i));
+      }
+
+      // Cannot use `replaceAllUsesWith` because the PHI nodes have different
+      // types
+      for (auto &U : PN.uses()) {
+        U.set(NewPN);
+      }
+
+      // Nothing uses the PHI node now. Delete it
+      PN.eraseFromParent();
+
+      // Cache users
+      // SmallVector<User *, 4> Users(NewPN->user_begin(), NewPN->user_end());
+
+      for (auto *U : NewPN->users()) {
+        // TODO only deal with call instructions for now
+        assert(isa<CallInst>(U));
+        auto *OrigCall = cast<CallInst>(U);
+        auto *TaggedCall = tagCall(OrigCall, NewPN);
+
+        // Replace the original dynamic memory allocation function call
+        OrigCall->replaceAllUsesWith(TaggedCall);
+        OrigCall->eraseFromParent();
+      }
+    }
+  }
+
+  void visitInstruction(Instruction &I) { PI.setAborted(&I); }
 };
 
 } // end anonymous namespace
@@ -157,11 +254,22 @@ static FuzzallocWhitelist getWhitelist() {
 
 char TagDynamicAllocs::ID = 0;
 
+/// Return true if the given function has a tagged version.
+bool TagDynamicAllocs::functionTagged(const Function *F) const {
+  return this->TaggedFuncs.find(F) != this->TaggedFuncs.end();
+}
+
+/// Generate a random tag
+ConstantInt *TagDynamicAllocs::generateTag() const {
+  return ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
+}
+
 /// Translates a function type to its tagged version.
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// to the given function type.
-FunctionType *TagDynamicAllocs::translateTaggedFuncType(FunctionType *OrigFTy) {
+FunctionType *
+TagDynamicAllocs::translateTaggedFunctionType(FunctionType *OrigFTy) const {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
   TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
                        OrigFTy->param_end());
@@ -174,8 +282,8 @@ FunctionType *TagDynamicAllocs::translateTaggedFuncType(FunctionType *OrigFTy) {
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// and prepends the function name with "__tagged_".
-Function *TagDynamicAllocs::translateTaggedFunc(Function *OrigF) {
-  FunctionType *NewFTy = translateTaggedFuncType(OrigF->getFunctionType());
+Function *TagDynamicAllocs::translateTaggedFunction(Function *OrigF) const {
+  FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
   auto *NewF = OrigF->getParent()->getOrInsertFunction(NewFName.str(), NewFTy);
@@ -190,22 +298,17 @@ Function *TagDynamicAllocs::translateTaggedFunc(Function *OrigF) {
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// of the function and prepends the global variable name with "__tagged_".
 GlobalVariable *
-TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) {
-  FunctionType *NewGVTy = translateTaggedFuncType(
+TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
+  FunctionType *NewGVTy = translateTaggedFunctionType(
       cast<FunctionType>(OrigGV->getValueType()->getPointerElementType()));
   Twine NewGVName = "__tagged_" + OrigGV->getName();
 
   auto *NewGV = OrigGV->getParent()->getOrInsertGlobal(NewGVName.str(),
                                                        NewGVTy->getPointerTo());
   assert(isa<GlobalVariable>(NewGV) &&
-         "Translated tagged global variable not a function");
+         "Translated tagged global variable not a global variable");
 
   return cast<GlobalVariable>(NewGV);
-}
-
-/// Generate a random tag
-ConstantInt *TagDynamicAllocs::generateTag() const {
-  return ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
 }
 
 /// Maps all dynamic memory allocation function calls in the function `F` to
@@ -237,7 +340,7 @@ TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
         AllocCalls.emplace(Call, this->FuzzallocReallocF);
       } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
         if (this->Whitelist.isIn(*CalledFunc)) {
-          AllocCalls.emplace(Call, translateTaggedFunc(CalledFunc));
+          AllocCalls.emplace(Call, translateTaggedFunction(CalledFunc));
         }
       }
     }
@@ -246,18 +349,17 @@ TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
   return AllocCalls;
 }
 
-/// Tag dynamic memory allocation function calls with a call site identifier
-/// (the `Tag` argument) and replace the call (the `Call` argument) with a call
-/// to the appropriate tagged function (the `TaggedF` argument)
-CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall, Value *TaggedF,
-                                    Value *Tag) {
+/// Replace a function call (`OrigCall`) with a call to `NewCallee` that is
+/// tagged with an allocation site identifier stored in `Tag`.
+CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall, Value *NewCallee,
+                                    Value *Tag) const {
   // Copy the original allocation function call's arguments so that the tag is
   // the first argument passed to the tagged function
   SmallVector<Value *, 3> FuzzallocArgs = {Tag};
   FuzzallocArgs.insert(FuzzallocArgs.end(), OrigCall->arg_begin(),
                        OrigCall->arg_end());
 
-  Value *FuzzallocCallee;
+  Value *CastNewCallee;
   IRBuilder<> IRB(OrigCall);
 
   if (auto *ConstExpr = dyn_cast<ConstantExpr>(OrigCall->getCalledValue())) {
@@ -277,10 +379,10 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall, Value *TaggedF,
     // Add the tag (i.e., the call site identifier) as the first argument to
     // the cast function type
     Type *NewBitCastTy =
-        translateTaggedFuncType(cast<FunctionType>(OrigBitCastTy));
+        translateTaggedFunctionType(cast<FunctionType>(OrigBitCastTy));
 
     // The callee is a cast version of the tagged function
-    FuzzallocCallee = IRB.CreateBitCast(TaggedF, NewBitCastTy->getPointerTo());
+    CastNewCallee = IRB.CreateBitCast(NewCallee, NewBitCastTy->getPointerTo());
 
     // getAsInstruction() leaves the instruction floating around and unattached
     // to anything, so we must manually delete it
@@ -288,17 +390,14 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall, Value *TaggedF,
   } else {
     // The function call result was not cast, so there is no need to do
     // anything to the callee
-    FuzzallocCallee = TaggedF;
+    CastNewCallee = NewCallee;
   }
 
-  auto *FuzzallocCall = IRB.CreateCall(FuzzallocCallee, FuzzallocArgs);
+  // Create the call to the callee
   NumOfTaggedCalls++;
-
-  // Replace the original dynamic memory allocation function call
-  OrigCall->replaceAllUsesWith(FuzzallocCall);
-  OrigCall->eraseFromParent();
-
-  return FuzzallocCall;
+  return IRB.CreateCall(CastNewCallee, FuzzallocArgs,
+                        OrigCall->hasName() ? "__tagged_" + OrigCall->getName()
+                                            : "");
 }
 
 /// Sometimes a PUT does not call a dynamic memory allocation function
@@ -321,7 +420,7 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
   // Make a new version of the allocation wrapper function, with "__tagged_"
   // preprended to the name and that accepts a tag as the first argument to the
   // function
-  Function *TaggedF = translateTaggedFunc(OrigF);
+  Function *TaggedF = translateTaggedFunction(OrigF);
 
   // We can only replace the function body if it is defined in this module
   if (!OrigF->isDeclaration()) {
@@ -345,7 +444,12 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
 
     Value *TagArg = TaggedF->arg_begin();
     for (auto &CallWithTaggedF : AllocCalls) {
-      tagCall(CallWithTaggedF.first, CallWithTaggedF.second, TagArg);
+      auto *TaggedCall =
+          tagCall(CallWithTaggedF.first, CallWithTaggedF.second, TagArg);
+
+      // Replace the original dynamic memory allocation function call
+      CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
+      CallWithTaggedF.first->eraseFromParent();
     }
   }
 
@@ -369,27 +473,17 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
     // The initializer must be a function because we are only interested in
     // global variables that point to dynamic memory allocation functions
     assert(isa<Function>(OrigInitializer) &&
-           "The initializer must be a whitelisted function");
+           "The initializer must be a function");
     TaggedGV->setInitializer(
-        translateTaggedFunc(cast<Function>(OrigInitializer)));
+        translateTaggedFunction(cast<Function>(OrigInitializer)));
   }
 
+  // Replace all the users of the global variable. Currently we only deal with
+  // loads
   for (auto *U : OrigGV->users()) {
     if (auto *Load = dyn_cast<LoadInst>(U)) {
-      auto *LoadedGV =
-          new LoadInst(TaggedGV, "", Load->isVolatile(), Load->getAlignment(),
-                       Load->getOrdering(), Load->getSyncScopeID(), Load);
-
-      for (auto *LU : Load->users()) {
-        assert(isa<CallInst>(LU));
-        auto *Call = cast<CallInst>(LU);
-        auto *ParentF = Call->getFunction();
-
-        Value *Tag = this->TaggedFuncs.find(ParentF) != this->TaggedFuncs.end()
-                         ? ParentF->arg_begin()
-                         : static_cast<Value *>(generateTag());
-        tagCall(Call, LoadedGV, Tag);
-      }
+      GlobalVariableRewriter GVRewriter(Load, TaggedGV, this);
+      GVRewriter.visitPtr(*Load);
 
       Load->eraseFromParent();
     }
@@ -402,15 +496,22 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 /// If so, the global alias must be updated to point to a tagged version of the
 /// dynamic memory allocation function.
 GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
-  Constant *Aliasee = OrigGA->getAliasee();
+  Constant *OrigAliasee = OrigGA->getAliasee();
+  Constant *NewAliasee;
 
-  assert(isa<Function>(Aliasee) && "The aliasee must be a function");
-  auto *NewF = translateTaggedFunc(cast<Function>(Aliasee));
+  if (auto *AliaseeF = dyn_cast<Function>(OrigAliasee)) {
+    NewAliasee = translateTaggedFunction(AliaseeF);
+  } else if (auto *AliaseeGV = dyn_cast<GlobalVariable>(OrigAliasee)) {
+    NewAliasee = translateTaggedGlobalVariable(AliaseeGV);
+  } else {
+    assert(false && "The aliasee must be a function or global variable");
+  }
 
   auto *NewGA = GlobalAlias::create(
-      NewF->getType()->getPointerElementType(),
-      NewF->getType()->getAddressSpace(), OrigGA->getLinkage(),
-      "__tagged_" + OrigGA->getName(), NewF, OrigGA->getParent());
+      NewAliasee->getType()->getPointerElementType(),
+      NewAliasee->getType()->getPointerAddressSpace(), OrigGA->getLinkage(),
+      OrigGA->hasName() ? "__tagged_" + OrigGA->getName() : "", NewAliasee,
+      OrigGA->getParent());
 
   // TODO handle users
   assert(OrigGA->getNumUses() == 0 && "Not yet implemented");
@@ -487,7 +588,12 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     // Tag all of the dynamic allocation function calls with an integer value
     // that represents the allocation site
     for (auto &CallWithTaggedF : AllocCalls) {
-      tagCall(CallWithTaggedF.first, CallWithTaggedF.second, generateTag());
+      auto *TaggedCall =
+          tagCall(CallWithTaggedF.first, CallWithTaggedF.second, generateTag());
+
+      // Replace the original dynamic memory allocation function call
+      CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
+      CallWithTaggedF.first->eraseFromParent();
     }
   }
 
@@ -503,6 +609,9 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
+  // Replace global aliases pointing to whitelisted functions/global variables
+  // to point to a tagged function/global variable instead. Mark the original
+  // alias for deletion
   SmallVector<GlobalAlias *, 8> GAsToDelete;
 
   for (auto &GA : M.aliases()) {
