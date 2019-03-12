@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow none"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -57,6 +57,8 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/malloc -lfuzzalloc"
+elif [[ $FUZZING_ENGINE == "none" ]]; then
+  export LIB_FUZZING_ENGINE=""
 else
   export CFLAGS=${CFLAGS:-"$FUZZ_CXXFLAGS"}
   export CXXFLAGS=${CXXFLAGS:-"$FUZZ_CXXFLAGS"}
@@ -81,6 +83,10 @@ get_svn_revision() {
   SVN_REVISION="$2"
   TO_DIR="$3"
   [ ! -e $TO_DIR ] && svn co -r$SVN_REVISION $SVN_REPO $TO_DIR
+}
+
+build_none() {
+  true
 }
 
 build_datAFLow() {
