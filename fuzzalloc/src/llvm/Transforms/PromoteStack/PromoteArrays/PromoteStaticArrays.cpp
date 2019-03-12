@@ -16,8 +16,10 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -207,11 +209,16 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     // Static array allocations to promote
     SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
 
-    // List of return instructions that require calls to free to be inserted
+    // lifetime.end intrinsics that may require calls to free to be inserted
     // before them
-    SmallVector<ReturnInst *, 4> ReturnsToInsertFree;
+    SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
-    // Collect allocas to promote
+    // Return instructions that may require calls to free to be inserted before
+    // them
+    SmallVector<ReturnInst *, 4> Returns;
+
+    // Collect allocas to promote + lifetime.end intrinsics + returns to
+    // (possibly) insert frees before
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
         if (isa<ArrayType>(Alloca->getAllocatedType())) {
@@ -221,25 +228,54 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
           (void)AllocaEscapes;
 
           ArrayAllocasToPromote.push_back(Alloca);
-          NumOfArrayPromotion++;
+        }
+      } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
+        if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
+          LifetimeEnds.push_back(Intrinsic);
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
-        ReturnsToInsertFree.push_back(Return);
-        NumOfFreeInsert++;
+        Returns.push_back(Return);
       }
     }
 
-    // Promote static arrays to dynamically allocated arrays
+    // Promote static arrays to dynamically allocated arrays and insert calls
+    // to free at the appropriate locations (either at lifetime.end intrinsics
+    // or at return instructions)
+    SmallVector<IntrinsicInst *, 8> LifetimeEndsToInsertFree;
+
     for (auto *Alloca : ArrayAllocasToPromote) {
+      LifetimeEndsToInsertFree.clear();
+
+      // Check if any of the original allocas are used in any of the
+      // lifetime.end intrinsics. If they are, we should insert the free before
+      // the lifetime.end intrinsic and NOT at every return, otherwise we may
+      // end up with a double free :(
+      for (auto *LifetimeEnd : LifetimeEnds) {
+        if (GetUnderlyingObject(LifetimeEnd->getOperand(1), *this->DL) ==
+            Alloca) {
+          LifetimeEndsToInsertFree.push_back(LifetimeEnd);
+        }
+      }
+
+      // Promote the alloca
       auto *NewAlloca = promoteArrayAlloca(Alloca);
 
-      // Ensure that the promoted alloca (now dynamically allocated) is freed
-      // when the function returns
-      for (auto *Return : ReturnsToInsertFree) {
-        insertFree(NewAlloca, Return);
+      // If no lifetime.end intrinsics were found, just free the allocation
+      // when the function returns. Otherwise, free when the lifetime ends
+      if (LifetimeEndsToInsertFree.empty()) {
+        for (auto *Return : Returns) {
+          insertFree(NewAlloca, Return);
+          NumOfFreeInsert++;
+        }
+      } else {
+        for (auto *Inst : LifetimeEndsToInsertFree) {
+          insertFree(NewAlloca, Inst);
+          NumOfFreeInsert++;
+        }
       }
 
       Alloca->eraseFromParent();
+      NumOfArrayPromotion++;
     }
   }
 

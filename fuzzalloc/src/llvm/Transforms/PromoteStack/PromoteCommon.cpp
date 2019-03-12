@@ -12,16 +12,14 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 
 #include "PromoteCommon.h"
 
 using namespace llvm;
 
-void insertFree(AllocaInst *MallocPtr, ReturnInst *Return) {
-  IRBuilder<> IRB(Return);
-
+void insertFree(AllocaInst *MallocPtr, Instruction *Inst) {
   // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = IRB.CreateLoad(MallocPtr);
-  CallInst::CreateFree(LoadMalloc, Return);
+  auto *LoadMalloc = new LoadInst(MallocPtr, "", Inst);
+  CallInst::CreateFree(LoadMalloc, Inst);
 }

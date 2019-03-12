@@ -18,8 +18,10 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CaptureTracking.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/TypeFinder.h"
@@ -192,9 +194,13 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
     // Struct allocations that contain a static array to promote
     SmallVector<AllocaInst *, 8> StructAllocasToPromote;
 
-    // List of return instructions that require calls to free to be inserted
+    // lifetime.end intrinsics that may require calls to free to be inserted
     // before them
-    SmallVector<ReturnInst *, 4> ReturnsToInsertFree;
+    SmallVector<IntrinsicInst *, 4> LifetimeEnds;
+
+    // List of return instructions that may require calls to free to be
+    // inserted before them
+    SmallVector<ReturnInst *, 4> Returns;
 
     // Collect allocas to promote
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -207,27 +213,49 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
             (void)AllocaEscapes;
 
             StructAllocasToPromote.push_back(Alloca);
-            NumOfStructPromotion++;
           }
         }
+      } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
+        if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
+          LifetimeEnds.push_back(Intrinsic);
+        }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
-        ReturnsToInsertFree.push_back(Return);
-        NumOfFreeInsert++;
+        Returns.push_back(Return);
       }
     }
 
     // Promote structs containing static arrays to dynamically allocated
-    // structs
+    // structs and insert calls to free at the appropriate locations (either at
+    // lifetime.end intrinsics or at return instructions)
+    SmallVector<IntrinsicInst *, 8> LifetimeEndsToInsertFree;
+
     for (auto *Alloca : StructAllocasToPromote) {
+      LifetimeEndsToInsertFree.clear();
+
+      // Check if any of the original allocas are used in any of the
+      // lifetime.end intrinsics. If they are, we should insert the free before
+      // the lifetime.end intrinsic and NOT at every return, otherwise we may
+      // end up with a double free :(
+
+      // Promote the alloca
       auto *NewAlloca = promoteStructAlloca(Alloca);
 
-      // Ensure that the promoted alloca (now dynamically allocated) is freed
-      // when the function returns
-      for (auto *Return : ReturnsToInsertFree) {
-        insertFree(NewAlloca, Return);
+      // If no lifetime.end intrinsics were found, just free the allocation
+      // when the function returns. Otherwise, free when the lifetime ends
+      if (LifetimeEndsToInsertFree.empty()) {
+        for (auto *Return : Returns) {
+          insertFree(NewAlloca, Return);
+          NumOfFreeInsert++;
+        }
+      } else {
+        for (auto *Inst : LifetimeEndsToInsertFree) {
+          insertFree(NewAlloca, Inst);
+          NumOfFreeInsert++;
+        }
       }
 
       Alloca->eraseFromParent();
+      NumOfStructPromotion++;
     }
   }
 
