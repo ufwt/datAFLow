@@ -30,6 +30,7 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -83,6 +84,9 @@ public:
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
+  // Maps function calls to the tagged function that should be called instead^
+  using TaggedFunctionMap = std::map<CallInst *, Function *>;
+
 private:
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
@@ -99,8 +103,7 @@ private:
   Function *translateTaggedFunction(Function *) const;
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
-  std::map<CallInst *, Function *> getDynAllocCalls(Function *,
-                                                    const TargetLibraryInfo *);
+  TaggedFunctionMap getDynAllocCalls(Function *, const TargetLibraryInfo *);
 
   CallInst *tagCall(CallInst *, Value *) const;
   Function *tagFunction(Function *, const TargetLibraryInfo *);
@@ -217,9 +220,9 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
 ///
 /// For example, `malloc` maps to `__tagged_malloc`, while functions listed in
 /// the fuzzalloc whitelist are mapped to their tagged versions.
-std::map<CallInst *, Function *>
+TagDynamicAllocs::TaggedFunctionMap
 TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
-  std::map<CallInst *, Function *> AllocCalls;
+  TaggedFunctionMap AllocCalls;
 
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
     if (auto *Call = dyn_cast<CallInst>(&*I)) {
@@ -254,6 +257,11 @@ TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
 /// tagged with an allocation site identifier.
 CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
                                     Value *NewCallee) const {
+  LLVM_DEBUG(dbgs() << "replacing function call" << *OrigCall
+                    << " with a tagged call to" << *NewCallee
+                    << " (in function " << OrigCall->getFunction()->getName()
+                    << ")\n");
+
   // The tag value depends where the function call is occuring. If the tagged
   // function is being called from within another tagged function, just pass
   // the first argument (which is guaranteed to be the tag) straight through.
@@ -328,6 +336,8 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 /// command-line argument.
 Function *TagDynamicAllocs::tagFunction(Function *OrigF,
                                         const TargetLibraryInfo *TLI) {
+  LLVM_DEBUG(dbgs() << "tagging function " << OrigF->getName() << '\n');
+
   // Make a new version of the allocation wrapper function, with "__tagged_"
   // preprended to the name and that accepts a tag as the first argument to the
   // function
@@ -350,8 +360,7 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
     // wrapper function makes and replace them with a call to the appropriate
     // tagged function (which may be a fuzzalloc function or another
     // whitelisted function)
-    std::map<CallInst *, Function *> AllocCalls =
-        getDynAllocCalls(TaggedF, TLI);
+    TaggedFunctionMap AllocCalls = getDynAllocCalls(TaggedF, TLI);
 
     for (auto &CallWithTaggedF : AllocCalls) {
       auto *TaggedCall = tagCall(CallWithTaggedF.first, CallWithTaggedF.second);
@@ -373,6 +382,7 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
 /// A whitelist of global variables containing allocation wrapper functions can
 /// be passed through as a command-line argument.
 GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
+  LLVM_DEBUG(dbgs() << "tagging global variable " << *OrigGV << '\n');
   GlobalVariable *TaggedGV = translateTaggedGlobalVariable(OrigGV);
   Type *TaggedGVTy = TaggedGV->getValueType();
 
@@ -464,6 +474,8 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 /// If so, the global alias must be updated to point to a tagged version of the
 /// dynamic memory allocation function.
 GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
+  LLVM_DEBUG(dbgs() << "tagging global alias " << *OrigGA << '\n');
+
   Constant *OrigAliasee = OrigGA->getAliasee();
   Constant *NewAliasee;
 
@@ -536,7 +548,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   }
 
   // Collect and tag function calls as required
-  std::map<CallInst *, Function *> AllocCalls;
+  TaggedFunctionMap AllocCalls;
 
   for (auto &F : M.functions()) {
     AllocCalls.clear();
@@ -586,13 +598,17 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // Delete all the things marked for deletion
 
   for (auto *GA : GAsToDelete) {
-    // TODO this is probably not a great idea...
+    // TODO this is probably not a great idea. There shouldn't be any call or
+    // load instructions at this point, but who knows what other funky things
+    // the authors have done
     GA->replaceAllUsesWith(UndefValue::get(GA->getType()));
     GA->eraseFromParent();
   }
 
   for (auto *GV : GVsToDelete) {
-    // TODO this is probably not a great idea...
+    // TODO this is probably not a great idea. There shouldn't be any call or
+    // load instructions at this point, but who knows what other funky things
+    // the authors have done
     GV->replaceAllUsesWith(UndefValue::get(GV->getType()));
     GV->eraseFromParent();
   }
@@ -602,7 +618,9 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       continue;
     }
 
-    // TODO this is probably not a great idea...
+    // TODO this is probably not a great idea. There shouldn't be any call or
+    // load instructions at this point, but who knows what other funky things
+    // the authors have done
     F->replaceAllUsesWith(UndefValue::get(F->getType()));
     F->eraseFromParent();
   }

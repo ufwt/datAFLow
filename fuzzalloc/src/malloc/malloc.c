@@ -91,6 +91,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 
     // This allocation site has not been used before. Create a new "allocation
     // pool" for this site
+    DEBUG_MSG("creating new allocation pool\n");
 
     // If the requested size cannot fit in an allocation pool, return an error
     if (size > POOL_SIZE) {
@@ -193,6 +194,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
   } else {
     // Reuse of an existing allocation site. Try and fit the new memory request
     // into the existing allocation pool
+    DEBUG_MSG("reusing allocation pool 0x%x\n", pool_tag);
 
     struct pool_t *pool = GET_POOL(pool_tag);
 

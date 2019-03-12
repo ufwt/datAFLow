@@ -24,6 +24,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "PromoteCommon.h"
@@ -115,6 +116,8 @@ Value *PromoteStaticStructs::updateGEP(GetElementPtrInst *GEP,
 }
 
 AllocaInst *PromoteStaticStructs::promoteStructAlloca(AllocaInst *Alloca) {
+  LLVM_DEBUG(dbgs() << "promoting" << *Alloca << '\n');
+
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
