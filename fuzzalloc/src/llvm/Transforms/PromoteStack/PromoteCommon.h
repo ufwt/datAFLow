@@ -18,6 +18,6 @@
 #include "llvm/IR/Instructions.h"
 
 /// Insert a call to \c free for the given alloca
-void insertFree(llvm::AllocaInst *, llvm::Instruction *);
+void insertFree(llvm::Value *, llvm::Instruction *);
 
 #endif // FUZZALLOC_PROMOTE_COMMON_H

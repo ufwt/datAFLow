@@ -18,7 +18,7 @@
 
 using namespace llvm;
 
-void insertFree(AllocaInst *MallocPtr, Instruction *Inst) {
+void insertFree(Value *MallocPtr, Instruction *Inst) {
   // Load the pointer to the dynamically allocated memory and pass it to free
   auto *LoadMalloc = new LoadInst(MallocPtr, "", Inst);
   CallInst::CreateFree(LoadMalloc, Inst);

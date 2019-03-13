@@ -25,6 +25,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "PromoteCommon.h"
 
@@ -51,8 +52,11 @@ private:
   IntegerType *IntPtrTy;
 
   Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t);
-  Value *updateGEP(GetElementPtrInst *, Instruction *);
+  Value *updateGEP(GetElementPtrInst *, Value *);
   AllocaInst *promoteArrayAlloca(AllocaInst *);
+  Function *createArrayPromCtor(Module &);
+  Function *createArrayPromDtor(Module &);
+  GlobalVariable *promoteGlobalVariable(GlobalVariable *, Function *);
 
 public:
   static char ID;
@@ -78,8 +82,40 @@ Instruction *PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB,
                                 nullptr);
 }
 
+Function *PromoteStaticArrays::createArrayPromCtor(Module &M) {
+  LLVMContext &C = M.getContext();
+
+  FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
+  Function *GlobalCtorF =
+      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+                       "__init_prom_global_arrays", &M);
+
+  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
+  ReturnInst::Create(C, GlobalCtorBB);
+
+  appendToGlobalCtors(M, GlobalCtorF, 0);
+
+  return GlobalCtorF;
+}
+
+Function *PromoteStaticArrays::createArrayPromDtor(Module &M) {
+  LLVMContext &C = M.getContext();
+
+  FunctionType *GlobalDtorTy = FunctionType::get(Type::getVoidTy(C), false);
+  Function *GlobalDtorF =
+      Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+                       "__fin_prom_global_arrays", &M);
+
+  BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
+  ReturnInst::Create(C, GlobalDtorBB);
+
+  appendToGlobalDtors(M, GlobalDtorF, 0);
+
+  return GlobalDtorF;
+}
+
 Value *PromoteStaticArrays::updateGEP(GetElementPtrInst *GEP,
-                                      Instruction *MallocPtr) {
+                                      Value *MallocPtr) {
   // Cache uses
   SmallVector<User *, 8> Users(GEP->user_begin(), GEP->user_end());
 
@@ -189,6 +225,67 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   return NewAlloca;
 }
 
+GlobalVariable *
+PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
+                                           Function *ArrayPromCtor) {
+  LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
+
+  // Cache uses
+  SmallVector<User *, 8> Users(OrigGV->user_begin(), OrigGV->user_end());
+
+  Module *M = ArrayPromCtor->getParent();
+  IRBuilder<> IRB(ArrayPromCtor->getEntryBlock().getTerminator());
+
+  ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
+  Type *ElemTy = ArrayTy->getArrayElementType();
+  uint64_t ArrayNumElems = ArrayTy->getNumElements();
+  PointerType *NewGVTy = ElemTy->getPointerTo();
+
+  // Either the array has no initializer or it is initialized with constant data
+  assert(!OrigGV->hasInitializer() ||
+         isa<ConstantDataArray>(OrigGV->getInitializer()));
+
+  GlobalVariable *NewGV = new GlobalVariable(
+      *M, NewGVTy, false, OrigGV->getLinkage(),
+      !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
+      OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
+      OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
+  NewGV->copyAttributesFrom(OrigGV);
+
+  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
+  IRB.CreateStore(MallocCall, NewGV);
+
+  // If the array had an initializer, we must replicate it so that the malloc'd
+  // memory contains the same data when it is first used. To do this, we just
+  // store the data into the dynamically allocated array element-by-element.
+  // I hope that the backend is smart enough to generate efficient code out of
+  // this...
+  if (OrigGV->hasInitializer()) {
+    auto *LoadNewGV = IRB.CreateLoad(NewGV);
+
+    auto *Initializer = cast<ConstantDataArray>(OrigGV->getInitializer());
+    unsigned NumElems = Initializer->getNumElements();
+
+    for (unsigned i = 0; i < NumElems; ++i) {
+      IRB.CreateStore(
+          Initializer->getElementAsConstant(i),
+          IRB.CreateInBoundsGEP(LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+    }
+  }
+
+  for (auto *U : Users) {
+    if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
+      // Ensure GEPs are correctly typed
+      updateGEP(GEP, NewGV);
+      GEP->eraseFromParent();
+    } else {
+      U->replaceUsesOfWith(OrigGV, NewGV);
+    }
+  }
+
+  return NewGV;
+}
+
 bool PromoteStaticArrays::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
 
@@ -279,7 +376,28 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  // TODO promote global static arrays
+  // Promote non-constant global static arrays in a module constructor and free
+  // them in a destructor
+  SmallVector<GlobalVariable *, 8> GlobalVariablesToPromote;
+
+  for (auto &GV : M.globals()) {
+    if (isa<ArrayType>(GV.getValueType()) && !GV.isConstant()) {
+      GlobalVariablesToPromote.push_back(&GV);
+    }
+  }
+
+  if (!GlobalVariablesToPromote.empty()) {
+    Function *GlobalCtorF = createArrayPromCtor(M);
+    Function *GlobalDtorF = createArrayPromDtor(M);
+
+    for (auto *GV : GlobalVariablesToPromote) {
+      auto *PromotedGV = promoteGlobalVariable(GV, GlobalCtorF);
+      insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
+
+      GV->eraseFromParent();
+      NumOfArrayPromotion++;
+    }
+  }
 
   return true;
 }
