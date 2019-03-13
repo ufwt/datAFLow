@@ -6,6 +6,10 @@ if(POOL_SIZE)
   add_definitions(-DPOOL_SIZE=${POOL_SIZE})
 endif(POOL_SIZE)
 
+if(USE_LOCKS)
+    add_definitions(-DUSE_LOCKS)
+endif()
+
 if(AFL_INSTRUMENT)
   if(NOT DEFINED AFL_PATH AND DEFINED ENV{AFL_PATH})
     set(AFL_PATH "$ENV{AFL_PATH}")

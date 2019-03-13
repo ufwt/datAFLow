@@ -25,6 +25,10 @@ static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 // XXX should this be a constant?
 static int page_size = 0;
 
+#if defined(USE_LOCKS)
+static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
 }
@@ -81,6 +85,10 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 
   void *mem = NULL;
   size_t chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
+
+  // Need to ensure that no-one else can update the allocation site to pool
+  // tag mapping while we are using it
+  ACQUIRE_MALLOC_GLOBAL_LOCK();
   tag_t pool_tag = alloc_site_to_pool_map[alloc_site_tag];
 
   if (pool_tag == 0) {
@@ -175,28 +183,38 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
               CHUNK_SIZE(free_chunk));
 
     // Finally, initialise the allocation pool's metadata and insert the free
-    // chunk into the pool's free list
+    // chunk into the pool's free list. Initialize the pool's lock (if it has
+    // one)
     struct pool_t *pool = (void *)pool_base;
     pool->size = pool_size;
     pool->entry = chunk;
     pool->free_list = free_chunk;
+    INIT_POOL_LOCK(pool);
 
     // This is the first memory allocation for this allocation site, so save
     // the allocation pool tag into the pool map (and likewise the allocation
     // site tag into the site map)
     pool_tag = GET_POOL_TAG(pool_base);
-    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag %u\n", pool_tag,
+    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag 0x%x\n", pool_tag,
               pool_size, alloc_site_tag);
     alloc_site_to_pool_map[alloc_site_tag] = pool_tag;
     __pool_to_alloc_site_map[pool_tag] = alloc_site_tag;
 
+    // Release the global lock - we've updated the allocation site to pool tag
+    // mapping
+    RELEASE_MALLOC_GLOBAL_LOCK();
+
     mem = CHUNK_TO_MEM(chunk);
   } else {
+    // Don't need the global lock - can just use the pool's lock
+    RELEASE_MALLOC_GLOBAL_LOCK();
+
     // Reuse of an existing allocation site. Try and fit the new memory request
     // into the existing allocation pool
     DEBUG_MSG("reusing allocation pool 0x%x\n", pool_tag);
 
     struct pool_t *pool = GET_POOL(pool_tag);
+    ACQUIRE_POOL_LOCK(pool);
 
     // Find a suitably-sized free chunk in the allocation pool for this tag
     struct chunk_t *chunk = find_free_chunk(pool, chunk_size);
@@ -236,6 +254,9 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     if (pool->free_list == chunk) {
       pool->free_list = free_chunk;
     }
+
+    // Release the pool's lock - we've updated the pool
+    RELEASE_POOL_LOCK(pool);
 
     DEBUG_MSG("chunk created at %p (size %lu bytes)\n", chunk, chunk_size);
     DEBUG_MSG("next free chunk at %p (size %lu bytes)\n", free_chunk,
@@ -287,10 +308,11 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
 
     struct chunk_t *orig_chunk = MEM_TO_CHUNK(ptr);
 
+    struct pool_t *pool = GET_POOL(GET_POOL_TAG(orig_chunk));
+    ACQUIRE_POOL_LOCK(pool);
+
     // Sanity check that the chunk metadata hasn't been corrupted in some way
     in_use_sanity_check(orig_chunk);
-
-    struct pool_t *pool = GET_POOL(GET_POOL_TAG(orig_chunk));
 
     size_t orig_chunk_size = CHUNK_SIZE(orig_chunk);
     size_t new_chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
@@ -372,6 +394,10 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       // the original chunk
       memcpy(new_chunk + CHUNK_OVERHEAD, orig_chunk + CHUNK_OVERHEAD,
              orig_chunk_size - CHUNK_OVERHEAD);
+
+      // Release the pool's lock - we're done (for now). It will be reacquired
+      // during free anyway
+      RELEASE_POOL_LOCK(pool);
       free(ptr);
 
       DEBUG_MSG("chunk moved from %p (size %lu bytes) to %p (size %lu bytes)\n",
@@ -403,12 +429,15 @@ void free(void *ptr) {
 
   struct chunk_t *chunk = MEM_TO_CHUNK(ptr);
   size_t chunk_size = CHUNK_SIZE(chunk);
-  DEBUG_MSG("freeing memory at %p (size %lu bytes)\n", chunk, chunk_size);
+
+  struct pool_t *pool = GET_POOL(GET_POOL_TAG(chunk));
+  ACQUIRE_POOL_LOCK(pool);
+
+  DEBUG_MSG("freeing memory at %p (size %lu bytes) from pool 0x%x\n", chunk,
+            chunk_size, GET_POOL_TAG(pool));
 
   // Sanity check that the chunk metadata hasn't been corrupted in some way
   in_use_sanity_check(chunk);
-
-  struct pool_t *pool = GET_POOL(GET_POOL_TAG(chunk));
 
   struct chunk_t *next_chunk = NEXT_CHUNK(chunk);
   // TODO handle this
@@ -462,4 +491,6 @@ void free(void *ptr) {
   chunk->prev = free_list->prev;
   chunk->next = free_list;
   free_list = chunk;
+
+  RELEASE_POOL_LOCK(pool);
 }

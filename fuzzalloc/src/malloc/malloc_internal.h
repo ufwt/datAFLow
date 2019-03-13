@@ -27,7 +27,7 @@
 #define assert(x)
 #endif
 
-#ifdef USE_LOCKS
+#if defined(USE_LOCKS)
 #include <pthread.h>
 #endif
 
@@ -123,24 +123,42 @@ struct chunk_t {
 /// Convert memory address (as seen by the user) to a chunk
 #define MEM_TO_CHUNK(p) ((struct chunk_t *)((uint8_t *)(p)-CHUNK_OVERHEAD))
 
+//===-- Locks -------------------------------------------------------------===//
+
+#if defined(USE_LOCKS)
+#define INIT_POOL_LOCK(p) (pthread_mutex_init(&((p)->lock), NULL))
+#define ACQUIRE_POOL_LOCK(p) (pthread_mutex_lock(&((p)->lock)))
+#define RELEASE_POOL_LOCK(p) (pthread_mutex_unlock(&((p)->lock)))
+
+#define ACQUIRE_MALLOC_GLOBAL_LOCK() (pthread_mutex_lock(&malloc_global_mutex))
+#define RELEASE_MALLOC_GLOBAL_LOCK() (pthread_mutex_unlock(&malloc_global_mutex))
+#else // No locking
+#define INIT_POOL_LOCK(p)
+#define ACQUIRE_POOL_LOCK(p)
+#define RELEASE_POOL_LOCK(p)
+
+#define ACQUIRE_MALLOC_GLOBAL_LOCK()
+#define RELEASE_MALLOC_GLOBAL_LOCK()
+#endif // defined(USE_LOCKS)
+
 //===-- Allocation pool format --------------------------------------------===//
 
 struct pool_t {
+#if defined(USE_LOCKS)
+  /// Lock for accessing this pool
+  pthread_mutex_t lock;
+#endif
+
   /// Pool size (in bytes)
   size_t size;
   /// Free list for this pool
   struct chunk_t *free_list;
   /// First chunk in this pool
   struct chunk_t *entry;
-
-#ifdef USE_LOCKS
-  /// Lock for accessing this pool
-  pthread_mutex_t lock;
-#endif
 };
 
 /// Size of pool overhead (in bytes)
-#define POOL_OVERHEAD (sizeof(struct chunk_t *))
+#define POOL_OVERHEAD (sizeof(struct pool_t) - sizeof(struct chunk_t*))
 
 /// Default pool size (in bytes). Configurable at compile-time
 #ifndef POOL_SIZE
