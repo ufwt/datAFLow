@@ -477,7 +477,7 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
   LLVM_DEBUG(dbgs() << "tagging global alias " << *OrigGA << '\n');
 
   Constant *OrigAliasee = OrigGA->getAliasee();
-  Constant *NewAliasee;
+  Constant *NewAliasee = nullptr;
 
   if (auto *AliaseeF = dyn_cast<Function>(OrigAliasee)) {
     NewAliasee = translateTaggedFunction(AliaseeF);
