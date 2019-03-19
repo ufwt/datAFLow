@@ -241,10 +241,6 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   uint64_t ArrayNumElems = ArrayTy->getNumElements();
   PointerType *NewGVTy = ElemTy->getPointerTo();
 
-  // Either the array has no initializer or it is initialized with constant data
-  assert(!OrigGV->hasInitializer() ||
-         isa<ConstantDataArray>(OrigGV->getInitializer()));
-
   GlobalVariable *NewGV = new GlobalVariable(
       *M, NewGVTy, false, OrigGV->getLinkage(),
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
@@ -256,20 +252,32 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   IRB.CreateStore(MallocCall, NewGV);
 
   // If the array had an initializer, we must replicate it so that the malloc'd
-  // memory contains the same data when it is first used. To do this, we just
-  // store the data into the dynamically allocated array element-by-element.
-  // I hope that the backend is smart enough to generate efficient code out of
-  // this...
+  // memory contains the same data when it is first used. How we do this depends
+  // on the initializer.
   if (OrigGV->hasInitializer()) {
     auto *LoadNewGV = IRB.CreateLoad(NewGV);
 
-    auto *Initializer = cast<ConstantDataArray>(OrigGV->getInitializer());
-    unsigned NumElems = Initializer->getNumElements();
+    if (auto *Initializer =
+            dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
+      // If the initializer is a constant data array, we store the data into the
+      // dynamically allocated array element-by-element. Hopefully the backend
+      // is smart enough to generate efficient code for this...
+      unsigned NumElems = Initializer->getNumElements();
 
-    for (unsigned i = 0; i < NumElems; ++i) {
-      IRB.CreateStore(
-          Initializer->getElementAsConstant(i),
-          IRB.CreateInBoundsGEP(LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+      for (unsigned i = 0; i < NumElems; ++i) {
+        IRB.CreateStore(Initializer->getElementAsConstant(i),
+                        IRB.CreateInBoundsGEP(
+                            LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+      }
+    } else if (auto *Initializer =
+                   dyn_cast<ConstantAggregateZero>(OrigGV->getInitializer())) {
+      // If the initializer is the zeroinitialier, just memset the dynamically
+      // allocated memory to zero
+      uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;
+      IRB.CreateMemSet(LoadNewGV, Constant::getNullValue(IRB.getInt8Ty()), Size,
+                       OrigGV->getAlignment());
+    } else {
+      assert(false && "Unsupported initializer type");
     }
   }
 
