@@ -392,7 +392,8 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
 
       // Copy the data contained in the original chunk into the new chunk. Free
       // the original chunk
-      memcpy(new_chunk + CHUNK_OVERHEAD, orig_chunk + CHUNK_OVERHEAD,
+      memcpy((void *)new_chunk + CHUNK_OVERHEAD,
+             (void *)orig_chunk + CHUNK_OVERHEAD,
              orig_chunk_size - CHUNK_OVERHEAD);
 
       // Release the pool's lock - we're done (for now). It will be reacquired
