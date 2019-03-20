@@ -286,6 +286,8 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       // Ensure GEPs are correctly typed
       updateGEP(GEP, NewGV);
       GEP->eraseFromParent();
+    } else if (auto *ConstExpr = dyn_cast<ConstantExpr>(U)) {
+      ConstExpr->handleOperandChange(OrigGV, NewGV);
     } else {
       U->replaceUsesOfWith(OrigGV, NewGV);
     }
