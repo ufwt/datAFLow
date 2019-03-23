@@ -54,7 +54,6 @@ private:
   IntegerType *IntPtrTy;
 
   Instruction *createStructMalloc(IRBuilder<> &, StructType *);
-  Value *updateGEP(GetElementPtrInst *, Instruction *);
   AllocaInst *promoteStructAlloca(AllocaInst *);
 
 public:
@@ -66,6 +65,8 @@ public:
 };
 
 } // end anonymous namespace
+
+char PromoteStaticStructs::ID = 0;
 
 /// Returns \p true if the struct contains a nested array, or \p false
 /// othewise.
@@ -85,7 +86,22 @@ static bool structContainsArray(const StructType *StructTy) {
   return false;
 }
 
-char PromoteStaticStructs::ID = 0;
+static Value *updateGEP(GetElementPtrInst *GEP, Instruction *MallocPtr) {
+  IRBuilder<> IRB(GEP);
+
+  // Load the pointer to the dynamically allocated array and create a new GEP
+  // instruction
+  auto *Load = IRB.CreateLoad(MallocPtr);
+  auto *NewGEP = IRB.CreateInBoundsGEP(
+      Load, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
+      GEP->hasName() ? GEP->getName() + "_prom" : "");
+
+  // Update all the users of the original GEP instruction to use the updated
+  // GEP. The updated GEP is correctly typed for the malloc pointer
+  GEP->replaceAllUsesWith(NewGEP);
+
+  return NewGEP;
+}
 
 Instruction *PromoteStaticStructs::createStructMalloc(IRBuilder<> &IRB,
                                                       StructType *AllocTy) {
@@ -94,27 +110,6 @@ Instruction *PromoteStaticStructs::createStructMalloc(IRBuilder<> &IRB,
   return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), this->IntPtrTy, AllocTy,
                                 SizeOfStruct,
                                 ConstantInt::get(this->IntPtrTy, 1), nullptr);
-}
-
-Value *PromoteStaticStructs::updateGEP(GetElementPtrInst *GEP,
-                                       Instruction *MallocPtr) {
-  // Cache uses
-  SmallVector<User *, 8> Users(GEP->user_begin(), GEP->user_end());
-
-  IRBuilder<> IRB(GEP);
-
-  // Load the pointer to the dynamically allocated array and create a new GEP
-  // instruction
-  auto *Load = IRB.CreateLoad(MallocPtr);
-  auto *NewGEP = cast<GetElementPtrInst>(IRB.CreateInBoundsGEP(
-      Load, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
-      GEP->getName() + "_prom"));
-
-  // Update all the users of the original GEP instruction to use the updated
-  // GEP. The updated GEP is correctly typed for the malloc pointer
-  GEP->replaceAllUsesWith(NewGEP);
-
-  return NewGEP;
 }
 
 AllocaInst *PromoteStaticStructs::promoteStructAlloca(AllocaInst *Alloca) {

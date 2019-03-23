@@ -23,11 +23,19 @@ extern u8 *__afl_area_ptr;
 
 void __ptr_deref(tag_t pool_tag) {
   tag_t alloc_site_tag = __pool_to_alloc_site_map[pool_tag];
+  (void)alloc_site_tag;
 
   DEBUG_MSG("accessing pool 0x%x (allocation site 0x%x) from %p\n", pool_tag,
             alloc_site_tag, __builtin_return_address(0));
 
 #if defined(AFL_INSTRUMENT)
+  // If the default tag is used, then we have no idea where the allocation site
+  // is. Don't bother updating anything in the AFL bitmap, because we cannot
+  // accurately track it anyway
+  if (alloc_site_tag == DEFAULT_TAG) {
+    return;
+  }
+
   // Update the AFL bitmap based on the previous location (i.e., the allocation
   // call site) and the current location (i.e., the address of the memory
   // access)

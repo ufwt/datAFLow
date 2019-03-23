@@ -119,6 +119,8 @@ public:
   bool runOnModule(Module &) override;
 };
 
+char TagDynamicAllocs::ID = 0;
+
 } // end anonymous namespace
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
@@ -155,8 +157,6 @@ static FuzzallocWhitelist getWhitelist() {
 
   return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
 }
-
-char TagDynamicAllocs::ID = 0;
 
 /// Generate a random tag
 ConstantInt *TagDynamicAllocs::generateTag() const {
@@ -303,9 +303,9 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
     // The callee is a cast version of the tagged function
     CastNewCallee = IRB.CreateBitCast(NewCallee, NewBitCastTy->getPointerTo());
 
-    // getAsInstruction() leaves the instruction floating around and unattached
-    // to anything, so we must manually delete it
-    delete BitCast;
+    // getAsInstruction leaves the instruction floating around and unattached to
+    // anything, so we must manually delete it
+    BitCast->deleteValue();
   } else {
     // The function call result was not cast, so there is no need to do
     // anything to the callee
