@@ -53,6 +53,7 @@ private:
 
   Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t);
   Value *updateGEP(GetElementPtrInst *, Value *);
+  void updateConstExprGEP(ConstantExpr *, const GetElementPtrInst *, Value *);
   AllocaInst *promoteArrayAlloca(AllocaInst *);
   Function *createArrayPromCtor(Module &);
   Function *createArrayPromDtor(Module &);
@@ -116,23 +117,82 @@ Function *PromoteStaticArrays::createArrayPromDtor(Module &M) {
 
 Value *PromoteStaticArrays::updateGEP(GetElementPtrInst *GEP,
                                       Value *MallocPtr) {
-  // Cache uses
-  SmallVector<User *, 8> Users(GEP->user_begin(), GEP->user_end());
-
   IRBuilder<> IRB(GEP);
 
   // Load the pointer to the dynamically allocated array and create a new GEP
   // instruction. Static arrays use an initial "offset 0" that must be ignored
   auto *Load = IRB.CreateLoad(MallocPtr);
-  auto *NewGEP = cast<GetElementPtrInst>(IRB.CreateInBoundsGEP(
+  auto *NewGEP = IRB.CreateInBoundsGEP(
       Load, SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
-      GEP->getName() + "_prom"));
+      GEP->hasName() ? GEP->getName() + "_prom" : "");
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
   GEP->replaceAllUsesWith(NewGEP);
 
   return NewGEP;
+}
+
+void PromoteStaticArrays::updateConstExprGEP(ConstantExpr *ConstExpr,
+                                             const GetElementPtrInst *GEP,
+                                             Value *MallocPtr) {
+  // Cache users
+  SmallVector<User *, 4> Users(ConstExpr->user_begin(), ConstExpr->user_end());
+
+  // Update all the users of the original GEP constant expression to use a new
+  // GEP correctly typed for the promoted array in MallocPtr. Unfortunately, the
+  // promoted array must first be loaded before it can be indexed. This means
+  // that the new GEP is no longer a constant, and must be replaced by a GEP
+  // instruction
+  for (auto *U : Users) {
+    if (auto *PHI = dyn_cast<PHINode>(U)) {
+      // PHI nodes are handled differently because the load and GEP instructions
+      // must be inserted in the appropriate predecessor block to ensure that
+      // the PHI node is always the first element in a basic block
+
+      for (unsigned i = 0; i < PHI->getNumIncomingValues(); ++i) {
+        // If this value uses the GEP constant expression, then insert the load
+        // and GEP instructions before the terminating instruction (which is
+        // typically a branch instruction) in the preceding basic block. This
+        // maintains the property that PHI nodes must only appear at the start
+        // of a basic block
+        if (PHI->getIncomingValue(i) == ConstExpr) {
+          IRBuilder<> IRB(PHI->getIncomingBlock(i)->getTerminator());
+
+          // Load the pointer to the dynamically allocated array and create a
+          // new GEP instruction. Static arrays use an initial "offset 0" that
+          // must be ignored
+          auto *Load = IRB.CreateLoad(MallocPtr);
+          auto *NewGEP = IRB.CreateInBoundsGEP(
+              Load,
+              SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
+              ConstExpr->hasName() ? ConstExpr->getName() + "_prom" : "");
+
+          PHI->setIncomingValue(i, NewGEP);
+        }
+      }
+    } else if (auto *Inst = dyn_cast<Instruction>(U)) {
+      IRBuilder<> IRB(Inst);
+
+      // Load the pointer to the dynamically allocated array and create a new
+      // GEP instruction. Static arrays use an initial "offset 0" that must be
+      // ignored
+      auto *Load = IRB.CreateLoad(MallocPtr);
+      auto *NewGEP = IRB.CreateInBoundsGEP(
+          Load, SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
+          ConstExpr->hasName() ? ConstExpr->getName() + "_prom" : "");
+
+      // Replace all the users of the original GEP constant expression to use
+      // the updated GEP. The updated GEP is correctly typed for the malloc
+      // pointer
+      Inst->replaceUsesOfWith(ConstExpr, NewGEP);
+    } else if (auto *CE = dyn_cast<ConstantExpr>(U)) {
+      // TODO support constant expressions
+      assert(false && "Constant expressions not supported");
+    } else {
+      assert(false && "Not supported");
+    }
+  }
 }
 
 AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
@@ -233,7 +293,6 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   // Cache uses
   SmallVector<User *, 8> Users(OrigGV->user_begin(), OrigGV->user_end());
 
-  Module *M = ArrayPromCtor->getParent();
   IRBuilder<> IRB(ArrayPromCtor->getEntryBlock().getTerminator());
 
   ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
@@ -242,7 +301,9 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   PointerType *NewGVTy = ElemTy->getPointerTo();
 
   GlobalVariable *NewGV = new GlobalVariable(
-      *M, NewGVTy, false, OrigGV->getLinkage(),
+      *ArrayPromCtor->getParent(), NewGVTy, false, OrigGV->getLinkage(),
+      // If the original global variable had an initializer, replace it with the
+      // null pointer initializer
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
       OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
       OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
@@ -281,13 +342,27 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
     }
   }
 
+  // Update all the users of the original global variable to use the
+  // dynamically allocated array
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // Ensure GEPs are correctly typed
       updateGEP(GEP, NewGV);
       GEP->eraseFromParent();
     } else if (auto *ConstExpr = dyn_cast<ConstantExpr>(U)) {
-      ConstExpr->handleOperandChange(OrigGV, NewGV);
+      auto *Inst = ConstExpr->getAsInstruction();
+
+      if (auto *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
+        // Ensure GEPs are correctly typed
+        updateConstExprGEP(ConstExpr, GEP, NewGV);
+      } else {
+        // This is equivalent to replaceUsesOfWith for constants
+        ConstExpr->handleOperandChange(OrigGV, NewGV);
+      }
+
+      // getAsInstruction leaves the instruction floating around and unattached
+      // to anything, so we must manually delete it
+      Inst->deleteValue();
     } else {
       U->replaceUsesOfWith(OrigGV, NewGV);
     }
