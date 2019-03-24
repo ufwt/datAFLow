@@ -448,7 +448,9 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   SmallVector<GlobalVariable *, 8> GlobalVariablesToPromote;
 
   for (auto &GV : M.globals()) {
-    if (isa<ArrayType>(GV.getValueType()) && !GV.isConstant()) {
+    if (isa<ArrayType>(GV.getValueType()) && !GV.isConstant() &&
+        // For some reason this doesn't mark the global variable as constant
+        !isa<ConstantArray>(GV.getInitializer())) {
       GlobalVariablesToPromote.push_back(&GV);
     }
   }
