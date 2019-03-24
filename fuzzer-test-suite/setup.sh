@@ -1,11 +1,11 @@
 #!/bin/bash
 
-set -x
+set -ex
 
 if [ -z ${DEBUG} ]; then
-    BUILD_TYPE="Release"
+  BUILD_TYPE="Release"
 else
-    BUILD_TYPE="Debug"
+  BUILD_TYPE="Debug"
 fi
 
 ROOT_DIR=${PWD}
@@ -25,13 +25,14 @@ COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
 
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
-    echo "${FUZZER_TEST_SUITE} not found. Downloading the Google fuzzer test suite"
-    git clone ${FUZZER_TEST_SUITE_URL} ${FUZZER_TEST_SUITE} && \
-        (cd ${FUZZER_TEST_SUITE} && git checkout ${FUZZER_TEST_SUITE_REV})
+  echo "${FUZZER_TEST_SUITE} not found. Downloading the Google fuzzer test suite"
+  git clone ${FUZZER_TEST_SUITE_URL} ${FUZZER_TEST_SUITE} && \
+    (cd ${FUZZER_TEST_SUITE} && git checkout ${FUZZER_TEST_SUITE_REV})
 fi
 
 # Get AFL
 if [ -z "${AFL_PATH}" ]; then
+  if [ ! -d "AFL" ]; then
     echo "AFL_PATH not set. Downloading and building AFL"
     mkdir -p AFL
     wget ${AFL_URL}
@@ -40,26 +41,28 @@ if [ -z "${AFL_PATH}" ]; then
 
     make -C AFL
     make -C AFL/llvm_mode
-    AFL_PATH=${PWD}/AFL
+  fi
+
+  export AFL_PATH=${PWD}/AFL
 else
-    echo "Using AFL at ${AFL_PATH}"
-    ln -sf ${AFL_PATH} AFL
+  echo "Using AFL at ${AFL_PATH}"
+  ln -sf ${AFL_PATH} AFL
 fi
 
 # Get compiler-rt
 if [ ! -d "${COMPILER_RT}" ]; then
-    echo "${COMPILER_RT} not found. Downloading LLVM's compiler-rt"
-    mkdir -p ${COMPILER_RT}
-    wget ${COMPILER_RT_URL}
-    tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
-    rm ${COMPILER_RT_TAR}
+  echo "${COMPILER_RT} not found. Downloading LLVM's compiler-rt"
+  mkdir -p ${COMPILER_RT}
+  wget ${COMPILER_RT_URL}
+  tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
+  rm ${COMPILER_RT_TAR}
 fi
 ln -sf compiler-rt/lib/fuzzer Fuzzer
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-build && \
-    (cd fuzzalloc-build && cmake -DUSE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${SRC_DIR}/../fuzzalloc &&
-    make -j)
+  (cd fuzzalloc-build && cmake -DUSE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${SRC_DIR}/../fuzzalloc &&
+  make -j)
 
 # Replace common.sh with ours (because it supports datAFLow)
 ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
@@ -70,5 +73,5 @@ ln -sf ${SRC_DIR}/build-everything.sh ${FUZZER_TEST_SUITE}/build-everything.sh
 
 # Add whitelists into the appropriate directory
 for WHITELIST in $(ls ${WHITELIST_DIR}); do
-    ln -sf "${WHITELIST_DIR}/${WHITELIST}" "${FUZZER_TEST_SUITE}/${WHITELIST%.txt}/whitelist.txt"
+  ln -sf "${WHITELIST_DIR}/${WHITELIST}" "${FUZZER_TEST_SUITE}/${WHITELIST%.txt}/whitelist.txt"
 done
