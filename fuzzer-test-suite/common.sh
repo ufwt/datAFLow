@@ -55,8 +55,11 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  export CXXFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/malloc -lfuzzalloc"
+elif [[ $FUZZING_ENGINE == "afl" ]]; then
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "none" ]]; then
   export LIB_FUZZING_ENGINE=""
 else
@@ -96,9 +99,8 @@ build_datAFLow() {
 }
 
 build_afl() {
-  $CC $CFLAGS -c -w $AFL_SRC/llvm_mode/afl-llvm-rt.o.c
   $CXX $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
-  ar r $LIB_FUZZING_ENGINE afl_driver.o afl-llvm-rt.o.o
+  ar r $LIB_FUZZING_ENGINE afl_driver.o
   rm *.o
 }
 
