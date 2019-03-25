@@ -130,9 +130,14 @@ static void edit_params(u32 argc, char **argv) {
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
 
-  if (getenv("DEBUG")) {
+  if (getenv("DATAFLOW_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-debug";
+  }
+
+  if (getenv("DATAFLOW_STATS")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-stats";
   }
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";

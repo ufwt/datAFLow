@@ -41,7 +41,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "tag-dyn-allocs"
+#define DEBUG_TYPE "fuzzalloc-tag-dyn-allocs"
 
 // Adapted from http://c-faq.com/lib/randrange.html
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
@@ -629,7 +629,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 }
 
 static RegisterPass<TagDynamicAllocs>
-    X("tag-dyn-allocs",
+    X("fuzzalloc-tag-dyn-allocs",
       "Tag dynamic allocation function calls and replace them with a call to "
       "the appropriate fuzzalloc function",
       false, false);

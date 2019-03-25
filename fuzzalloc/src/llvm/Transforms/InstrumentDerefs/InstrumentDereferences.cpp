@@ -29,7 +29,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "instrument-derefs"
+#define DEBUG_TYPE "fuzzalloc-instrument-derefs"
 
 static cl::opt<bool>
     ClInstrumentWrites("fuzzalloc-instrument-writes",
@@ -56,9 +56,7 @@ private:
   ConstantInt *TagShiftSize;
   ConstantInt *TagMask;
 
-  Function *InstrumentationF;
-
-  void doInstrumentDeref(Instruction *, Value *);
+  void doInstrumentDeref(Instruction *, Value *, Function *);
 
 public:
   static char ID;
@@ -243,14 +241,15 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 }
 
 /// Instrument the Instruction `I` that dereferences `Pointer`.
-void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
+void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer,
+                                               Function *InstrumentationF) {
   IRBuilder<> IRB(I);
 
   auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
   auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                this->TagMask);
   auto *PoolIdCast = IRB.CreateIntCast(PoolId, this->TagTy, false);
-  IRB.CreateCall(this->InstrumentationF, PoolIdCast);
+  IRB.CreateCall(InstrumentationF, PoolIdCast);
 
   NumOfInstrumentedDereferences++;
 }
@@ -285,7 +284,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
 
   Type *VoidTy = Type::getVoidTy(C);
 
-  this->InstrumentationF = checkInstrumentationFunc(
+  Function *InstrumentationF = checkInstrumentationFunc(
       M.getOrInsertFunction(InstrumentationName, VoidTy, this->TagTy));
 
   // For determining whether to instrument a memory dereference
@@ -351,7 +350,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           continue;
         }
 
-        doInstrumentDeref(I, Addr);
+        doInstrumentDeref(I, Addr, InstrumentationF);
       } else {
         // TODO instrumentMemIntrinsic
       }
@@ -362,7 +361,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
 }
 
 static RegisterPass<InstrumentDereferences>
-    X("instrument-derefs",
+    X("fuzzalloc-instrument-derefs",
       "Instrument pointer dereferences to find their allocation site", false,
       false);
 

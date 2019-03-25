@@ -31,14 +31,16 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "prom-static-arrays"
+#define DEBUG_TYPE "fuzzalloc-prom-static-arrays"
 
 static cl::opt<int> ClMinArraySize(
     "fuzzalloc-min-array-size",
     cl::desc("The minimum size of a static array to promote to malloc"),
     cl::init(1));
 
-STATISTIC(NumOfArrayPromotion, "Number of array promotions.");
+STATISTIC(NumOfAllocaArrayPromotion, "Number of alloca array promotions.");
+STATISTIC(NumOfGlobalVariableArrayPromotion,
+          "Number of global variable array promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
@@ -369,9 +371,11 @@ bool PromoteStaticArrays::doFinalization(Module &) {
 }
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
+  // Static array allocations to promote
+  SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
+
   for (auto &F : M.functions()) {
-    // Static array allocations to promote
-    SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
+    ArrayAllocasToPromote.clear();
 
     // lifetime.end intrinsics that may require calls to free to be inserted
     // before them
@@ -439,7 +443,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
       }
 
       Alloca->eraseFromParent();
-      NumOfArrayPromotion++;
+      NumOfAllocaArrayPromotion++;
     }
   }
 
@@ -464,16 +468,17 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
       insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
 
       GV->eraseFromParent();
-      NumOfArrayPromotion++;
+      NumOfGlobalVariableArrayPromotion++;
+      NumOfFreeInsert++;
     }
   }
 
-  return true;
+  return !ArrayAllocasToPromote.empty() || !GlobalVariablesToPromote.empty();
 }
 
 static RegisterPass<PromoteStaticArrays>
-    X("prom-static-arrays", "Promote static arrays to malloc calls", false,
-      false);
+    X("fuzzalloc-prom-static-arrays", "Promote static arrays to malloc calls",
+      false, false);
 
 static void registerPromoteStaticArraysPass(const PassManagerBuilder &,
                                             legacy::PassManagerBase &PM) {

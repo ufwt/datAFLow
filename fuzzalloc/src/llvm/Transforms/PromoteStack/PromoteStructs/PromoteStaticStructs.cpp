@@ -33,7 +33,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "prom-static-structs"
+#define DEBUG_TYPE "fuzzalloc-prom-static-structs"
 
 static cl::opt<unsigned>
     ClMinArraySize("fuzzalloc-min-array-size",
@@ -41,7 +41,8 @@ static cl::opt<unsigned>
                             "struct to promote to malloc"),
                    cl::init(1));
 
-STATISTIC(NumOfStructPromotion, "Number of struct promotions.");
+STATISTIC(NumOfAllocaStructPromotion, "Number of alloca struct promotions.");
+STATISTIC(NumOfGlobalVariableStructPromotion, "Number of global variable struct promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
@@ -185,9 +186,11 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
     }
   }
 
+  // Struct allocations that contain a static array to promote
+  SmallVector<AllocaInst *, 8> StructAllocasToPromote;
+
   for (auto &F : M.functions()) {
-    // Struct allocations that contain a static array to promote
-    SmallVector<AllocaInst *, 8> StructAllocasToPromote;
+    StructAllocasToPromote.clear();
 
     // lifetime.end intrinsics that may require calls to free to be inserted
     // before them
@@ -250,17 +253,18 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
       }
 
       Alloca->eraseFromParent();
-      NumOfStructPromotion++;
+      NumOfAllocaStructPromotion++;
     }
   }
 
   // TODO promote global structs
+  (void)NumOfGlobalVariableStructPromotion;
 
-  return true;
+  return !StructAllocasToPromote.empty();
 }
 
 static RegisterPass<PromoteStaticStructs>
-    X("prom-static-structs",
+    X("fuzzalloc-prom-static-structs",
       "Promote static structs containing static arrays to malloc calls", false,
       false);
 
