@@ -290,18 +290,10 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
 
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
 
-  auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
-  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                           MDNode::get(C, None));
-
   // If the array had an initializer, we must replicate it so that the malloc'd
   // memory contains the same data when it is first used. How we do this depends
   // on the initializer
   if (OrigGV->hasInitializer()) {
-    auto *LoadNewGV = IRB.CreateLoad(NewGV);
-    LoadNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                           MDNode::get(C, None));
-
     if (auto *Initializer =
             dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
       // If the initializer is a constant data array, we store the data into the
@@ -310,10 +302,10 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       unsigned NumElems = Initializer->getNumElements();
 
       for (unsigned i = 0; i < NumElems; ++i) {
-        auto *StoreToNewGV =
-            IRB.CreateStore(Initializer->getElementAsConstant(i),
-                            IRB.CreateInBoundsGEP(
-                                LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+        auto *StoreToNewGV = IRB.CreateStore(
+            Initializer->getElementAsConstant(i),
+            IRB.CreateInBoundsGEP(MallocCall,
+                                  ConstantInt::get(ElemTy, i, false)));
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                                   MDNode::get(C, None));
       }
@@ -322,27 +314,26 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       // If the initializer is the zeroinitialier, just memset the dynamically
       // allocated memory to zero
       uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;
-      IRB.CreateMemSet(LoadNewGV, Constant::getNullValue(IRB.getInt8Ty()), Size,
-                       OrigGV->getAlignment());
+      IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
+                       Size, OrigGV->getAlignment());
     } else {
       assert(false && "Unsupported initializer type");
     }
   }
 
-  // If the global variable is used by any constant GEP expressions, we must
-  // expand the constant expression (and any constant expression user) to an
-  // instruction so that we can correctly replace the global variable with a
-  // dynamically allocated version.
-  //
-  // This is required because we must first load the dynamically allocated
-  // global variable before we use it in a GEP, which means the GEP is no longer
-  // a constant expression
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
+
+  // Now that the global variable has been promoted to the heap, it must be
+  // loaded before we can do anything else to it. This means that any constant
+  // expressions that used the old global variable must be replaced, because a
+  // load instruction is not a constant expression. To do this we just expand
+  // all constant expression users to instructions.
   SmallVector<ConstantExpr *, 4> CEUsers;
   for (auto *U : OrigGV->users()) {
     if (auto *CE = dyn_cast<ConstantExpr>(U)) {
-      if (CE->getOpcode() == Instruction::GetElementPtr) {
-        CEUsers.push_back(CE);
-      }
+      CEUsers.push_back(CE);
     }
   }
 
@@ -357,15 +348,10 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       // Ensure GEPs are correctly typed
       updateGEP(GEP, NewGV);
       GEP->eraseFromParent();
-    } else if (auto *ConstExpr = dyn_cast<ConstantExpr>(U)) {
-      // All of the GEP constant expressions should have been expanded to
-      // instructions by this point
-      assert(ConstExpr->getOpcode() != Instruction::GetElementPtr);
-
-      // This is equivalent to replaceUsesOfWith for constants
-      ConstExpr->handleOperandChange(OrigGV, NewGV);
+    } else if (auto *Inst = dyn_cast<Instruction>(U)) {
+      U->replaceUsesOfWith(OrigGV, new LoadInst(NewGV, "", Inst));
     } else {
-      U->replaceUsesOfWith(OrigGV, NewGV);
+      assert(false && "Unsupported user");
     }
   }
 
