@@ -336,7 +336,11 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           continue;
         }
 
-        ToInstrument.push_back(&I);
+        // Finally, check if the instruction has the "noinstrument" metadata
+        // attached to it
+        if (!I.getMetadata(M.getMDKindID("fuzzalloc.noinstrument"))) {
+          ToInstrument.push_back(&I);
+        }
       }
     }
 

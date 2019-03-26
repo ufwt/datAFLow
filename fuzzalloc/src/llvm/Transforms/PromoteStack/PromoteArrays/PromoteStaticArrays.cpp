@@ -76,7 +76,7 @@ static Function *createArrayPromCtor(Module &M) {
   FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__init_prom_global_arrays", &M);
+                       "__init_prom_global_arrays_" + M.getName(), &M);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
   ReturnInst::Create(C, GlobalCtorBB);
@@ -92,7 +92,7 @@ static Function *createArrayPromDtor(Module &M) {
   FunctionType *GlobalDtorTy = FunctionType::get(Type::getVoidTy(C), false);
   Function *GlobalDtorF =
       Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__fin_prom_global_arrays", &M);
+                       "__fin_prom_global_arrays_" + M.getName(), &M);
 
   BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
   ReturnInst::Create(C, GlobalDtorBB);
@@ -173,6 +173,9 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
+  const Module *M = Alloca->getModule();
+  LLVMContext &C = M->getContext();
+
   ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
   Type *ElemTy = ArrayTy->getArrayElementType();
 
@@ -202,7 +205,10 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   auto *NewAlloca =
       IRB.CreateAlloca(NewAllocaTy, nullptr, Alloca->getName() + "_prom");
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
-  IRB.CreateStore(MallocCall, NewAlloca);
+
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
 
   // Update all the users of the original array to use the dynamically
   // allocated array
@@ -261,6 +267,9 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
                                            Function *ArrayPromCtor) {
   LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
 
+  Module *M = OrigGV->getParent();
+  LLVMContext &C = M->getContext();
+
   // Insert a new global variable into the module and initialize it with a call
   // to malloc in the module's constructor
   IRBuilder<> IRB(ArrayPromCtor->getEntryBlock().getTerminator());
@@ -271,7 +280,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   PointerType *NewGVTy = ElemTy->getPointerTo();
 
   GlobalVariable *NewGV = new GlobalVariable(
-      *ArrayPromCtor->getParent(), NewGVTy, false, OrigGV->getLinkage(),
+      *M, NewGVTy, false, OrigGV->getLinkage(),
       // If the original global variable had an initializer, replace it with the
       // null pointer initializer
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
@@ -280,13 +289,18 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   NewGV->copyAttributesFrom(OrigGV);
 
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
-  IRB.CreateStore(MallocCall, NewGV);
+
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
 
   // If the array had an initializer, we must replicate it so that the malloc'd
   // memory contains the same data when it is first used. How we do this depends
   // on the initializer
   if (OrigGV->hasInitializer()) {
     auto *LoadNewGV = IRB.CreateLoad(NewGV);
+    LoadNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
 
     if (auto *Initializer =
             dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
@@ -296,9 +310,12 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       unsigned NumElems = Initializer->getNumElements();
 
       for (unsigned i = 0; i < NumElems; ++i) {
-        IRB.CreateStore(Initializer->getElementAsConstant(i),
-                        IRB.CreateInBoundsGEP(
-                            LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+        auto *StoreToNewGV =
+            IRB.CreateStore(Initializer->getElementAsConstant(i),
+                            IRB.CreateInBoundsGEP(
+                                LoadNewGV, ConstantInt::get(ElemTy, i, false)));
+        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                                  MDNode::get(C, None));
       }
     } else if (auto *Initializer =
                    dyn_cast<ConstantAggregateZero>(OrigGV->getInitializer())) {

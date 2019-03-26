@@ -42,7 +42,8 @@ static cl::opt<unsigned>
                    cl::init(1));
 
 STATISTIC(NumOfAllocaStructPromotion, "Number of alloca struct promotions.");
-STATISTIC(NumOfGlobalVariableStructPromotion, "Number of global variable struct promotions.");
+STATISTIC(NumOfGlobalVariableStructPromotion,
+          "Number of global variable struct promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
@@ -119,6 +120,9 @@ AllocaInst *PromoteStaticStructs::promoteStructAlloca(AllocaInst *Alloca) {
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
+  const Module *M = Alloca->getModule();
+  LLVMContext &C = M->getContext();
+
   // This is safe because we already know that the alloca has a struct type
   StructType *StructTy = cast<StructType>(Alloca->getAllocatedType());
 
@@ -141,7 +145,9 @@ AllocaInst *PromoteStaticStructs::promoteStructAlloca(AllocaInst *Alloca) {
   auto *NewAlloca = IRB.CreateAlloca(StructTy->getPointerTo(), nullptr,
                                      Alloca->getName() + "_prom");
   auto *MallocCall = createStructMalloc(IRB, StructTy);
-  IRB.CreateStore(MallocCall, NewAlloca);
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
 
   // Update all the users of the original struct to use the dynamically
   // allocated structs
