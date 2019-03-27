@@ -15,7 +15,6 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -69,6 +68,23 @@ public:
 } // end anonymous namespace
 
 char PromoteStaticArrays::ID = 0;
+
+static bool isPromotableType(Type *Ty) {
+  if (!Ty->isArrayTy()) {
+    return false;
+  }
+
+  // Don't promote va_list (i.e., variable arguments): it's too hard and for
+  // some reason everything breaks :(
+  if (auto *StructTy = dyn_cast<StructType>(Ty->getArrayElementType())) {
+    if (!StructTy->isLiteral() &&
+        StructTy->getName().equals("struct.__va_list_tag")) {
+      return false;
+    }
+  }
+
+  return true;
+}
 
 static Function *createArrayPromCtor(Module &M) {
   LLVMContext &C = M.getContext();
@@ -375,12 +391,12 @@ bool PromoteStaticArrays::doFinalization(Module &) {
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
   // Static array allocations to promote
-  SmallVector<AllocaInst *, 8> ArrayAllocasToPromote;
+  SmallVector<AllocaInst *, 8> AllocasToPromote;
 
   for (auto &F : M.functions()) {
-    ArrayAllocasToPromote.clear();
+    AllocasToPromote.clear();
 
-    // lifetime.end intrinsics that may require calls to free to be inserted
+    // lifetime.end intrinsics that will require calls to free to be inserted
     // before them
     SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
@@ -388,17 +404,11 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     // them
     SmallVector<ReturnInst *, 4> Returns;
 
-    // Collect allocas to promote + lifetime.end intrinsics + returns to
-    // (possibly) insert frees before
+    // Collect all the things!
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-        if (isa<ArrayType>(Alloca->getAllocatedType())) {
-          // TODO do something with escape analysis result
-          bool AllocaEscapes = PointerMayBeCaptured(
-              Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
-          (void)AllocaEscapes;
-
-          ArrayAllocasToPromote.push_back(Alloca);
+        if (isPromotableType(Alloca->getAllocatedType())) {
+          AllocasToPromote.push_back(Alloca);
         }
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
         if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
@@ -412,35 +422,33 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     // Promote static arrays to dynamically allocated arrays and insert calls
     // to free at the appropriate locations (either at lifetime.end intrinsics
     // or at return instructions)
-    SmallVector<IntrinsicInst *, 8> LifetimeEndsToInsertFree;
-
-    for (auto *Alloca : ArrayAllocasToPromote) {
-      LifetimeEndsToInsertFree.clear();
-
-      // Check if any of the original allocas are used in any of the
-      // lifetime.end intrinsics. If they are, we should insert the free before
-      // the lifetime.end intrinsic and NOT at every return, otherwise we may
-      // end up with a double free :(
-      for (auto *LifetimeEnd : LifetimeEnds) {
-        if (GetUnderlyingObject(LifetimeEnd->getOperand(1), *this->DL) ==
-            Alloca) {
-          LifetimeEndsToInsertFree.push_back(LifetimeEnd);
-        }
-      }
-
+    for (auto *Alloca : AllocasToPromote) {
       // Promote the alloca
       auto *NewAlloca = promoteArrayAlloca(Alloca);
 
-      // If no lifetime.end intrinsics were found, just free the allocation
-      // when the function returns. Otherwise, free when the lifetime ends
-      if (LifetimeEndsToInsertFree.empty()) {
+      // Check if any of the original allocas are used in any of the
+      // lifetime.end intrinsics. If they are, we should insert the free before
+      // the lifetime.end intrinsic and NOT at function return, otherwise we may
+      // end up with a double free :(
+      bool FreeAtReturn = true;
+
+      for (auto *LifetimeEnd : LifetimeEnds) {
+        if (GetUnderlyingObject(LifetimeEnd->getOperand(1), *this->DL) ==
+            NewAlloca) {
+          insertFree(NewAlloca, LifetimeEnd);
+          NumOfFreeInsert++;
+
+          // We've freed at the lifetime.end intrinsic. No need to end when the
+          // function returns
+          FreeAtReturn = false;
+        }
+      }
+
+      // If no lifetime.end intrinsics were found, just free the allocation when
+      // the function returns
+      if (FreeAtReturn) {
         for (auto *Return : Returns) {
           insertFree(NewAlloca, Return);
-          NumOfFreeInsert++;
-        }
-      } else {
-        for (auto *Inst : LifetimeEndsToInsertFree) {
-          insertFree(NewAlloca, Inst);
           NumOfFreeInsert++;
         }
       }
@@ -455,7 +463,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   SmallVector<GlobalVariable *, 8> GlobalVariablesToPromote;
 
   for (auto &GV : M.globals()) {
-    if (isa<ArrayType>(GV.getValueType()) && !GV.isConstant() &&
+    if (isPromotableType(GV.getValueType()) && !GV.isConstant() &&
         // For some reason this doesn't mark the global variable as constant
         !isa<ConstantArray>(GV.getInitializer())) {
       GlobalVariablesToPromote.push_back(&GV);
@@ -476,7 +484,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  return !ArrayAllocasToPromote.empty() || !GlobalVariablesToPromote.empty();
+  return !AllocasToPromote.empty() || !GlobalVariablesToPromote.empty();
 }
 
 static RegisterPass<PromoteStaticArrays>

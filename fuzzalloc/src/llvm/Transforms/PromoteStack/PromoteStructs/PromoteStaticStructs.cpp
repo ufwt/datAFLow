@@ -17,7 +17,6 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -211,11 +210,6 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
         if (auto *StructTy = dyn_cast<StructType>(Alloca->getAllocatedType())) {
           if (StructsToPromote.find(StructTy) != StructsToPromote.end()) {
-            // TODO do something with escape analysis result
-            bool AllocaEscapes = PointerMayBeCaptured(
-                Alloca, /* ReturnCaptures */ false, /* StoreCaptures */ true);
-            (void)AllocaEscapes;
-
             StructAllocasToPromote.push_back(Alloca);
           }
         }
