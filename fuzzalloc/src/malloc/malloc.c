@@ -345,6 +345,9 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       free_chunk->next = pool->free_list;
       pool->free_list = free_chunk;
 
+      // We've resized the chunk and updated the pool - release the lock
+      RELEASE_POOL_LOCK(pool);
+
       DEBUG_MSG("existing chunk at %p (size %lu bytes) resized to %lu bytes\n",
                 orig_chunk, orig_chunk_size, new_chunk_size);
 
