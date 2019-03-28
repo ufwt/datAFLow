@@ -81,16 +81,12 @@ struct chunk_t {
 /// Returns non-zero if the previous chunk is free
 #define PREV_CHUNK_FREE(c) (!PREV_CHUNK_IN_USE(c))
 
-/// Set size at footer
-#define SET_FOOTER(c, s)                                                       \
-  (((struct chunk_t *)((uint8_t *)(c) + (s)))->prev_size = (s))
-
 /// Set the size of the current chunk. This also updates its footer. The chunk
 /// in use and previous chunk in use bits remain unchanged
 #define SET_CHUNK_SIZE(c, s)                                                   \
   do {                                                                         \
     (c)->size = ((c)->size & IN_USE_BITS) | (s);                               \
-    SET_FOOTER(c, (s) & ((size_t)(~IN_USE_BITS)));                             \
+    (((struct chunk_t *)((uint8_t *)(c) + (s)))->prev_size = (s));             \
   } while (0);
 
 /// Mark the chunk as in use
@@ -131,7 +127,8 @@ struct chunk_t {
 #define RELEASE_POOL_LOCK(p) (pthread_mutex_unlock(&((p)->lock)))
 
 #define ACQUIRE_MALLOC_GLOBAL_LOCK() (pthread_mutex_lock(&malloc_global_mutex))
-#define RELEASE_MALLOC_GLOBAL_LOCK() (pthread_mutex_unlock(&malloc_global_mutex))
+#define RELEASE_MALLOC_GLOBAL_LOCK()                                           \
+  (pthread_mutex_unlock(&malloc_global_mutex))
 #else // No locking
 #define INIT_POOL_LOCK(p)
 #define ACQUIRE_POOL_LOCK(p)
@@ -158,7 +155,7 @@ struct pool_t {
 };
 
 /// Size of pool overhead (in bytes)
-#define POOL_OVERHEAD (sizeof(struct pool_t) - sizeof(struct chunk_t*))
+#define POOL_OVERHEAD (sizeof(struct pool_t) - sizeof(struct chunk_t *))
 
 /// Default pool size (in bytes). Configurable at compile-time
 #ifndef POOL_SIZE

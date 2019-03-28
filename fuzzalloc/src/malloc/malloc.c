@@ -64,7 +64,7 @@ static inline void in_use_sanity_check(struct chunk_t *chunk) {
 
   if (chunk_size != next_prev_chunk_size) {
     DEBUG_MSG(
-        "chunk %p size %lu should equal previous chunk %p previous size %lu\n",
+        "chunk %p (size %lu) should equal next chunk %p previous size %lu\n",
         chunk, chunk_size, next_chunk, next_prev_chunk_size);
     goto do_abort;
   }
@@ -321,7 +321,16 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
     size_t orig_chunk_size = CHUNK_SIZE(orig_chunk);
     size_t new_chunk_size = align(size + CHUNK_OVERHEAD, CHUNK_ALIGNMENT);
 
-    if (orig_chunk_size >= new_chunk_size) {
+    if (orig_chunk_size == new_chunk_size) {
+      // Nothing to resize - short-circuit
+
+      RELEASE_POOL_LOCK(pool);
+
+      DEBUG_MSG("new size is the same as the old size (%lu bytes)\n",
+                orig_chunk_size);
+
+      mem = CHUNK_TO_MEM(orig_chunk);
+    } else if (orig_chunk_size > new_chunk_size) {
       // The requested reallocation size is smaller than the existing size. We
       // can just reduce the amount of space allocated for this chunk and add
       // the remaining space as a free chunk
