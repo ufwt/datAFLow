@@ -76,7 +76,7 @@ do_abort:
 }
 
 void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
-  DEBUG_MSG("__tagged_malloc(0x%x, %lu) called from %p\n", alloc_site_tag, size,
+  DEBUG_MSG("__tagged_malloc(%#x, %lu) called from %p\n", alloc_site_tag, size,
             __builtin_return_address(0));
 
   if (size == 0) {
@@ -118,6 +118,9 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     if (mmap_base == (void *)(-1)) {
       DEBUG_MSG("mmap failed: %s\n", strerror(errno));
       errno = ENOMEM;
+
+      // Returning - must release the global lock
+      RELEASE_MALLOC_GLOBAL_LOCK();
 
       return NULL;
     }
@@ -195,8 +198,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // the allocation pool tag into the pool map (and likewise the allocation
     // site tag into the site map)
     pool_tag = GET_POOL_TAG(pool_base);
-    DEBUG_MSG("pool 0x%x (size %lu bytes) created for tag 0x%x\n", pool_tag,
-              pool_size, alloc_site_tag);
+    DEBUG_MSG("pool %#x (size %lu bytes) created for allocation site %#x\n",
+              pool_tag, pool_size, alloc_site_tag);
     alloc_site_to_pool_map[alloc_site_tag] = pool_tag;
     __pool_to_alloc_site_map[pool_tag] = alloc_site_tag;
 
@@ -211,7 +214,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 
     // Reuse of an existing allocation site. Try and fit the new memory request
     // into the existing allocation pool
-    DEBUG_MSG("reusing allocation pool 0x%x\n", pool_tag);
+    DEBUG_MSG("reusing pool %#x (allocation site %#x)\n", pool_tag,
+              alloc_site_tag);
 
     struct pool_t *pool = GET_POOL(pool_tag);
     ACQUIRE_POOL_LOCK(pool);
@@ -220,7 +224,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     struct chunk_t *chunk = find_free_chunk(pool, chunk_size);
     if (!chunk) {
       DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
-                "allocation pool 0x%x\n",
+                "allocation pool %#x\n",
                 chunk_size, pool_tag);
       // TODO grow the allocation pool
       abort();
@@ -269,7 +273,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 }
 
 void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
-  DEBUG_MSG("__tagged_calloc(0x%x, %lu, %lu) called from %p\n", alloc_site_tag,
+  DEBUG_MSG("__tagged_calloc(%#x, %lu, %lu) called from %p\n", alloc_site_tag,
             nmemb, size, __builtin_return_address(0));
 
   // Adapted from muslc
@@ -289,7 +293,7 @@ void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
 }
 
 void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
-  DEBUG_MSG("__tagged_realloc(0x%x, %p, %lu) called from %p\n", alloc_site_tag,
+  DEBUG_MSG("__tagged_realloc(%#x, %p, %lu) called from %p\n", alloc_site_tag,
             ptr, size, __builtin_return_address(0));
 
   void *mem = NULL;
@@ -355,7 +359,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       struct chunk_t *new_chunk = find_free_chunk(pool, new_chunk_size);
       if (!new_chunk) {
         DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
-                  "allocation pool 0x%x\n",
+                  "allocation pool %#x\n",
                   new_chunk_size, GET_POOL_TAG(pool));
         // TODO grow the allocation pool
         abort();
@@ -434,7 +438,7 @@ void free(void *ptr) {
   struct pool_t *pool = GET_POOL(GET_POOL_TAG(chunk));
   ACQUIRE_POOL_LOCK(pool);
 
-  DEBUG_MSG("freeing memory at %p (size %lu bytes) from pool 0x%x\n", chunk,
+  DEBUG_MSG("freeing memory at %p (size %lu bytes) from pool %#x\n", chunk,
             chunk_size, GET_POOL_TAG(pool));
 
   // Sanity check that the chunk metadata hasn't been corrupted in some way
