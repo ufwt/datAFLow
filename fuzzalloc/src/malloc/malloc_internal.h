@@ -31,6 +31,8 @@
 #include <pthread.h>
 #endif
 
+typedef uint8_t bool_t;
+
 #define FALSE 0
 #define TRUE !FALSE
 
@@ -41,9 +43,9 @@ struct chunk_t {
   /// overhead associated with the chunk
   size_t prev_size;
   /// Current chunk size (in bytes). The least-significant bit indicates
-  /// whether the previous chunk is in use or free, while the second
-  /// least-significant byte indicates whether this chunk is in use or free.
-  /// This size includes the overhead associated with the chunk
+  /// whether the previous chunk is in use (1) or free (0), while the second
+  /// least-significant byte indicates whether this chunk is in use (1) or free
+  /// (0). This size includes the overhead associated with the chunk
   size_t size;
 
   // The struct elements below are only used when the chunk is free
@@ -54,8 +56,11 @@ struct chunk_t {
   struct chunk_t *prev;
 };
 
-/// Size of chunk overhead (in bytes)
-#define CHUNK_OVERHEAD (2 * sizeof(size_t))
+/// Size of in-use chunk overhead (in bytes)
+#define IN_USE_CHUNK_OVERHEAD (2 * sizeof(size_t))
+
+/// Size of free chunk overhead (in bytes)
+#define FREE_CHUNK_OVERHEAD (sizeof(struct chunk_t))
 
 /// Malloc alignment (same as dlmalloc)
 #define CHUNK_ALIGNMENT ((size_t)(2 * sizeof(void *)))
@@ -70,13 +75,16 @@ struct chunk_t {
 #define IN_USE_BITS (PREV_CHUNK_IN_USE_BIT | CHUNK_IN_USE_BIT)
 
 /// Returns non-zero if the chunk is in use
-#define CHUNK_IN_USE(c) ((uint8_t)((c)->size & CHUNK_IN_USE_BIT))
+#define CHUNK_IN_USE(c)                                                        \
+  ((uint8_t)(((c)->size & CHUNK_IN_USE_BIT)) >> (CHUNK_IN_USE_BIT - 1))
 
 // Returns non-zero if the chunk is free
 #define CHUNK_FREE(c) (!CHUNK_IN_USE(c))
 
 /// Returns non-zero if the previous chunk is in use
-#define PREV_CHUNK_IN_USE(c) ((uint8_t)((c)->size & PREV_CHUNK_IN_USE_BIT))
+#define PREV_CHUNK_IN_USE(c)                                                   \
+  ((uint8_t)(((c)->size & PREV_CHUNK_IN_USE_BIT)) >>                           \
+   (PREV_CHUNK_IN_USE_BIT - 1))
 
 /// Returns non-zero if the previous chunk is free
 #define PREV_CHUNK_FREE(c) (!PREV_CHUNK_IN_USE(c))
@@ -114,10 +122,11 @@ struct chunk_t {
 #define PREV_CHUNK(c) ((struct chunk_t *)((uint8_t *)(c) - ((c)->prev_size)))
 
 /// Convert chunk to a memory address (as seen by the user)
-#define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + CHUNK_OVERHEAD))
+#define CHUNK_TO_MEM(c) ((void *)((uint8_t *)(c) + IN_USE_CHUNK_OVERHEAD))
 
 /// Convert memory address (as seen by the user) to a chunk
-#define MEM_TO_CHUNK(p) ((struct chunk_t *)((uint8_t *)(p)-CHUNK_OVERHEAD))
+#define MEM_TO_CHUNK(p)                                                        \
+  ((struct chunk_t *)((uint8_t *)(p)-IN_USE_CHUNK_OVERHEAD))
 
 //===-- Locks -------------------------------------------------------------===//
 
