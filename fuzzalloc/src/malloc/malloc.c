@@ -29,6 +29,19 @@ static int page_size = 0;
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+#if !defined(NDEBUG)
+static inline void print_free_list(const struct pool_t *pool) {
+  struct chunk_t *chunk = pool->free_list;
+
+  DEBUG_MSG("pool %#x free list\n", GET_POOL_TAG(pool));
+  while (chunk) {
+    assert(CHUNK_FREE(chunk));
+    DEBUG_MSG("  - %p (size %lu bytes)\n", chunk, CHUNK_SIZE(chunk));
+    chunk = chunk->next;
+  }
+}
+#endif
+
 static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
 }
@@ -45,18 +58,23 @@ static inline struct chunk_t *find_free_chunk(const struct pool_t *pool,
   return chunk;
 }
 
-#if !defined(NDEBUG)
-static inline void print_free_list(const struct pool_t *pool) {
-  struct chunk_t *chunk = pool->free_list;
+static void unlink_chunk_from_free_list(struct pool_t *pool,
+                                        struct chunk_t *chunk) {
+  // Unlink the chunk from the free list and update its pointers to point to
+  // the next/previous free chunks in the list
+  if (chunk->prev) {
+    chunk->prev->next = chunk->next;
+  }
+  if (chunk->next) {
+    chunk->next->prev = chunk->prev;
+  }
 
-  DEBUG_MSG("pool %#x free list\n", GET_POOL_TAG(pool));
-  while (chunk) {
-    assert(CHUNK_FREE(chunk));
-    DEBUG_MSG("  - %p (size %lu bytes)\n", chunk, CHUNK_SIZE(chunk));
-    chunk = chunk->next;
+  // If the unlinked chunk was the head of the free list, update the free
+  // list to start at the next chunk in the list
+  if (chunk == pool->free_list) {
+    pool->free_list = chunk->next;
   }
 }
-#endif
 
 /// Return non-zero if the given chunk is within the limits of the given
 /// allocation pool
@@ -279,6 +297,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     //
     // If we cannot fit the free chunk metadata in the free space then there
     // isn't much we can do - just leave it.
+    //
+    // XXX duplicate code in __tagged_realloc
     if (free_chunk_size - req_chunk_size > FREE_CHUNK_OVERHEAD) {
       SET_CHUNK_SIZE(free_chunk, free_chunk_size - req_chunk_size);
       SET_CHUNK_FREE(free_chunk);
@@ -318,20 +338,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
         SET_PREV_CHUNK_IN_USE(next_chunk);
       }
 
-      // Unlink the chunk from the free list and update its pointers to point to
-      // the next/previous free chunks in the list
-      if (chunk->prev) {
-        chunk->prev->next = chunk->next;
-      }
-      if (chunk->next) {
-        chunk->next->prev = chunk->prev;
-      }
-
-      // If the unlinked chunk was the head of the free list, update the free
-      // list to start at the next chunk in the list
-      if (chunk == pool->free_list) {
-        pool->free_list = chunk->next;
-      }
+      // Unlink the chunk from the free list
+      unlink_chunk_from_free_list(pool, chunk);
     }
 
     // Release the pool's lock - we've updated the pool
@@ -510,20 +518,8 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
           SET_PREV_CHUNK_IN_USE(next_new_chunk);
         }
 
-        // Unlink the chunk from the free list and update its pointers to point
-        // to the next/previous free chunks in the list
-        if (new_chunk->prev) {
-          new_chunk->prev->next = new_chunk->next;
-        }
-        if (new_chunk->next) {
-          new_chunk->next->prev = new_chunk->prev;
-        }
-
-        // If the unlinked chunk was the head of the free list, update the free
-        // list to start at the next chunk in the list
-        if (new_chunk == pool->free_list) {
-          pool->free_list = new_chunk->next;
-        }
+        // Unlink the new chunk from the free list
+        unlink_chunk_from_free_list(pool, new_chunk);
       }
 
       // Move the data contained in the original chunk into the new chunk
@@ -601,18 +597,7 @@ void free(void *ptr) {
 
     // Unlink the previous free chunk from the free list (because it is getting
     // merged into the soon-to-be free chunk)
-    if (prev_chunk->prev) {
-      prev_chunk->prev->next = prev_chunk->next;
-    }
-    if (prev_chunk->next) {
-      prev_chunk->next->prev = prev_chunk->prev;
-    }
-
-    // If the unlinked chunk was the head of the free list, update the free list
-    // to start at the next chunk in the list
-    if (prev_chunk == pool->free_list) {
-      pool->free_list = prev_chunk->next;
-    }
+    unlink_chunk_from_free_list(pool, prev_chunk);
 
     // Free chunks must always be preceeded by an in use chunk
     //
@@ -637,18 +622,7 @@ void free(void *ptr) {
 
     // Unlink the next free chunk from the free list (because it is getting
     // merged into the soon-to-be free chunk)
-    if (next_chunk->prev) {
-      next_chunk->prev->next = next_chunk->next;
-    }
-    if (next_chunk->next) {
-      next_chunk->next->prev = next_chunk->prev;
-    }
-
-    // If the unlinked chunk was the head of the free list, update the free list
-    // to start at the next chunk in the list
-    if (next_chunk == pool->free_list) {
-      pool->free_list = next_chunk->next;
-    }
+    unlink_chunk_from_free_list(pool, next_chunk);
 
     next_chunk = NEXT_CHUNK(next_chunk);
 
