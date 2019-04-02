@@ -20,3 +20,32 @@ FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
 
 Where `TARGET` is one of the directories inside the fuzzer-test-suite directory
 (e.g., libpng-1.2.56).
+
+# Fuzzing example (libxml)
+
+To fuzz libxml from the fuzzer test suite, assuming that the fuzzer test suite
+has been setup at `$FUZZER_TEST_SUITE`:
+
+1. Build libxml2
+
+```console
+FUZZING_ENGINE="datAFLow" $FUZZER_TEST_SUITE/build.sh libxml2-v2.9.2
+```
+
+2. Get some seeds
+
+```console
+git clone https://github.com/MozillaSecurity/fuzzdata.git `pwd`/fuzzdata
+export $FUZZDATA=`pwd`/fuzzdata
+```
+
+3. Start the fuzzer!
+
+```console
+export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/fuzzalloc-build/src/malloc:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/:$LD_LIBRARY_PATH
+
+$FUZZER_TEST_SUITE/AFL/afl-fuzz -i $FUZZDATA/samples/xml -o ./libxml2-fuzz-out \
+    -m none -t 1000+ -- \
+    $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint -o /dev/null @@
+```
