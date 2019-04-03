@@ -12,7 +12,7 @@ import os
 import re
 import sys
 
-import sh
+from sh import Command
 from tabulate import tabulate
 
 
@@ -111,14 +111,13 @@ def main(args):
     global inst_stats
 
     prog = args.pop(0)
-    if len(args) < 2:
+    if len(args) < 1:
         print('usage: %s /path/to/build.sh [ARGS...]' % prog)
         return 1
 
     build_path = args.pop(0)
     if not os.path.isfile(build_path):
-        print('error: %s is not a valid build script' % build_path)
-        return 1
+        raise Exception('%s is not a valid build script' % build_path)
 
     #
     # Set the relevant environment variables. Note that we must disable parallel
@@ -134,7 +133,7 @@ def main(args):
     # Do the build
     #
 
-    build_cmd = sh.Command(build_path).bake(*args, _env=env_vars)
+    build_cmd = Command(build_path).bake(*args, _env=env_vars)
     build_cmd(_out=process_output, _err_to_out=True)
 
     stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,

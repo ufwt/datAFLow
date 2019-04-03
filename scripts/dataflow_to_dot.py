@@ -28,13 +28,14 @@ POOL_ACCESS_RE = re.compile(r'accessing pool 0x[0-9a-f]+ \(allocation site (0x[0
 
 
 def main(args):
-    if len(args) < 3:
-        print('usage: %s /path/to/log /path/to/dot' % args[0])
+    prog = args.pop(0)
+    if len(args) < 2:
+        print('usage: %s /path/to/log /path/to/dot' % prog)
         return 1
 
-    if not os.path.isfile(args[1]):
-        print('error: %s is not a valid log file' % args[1])
-        return 1
+    log_path = args.pop(0)
+    if not os.path.isfile(log_path):
+        raise Exception('%s is not a valid log file' % log_path)
 
     use_counts = defaultdict(int)
 
@@ -42,7 +43,7 @@ def main(args):
     # Get the data
     #
 
-    with open(args[1], 'r') as infile:
+    with open(log_path, 'r') as infile:
         for line in infile:
             match = POOL_ACCESS_RE.search(line)
             if not match:
@@ -57,10 +58,11 @@ def main(args):
     # Generate a graph
     #
 
+    dot_path = args.pop(0)
     graph = nx.DiGraph()
     graph.add_weighted_edges_from([(alloc, use, count) for (alloc, use), count
                                    in use_counts.items()])
-    write_dot(graph, args[2])
+    write_dot(graph, dot_path)
 
     return 0
 

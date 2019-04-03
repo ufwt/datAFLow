@@ -21,13 +21,14 @@ PtrDeref = namedtuple('PtrDeref', ['pool_id', 'tag', 'ret_addr'])
 
 
 def main(args):
-    if len(args) < 2:
-        print('usage: %s /path/to/log' % args[0])
+    prog = args.pop(0)
+    if len(args) < 1:
+        print('usage: %s /path/to/log' % prog)
         return 1
 
-    if not os.path.isfile(args[1]):
-        print('error: %s is not a valid log file' % args[1])
-        return 1
+    log_path = args.pop(0)
+    if not os.path.isfile(log_path):
+        raise Exception('%s is not a valid log file' % log_path)
 
     ptr_deref_counts = defaultdict(int)
 
@@ -35,7 +36,7 @@ def main(args):
     # Collect the data
     #
 
-    with open(args[1], 'r') as infile:
+    with open(log_path, 'r') as infile:
         for line in infile:
             match = PTR_DEREF_RE.search(line)
             if match:
@@ -52,7 +53,7 @@ def main(args):
     ptr_deref_table = [(ptr.pool_id, ptr.tag, ptr.ret_addr, count) for
                        ptr, count in ptr_deref_counts.items()]
 
-    print('%s pointer dereferences\n' % args[1])
+    print('%s pointer dereferences\n' % log_path)
     print(tabulate(sorted(ptr_deref_table, key=lambda x: x[0]),
                    headers=['Pool ID', 'Tag', 'Ret. Addr.', 'Count'],
                    tablefmt='psql'))
