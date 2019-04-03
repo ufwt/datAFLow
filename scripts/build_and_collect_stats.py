@@ -7,7 +7,9 @@
 
 from __future__ import print_function
 
+from argparse import ArgumentParser
 from collections import defaultdict
+import csv
 import os
 import re
 import sys
@@ -107,15 +109,25 @@ def process_output(line):
         return
 
 
-def main(args):
+def parse_args():
+    parser = ArgumentParser(description='Wrapper around fuzzer-test-suite\'s '
+                                        'build.sh that collects fuzzalloc '
+                                        'instrumentation stats')
+    parser.add_argument('--csv', help='Path to an output CSV file')
+    parser.add_argument('build_path',
+                        help='Path to the fuzzer-test-suite\'s build.sh')
+    parser.add_argument('build_args', nargs='*',
+                        help='Options to build.sh')
+
+    return parser.parse_args()
+
+
+def main():
     global inst_stats
 
-    prog = args.pop(0)
-    if len(args) < 1:
-        print('usage: %s /path/to/build.sh [ARGS...]' % prog)
-        return 1
+    args = parse_args()
 
-    build_path = args.pop(0)
+    build_path = args.build_path
     if not os.path.isfile(build_path):
         raise Exception('%s is not a valid build script' % build_path)
 
@@ -133,24 +145,33 @@ def main(args):
     # Do the build
     #
 
-    build_cmd = Command(build_path).bake(*args, _env=env_vars)
+    build_cmd = Command(build_path).bake(*args.build_args, _env=env_vars)
     build_cmd(_out=process_output, _err_to_out=True)
-
-    stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,
-                    stats.tagged_funcs) for mod, stats in inst_stats.items()]
 
     #
     # Print the results
     #
 
+    stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,
+                    stats.tagged_funcs) for mod, stats in inst_stats.items()]
+
     print('\ninstrumentation stats\n')
-    print(tabulate(stats_table, headers=['Module', 'Derefs',
-                                         'Alloca promotions',
-                                         'Global promotions',
-                                         'Tagged Functions']))
+    print(tabulate(sorted(stats_table, key=lambda x: x[0]),
+                   headers=['Module', 'Derefs', 'Alloca promotions',
+                            'Global promotions', 'Tagged Functions'],
+                   tablefmt='psql'))
+
+    csv_path = args.csv
+    if csv_path:
+        with open(csv_path, 'w') as csvfile:
+            csv_writer = csv.writer(csvfile)
+
+            csv_writer.writerow(['module', 'derefs', 'alloca promotions',
+                                 'global promotions', 'tagged functions'])
+            csv_writer.writerows(stats_table)
 
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main())

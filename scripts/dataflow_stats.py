@@ -6,7 +6,9 @@
 
 from __future__ import print_function
 
+from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
+import csv
 import os
 import re
 import sys
@@ -20,13 +22,18 @@ PTR_DEREF_RE = re.compile(r'__ptr_deref: accessing pool (0x[0-9a-f]+) \(allocati
 PtrDeref = namedtuple('PtrDeref', ['pool_id', 'tag', 'ret_addr'])
 
 
-def main(args):
-    prog = args.pop(0)
-    if len(args) < 1:
-        print('usage: %s /path/to/log' % prog)
-        return 1
+def parse_args():
+    parser = ArgumentParser(description='Statistics from datAFLow fuzzing logs')
+    parser.add_argument('--csv', help='Path to an output CSV file')
+    parser.add_argument('log_path', help='Path to a libfuzzalloc log file')
 
-    log_path = args.pop(0)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    log_path = args.log_path
     if not os.path.isfile(log_path):
         raise Exception('%s is not a valid log file' % log_path)
 
@@ -53,13 +60,21 @@ def main(args):
     ptr_deref_table = [(ptr.pool_id, ptr.tag, ptr.ret_addr, count) for
                        ptr, count in ptr_deref_counts.items()]
 
-    print('%s pointer dereferences\n' % log_path)
+    print('pointer dereferences\n')
     print(tabulate(sorted(ptr_deref_table, key=lambda x: x[0]),
                    headers=['Pool ID', 'Tag', 'Ret. Addr.', 'Count'],
                    tablefmt='psql'))
+
+    csv_path = args.csv
+    if csv_path:
+        with open(csv_path, 'w') as csvfile:
+            csv_writer = csv.writer(csvfile)
+
+            csv_writer.writerow(['pool id', 'tag', 'return address', 'count'])
+            csv_writer.writerows(ptr_deref_table)
 
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main())
