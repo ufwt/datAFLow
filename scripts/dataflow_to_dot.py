@@ -6,6 +6,7 @@
 
 from __future__ import print_function
 
+from argparse import ArgumentParser
 from collections import defaultdict
 import os
 import re
@@ -24,16 +25,24 @@ except ImportError:
         raise
 
 
-POOL_ACCESS_RE = re.compile(r'accessing pool 0x[0-9a-f]+ \(allocation site (0x[0-9a-f]+)\) from (0x[0-9a-f]+)')
+POOL_ACCESS_RE = re.compile(r'__ptr_deref: accessing pool (0x[0-9a-f]+) \(allocation site (0x[0-9a-f]+)\) from (0x[0-9a-f]+)')
 
 
-def main(args):
-    prog = args.pop(0)
-    if len(args) < 2:
-        print('usage: %s /path/to/log /path/to/dot' % prog)
-        return 1
+def parse_args():
+    parser = ArgumentParser(description='Render datAFLow stats as DOT file')
+    parser.add_argument('-i', '--ignore-pool-zero', action='store_true',
+                        help='Ignore pool zero accesses')
+    parser.add_argument('--dot', required=True,
+                        help='Path to an output DOT file')
+    parser.add_argument('log_path', help='Path to a libfuzzalloc log file')
 
-    log_path = args.pop(0)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    log_path = args.log_path
     if not os.path.isfile(log_path):
         raise Exception('%s is not a valid log file' % log_path)
 
@@ -43,29 +52,34 @@ def main(args):
     # Get the data
     #
 
+    ignore_pool_zero = args.ignore_pool_zero
+
     with open(log_path, 'r') as infile:
         for line in infile:
             match = POOL_ACCESS_RE.search(line)
             if not match:
                 continue
 
-            alloc_site = int(match.group(1), 16)
-            use_site = int(match.group(2), 16)
+            pool_id = int(match.group(1), 16)
+            tag = int(match.group(2), 16)
+            ret_addr = int(match.group(3), 16)
 
-            use_counts[(alloc_site, use_site)] += 1
+            if ignore_pool_zero and pool_id == 0:
+                continue
+
+            use_counts[(tag, ret_addr)] += 1
 
     #
     # Generate a graph
     #
 
-    dot_path = args.pop(0)
     graph = nx.DiGraph()
     graph.add_weighted_edges_from([(alloc, use, count) for (alloc, use), count
                                    in use_counts.items()])
-    write_dot(graph, dot_path)
+    write_dot(graph, args.dot)
 
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main())

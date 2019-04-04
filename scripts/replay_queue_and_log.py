@@ -6,6 +6,7 @@
 
 from __future__ import print_function
 
+from argparse import ArgumentParser
 import os
 import re
 import subprocess
@@ -15,13 +16,19 @@ import sys
 FUZZER_STATS_CMD_LINE_RE = re.compile(r'^command_line +: .+ -- (.+)')
 
 
-def main(args):
-    prog = args.pop(0)
-    if len(args) < 2:
-        print('usage: %s /path/to/afl/output/dir /path/to/logs/dir' % prog)
-        return 1
+def parse_args():
+    parser = ArgumentParser(description='Replay the AFL queue and collect logs')
+    parser.add_argument('-o', '--output', required=True,
+                        help='Output directory path')
+    parser.add_argument('afl_dir', help='AFL output directory')
 
-    afl_out_dir = args.pop(0)
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    afl_out_dir = args.afl_dir
     fuzzer_stats_path = os.path.join(afl_out_dir, 'fuzzer_stats')
     queue_path = os.path.join(afl_out_dir, 'queue')
 
@@ -30,7 +37,7 @@ def main(args):
     if not os.path.isdir(queue_path):
         raise Exception('%s does not contain a queue directory' % afl_out_dir)
 
-    logs_out_dir = args.pop(0)
+    logs_out_dir = args.output
     if not os.path.isdir(logs_out_dir):
         raise Exception('%s is not a valid output directory' % logs_out_dir)
 
@@ -63,12 +70,12 @@ def main(args):
         args = cmd_line.replace('@@', os.path.join(queue_path, f)).split()
 
         with open(os.path.join(logs_out_dir, '%s.log' % f), 'w') as log_file:
-            print('replayig %s' % f)
             proc = subprocess.Popen(args, stderr=log_file)
             proc.wait()
+            print('replayig %s returned %d' % (f, proc.returncode))
 
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    sys.exit(main())

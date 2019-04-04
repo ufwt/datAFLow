@@ -24,6 +24,10 @@ PtrDeref = namedtuple('PtrDeref', ['pool_id', 'tag', 'ret_addr'])
 
 def parse_args():
     parser = ArgumentParser(description='Statistics from datAFLow fuzzing logs')
+    parser.add_argument('-i', '--ignore-pool-zero', action='store_true',
+                        help='Ignore pool zero accesses')
+    parser.add_argument('-s', '--silent', action='store_true',
+                        help='Don\'t print the results to stdout')
     parser.add_argument('--csv', help='Path to an output CSV file')
     parser.add_argument('log_path', help='Path to a libfuzzalloc log file')
 
@@ -43,6 +47,8 @@ def main():
     # Collect the data
     #
 
+    ignore_pool_zero = args.ignore_pool_zero
+
     with open(log_path, 'r') as infile:
         for line in infile:
             match = PTR_DEREF_RE.search(line)
@@ -50,6 +56,9 @@ def main():
                 pool_id = int(match.group(1), 16)
                 tag = int(match.group(2), 16)
                 ret_addr = int(match.group(3), 16)
+
+                if ignore_pool_zero and pool_id == 0:
+                    continue
 
                 ptr_deref_counts[PtrDeref(pool_id, tag, ret_addr)] += 1
 
@@ -60,10 +69,11 @@ def main():
     ptr_deref_table = [(ptr.pool_id, ptr.tag, ptr.ret_addr, count) for
                        ptr, count in ptr_deref_counts.items()]
 
-    print('pointer dereferences\n')
-    print(tabulate(sorted(ptr_deref_table, key=lambda x: x[0]),
-                   headers=['Pool ID', 'Tag', 'Ret. Addr.', 'Count'],
-                   tablefmt='psql'))
+    if not args.silent:
+        print('pointer dereferences\n')
+        print(tabulate(sorted(ptr_deref_table, key=lambda x: x[0]),
+                       headers=['Pool ID', 'Tag', 'Ret. Addr.', 'Count'],
+                       tablefmt='psql'))
 
     csv_path = args.csv
     if csv_path:
