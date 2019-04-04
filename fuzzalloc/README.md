@@ -7,7 +7,7 @@ LLVM passes to transform your program under test (PUT) to use `libfuzzalloc`.
 
 # Build
 
-```console
+```bash
 mkdir build
 cd build
 cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
@@ -23,7 +23,7 @@ environment variable to the AFL source code directory.
 `libfuzzalloc` is a drop-in replacement for malloc and friends. When using
 gcc, it's safest to pass in the flags
 
-```console
+```bash
 -fno-builtin-malloc -fno-builtin-calloc -fno-builtin-realloc -fno-builtin-free
 ```
 

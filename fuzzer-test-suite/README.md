@@ -14,7 +14,7 @@ version of libfuzzalloc.
 
 Run the following to build a target:
 
-```console
+```bash
 FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
 ```
 
@@ -28,20 +28,20 @@ has been setup at `$FUZZER_TEST_SUITE`:
 
 1. Build libxml2
 
-```console
+```bash
 FUZZING_ENGINE="datAFLow" $FUZZER_TEST_SUITE/build.sh libxml2-v2.9.2
 ```
 
 2. Get some seeds
 
-```console
+```bash
 git clone https://github.com/MozillaSecurity/fuzzdata.git `pwd`/fuzzdata
 export $FUZZDATA=`pwd`/fuzzdata
 ```
 
 3. Start the fuzzer!
 
-```console
+```bash
 export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/fuzzalloc-build/src/malloc:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/:$LD_LIBRARY_PATH
 
