@@ -27,6 +27,7 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "PromoteCommon.h"
+#include "debug.h" // from afl
 
 using namespace llvm;
 
@@ -484,7 +485,21 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  return !AllocasToPromote.empty() || !GlobalVariablesToPromote.empty();
+  if (NumOfAllocaArrayPromotion > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfAllocaArrayPromotion.getValue(),
+        NumOfAllocaArrayPromotion.getName(),
+        NumOfAllocaArrayPromotion.getDesc());
+  }
+  if (NumOfGlobalVariableArrayPromotion > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfGlobalVariableArrayPromotion.getValue(),
+        NumOfGlobalVariableArrayPromotion.getName(),
+        NumOfGlobalVariableArrayPromotion.getDesc());
+  }
+
+  return (NumOfAllocaArrayPromotion > 0) ||
+         (NumOfGlobalVariableArrayPromotion > 0);
 }
 
 static RegisterPass<PromoteStaticArrays>

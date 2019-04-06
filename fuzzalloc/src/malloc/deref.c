@@ -10,7 +10,7 @@
 #include "malloc_internal.h"
 
 #if defined(AFL_INSTRUMENT)
-#include "types.h"
+#include "types.h" // from afl
 #endif
 
 /// Maps allocation pool tags (created during malloc/calloc/reallocs) to

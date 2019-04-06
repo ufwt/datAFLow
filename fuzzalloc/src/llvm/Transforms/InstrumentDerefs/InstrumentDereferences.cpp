@@ -25,6 +25,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
+#include "debug.h" // from afl
 #include "fuzzalloc.h"
 
 using namespace llvm;
@@ -360,6 +361,11 @@ bool InstrumentDereferences::runOnModule(Module &M) {
       }
     }
   }
+
+  OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+      NumOfInstrumentedDereferences.getValue(),
+      NumOfInstrumentedDereferences.getName(),
+      NumOfInstrumentedDereferences.getDesc());
 
   return true;
 }

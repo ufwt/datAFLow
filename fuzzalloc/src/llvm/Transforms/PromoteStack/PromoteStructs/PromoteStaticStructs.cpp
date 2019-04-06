@@ -29,6 +29,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "PromoteCommon.h"
+#include "debug.h" // from afl
 
 using namespace llvm;
 
@@ -260,7 +261,15 @@ bool PromoteStaticStructs::runOnModule(Module &M) {
   // TODO promote global structs
   (void)NumOfGlobalVariableStructPromotion;
 
-  return !StructAllocasToPromote.empty();
+  if (NumOfAllocaStructPromotion > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfAllocaStructPromotion.getValue(),
+        NumOfAllocaStructPromotion.getName(),
+        NumOfAllocaStructPromotion.getDesc());
+  }
+
+  return (NumOfAllocaStructPromotion > 0) ||
+         (NumOfGlobalVariableStructPromotion > 0);
 }
 
 static RegisterPass<PromoteStaticStructs>

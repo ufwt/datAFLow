@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#include "debug.h" // from afl
 #include "fuzzalloc.h"
 
 using namespace llvm;
@@ -624,6 +625,10 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     F->replaceAllUsesWith(UndefValue::get(F->getType()));
     F->eraseFromParent();
   }
+
+  OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+      NumOfTaggedCalls.getValue(), NumOfTaggedCalls.getName(),
+      NumOfTaggedCalls.getDesc());
 
   return true;
 }

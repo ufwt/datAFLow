@@ -18,11 +18,10 @@ from sh import Command
 from tabulate import tabulate
 
 
-CC_RE = re.compile(r'^  CC +(.+\..+)$')
-FUZZALLOC_DEREF_RE = re.compile(r'(\d+) fuzzalloc-instrument-derefs +- Number of pointer dereferences instrumented')
-FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'(\d+) fuzzalloc-prom-static-arrays +- Number of alloca array promotions')
-FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'(\d+) fuzzalloc-prom-static-arrays +- Number of global variable array promotions')
-FUZZALLOC_TAG_ALLOCS_RE = re.compile(r'(\d+) fuzzalloc-tag-dyn-allocs +- Number of tagged dynamic memory allocation function calls')
+FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfInstrumentedDereferences')
+FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfAllocaArrayPromotion')
+FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
+FUZZALLOC_TAG_ALLOCS_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfTaggedCalls')
 
 
 class ModuleStats(object):
@@ -65,47 +64,40 @@ class ModuleStats(object):
         self._tagged_funcs = count
 
 
-current_module = None
 inst_stats = defaultdict(ModuleStats)
 
 
 def process_output(line):
-    global current_module
     global inst_stats
 
     print(line, end='')
 
-    match = CC_RE.match(line)
-    if match:
-        current_module = match.group(1)
-        return
-
     match = FUZZALLOC_DEREF_RE.search(line)
     if match:
-        assert current_module, 'A compilation module should be defined'
-        count = int(match.group(1))
-        inst_stats[current_module].derefs = count
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].derefs = count
         return
 
     match = FUZZALLOC_PROM_ALLOCA_RE.search(line)
     if match:
-        assert current_module, 'A compilation module should be defined'
-        count = int(match.group(1))
-        inst_stats[current_module].alloca_proms = count
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].alloca_proms = count
         return
 
     match = FUZZALLOC_PROM_GLOBAL_RE.search(line)
     if match:
-        assert current_module, 'A compilation module should be defined'
-        count = int(match.group(1))
-        inst_stats[current_module].global_proms = count
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].global_proms = count
         return
 
     match = FUZZALLOC_TAG_ALLOCS_RE.search(line)
     if match:
-        assert current_module, 'A compilation module should be defined'
-        count = int(match.group(1))
-        inst_stats[current_module].tagged_funcs = count
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].tagged_funcs = count
         return
 
 
@@ -138,7 +130,6 @@ def main():
 
     env_vars = os.environ.copy()
     env_vars['FUZZING_ENGINE'] = 'datAFLow'
-    env_vars['FUZZALLOC_STATS'] = '1'
     env_vars['JOBS'] = '1'
 
     #
