@@ -8,7 +8,7 @@
 #include <errno.h>    // for errno, EINVAL, ENOMEM
 #include <stddef.h>   // for ptrdiff_t
 #include <stdint.h>   // for uintptr_t
-#include <stdlib.h>   // for abort
+#include <stdlib.h>   // for abort, getenv
 #include <string.h>   // for memcpy, memset
 #include <sys/mman.h> // for mmap
 #include <unistd.h>   // for getpagesize
@@ -24,6 +24,8 @@ static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 
 // XXX should this be a constant?
 static int page_size = 0;
+
+static size_t max_pool_size = 0;
 
 #if defined(USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -41,6 +43,24 @@ static inline void print_free_list(const struct pool_t *pool) {
   }
 }
 #endif
+
+static size_t get_pool_size() {
+  size_t psize = DEFAULT_POOL_SIZE;
+
+  char *pool_size_str = getenv(POOL_SIZE_ENV_VAR);
+  if (pool_size_str) {
+    char *endptr;
+    psize = strtoul(pool_size_str, &endptr, 0);
+    if (psize == 0 || *endptr != '\0' || pool_size_str == endptr) {
+      DEBUG_MSG("unable to read %s environment variable: %s\n",
+                POOL_SIZE_ENV_VAR, pool_size_str);
+      psize = DEFAULT_POOL_SIZE;
+    }
+  }
+
+  DEBUG_MSG("using pool size %lu bytes\n", psize);
+  return psize;
+}
 
 static inline uintptr_t align(uintptr_t n, size_t alignment) {
   return (n + alignment - 1) & -alignment;
@@ -142,12 +162,17 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
       page_size = getpagesize();
     }
 
+    // This should also only happen once
+    if (!max_pool_size) {
+      max_pool_size = get_pool_size();
+    }
+
     // This allocation site has not been used before. Create a new "allocation
     // pool" for this site
     DEBUG_MSG("creating new allocation pool\n");
 
     // If the requested size cannot fit in an allocation pool, return an error
-    if (size > POOL_SIZE) {
+    if (size > max_pool_size) {
       DEBUG_MSG("memory request too large for an allocation pool\n");
       errno = EINVAL;
       return NULL;
@@ -190,7 +215,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // To ensure alignment with a valid pool tag, we mmap much more memory than
     // we actually require. Adjust the amount of mmap'd memory to the default
     // pool size
-    adjust = (pool_size - POOL_SIZE - POOL_OVERHEAD) * page_size / page_size;
+    adjust =
+        (pool_size - max_pool_size - POOL_OVERHEAD) * page_size / page_size;
     if (adjust > 0) {
       munmap(pool_base + (pool_size - adjust), adjust);
       DEBUG_MSG("unmapped %lu bytes of unused memory\n", adjust);

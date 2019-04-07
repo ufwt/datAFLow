@@ -166,10 +166,12 @@ struct pool_t {
 /// Size of pool overhead (in bytes)
 #define POOL_OVERHEAD (sizeof(struct pool_t) - sizeof(struct chunk_t *))
 
-/// Default pool size (in bytes). Configurable at compile-time
-#ifndef POOL_SIZE
-#define POOL_SIZE 100000UL
-#endif
+/// Default pool size (in bytes). Configurable at run-time via an environment
+/// variable
+#define DEFAULT_POOL_SIZE 100000UL
+
+/// The pool size environment variable
+#define POOL_SIZE_ENV_VAR "FUZZALLOC_POOL_SIZE"
 
 /// Pool alignment. This ensures that the upper \p NUM_TAG_BITS of the pool
 /// address are unique to a single pool
