@@ -480,11 +480,14 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 
     for (auto *GV : GlobalVariablesToPromote) {
       auto *PromotedGV = promoteGlobalVariable(GV, GlobalCtorF);
-      insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
+      NumOfGlobalVariableArrayPromotion++;
+
+      if (!PromotedGV->isDeclaration()) {
+        insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
+        NumOfFreeInsert++;
+      }
 
       GV->eraseFromParent();
-      NumOfGlobalVariableArrayPromotion++;
-      NumOfFreeInsert++;
     }
   }
 
