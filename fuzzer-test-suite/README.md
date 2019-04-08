@@ -42,7 +42,7 @@ export $FUZZDATA=`pwd`/fuzzdata
 3. Start the fuzzer!
 
 ```bash
-export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/fuzzalloc-build/src/malloc:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/fuzzalloc-build/src/runtime/malloc:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/:$LD_LIBRARY_PATH
 
 $FUZZER_TEST_SUITE/AFL/afl-fuzz -i $FUZZDATA/samples/xml -o ./libxml2-fuzz-out \

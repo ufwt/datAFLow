@@ -30,7 +30,7 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   FUZZALLOC_BUILD_DIR=$(realpath "${SCRIPT_DIR}/../../fuzzalloc-build")
 
   export AFL_PATH=${AFL_SRC}
-  export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/malloc/:${LD_LIBRARY_PATH}"
+  export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
 
   if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
@@ -56,7 +56,7 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
-  export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/malloc -lfuzzalloc"
+  export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "afl" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}

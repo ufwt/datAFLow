@@ -626,9 +626,8 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     F->eraseFromParent();
   }
 
-  OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-      NumOfTaggedCalls.getValue(), NumOfTaggedCalls.getName(),
-      NumOfTaggedCalls.getDesc());
+  OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfTaggedCalls.getValue(),
+      NumOfTaggedCalls.getName(), NumOfTaggedCalls.getDesc());
 
   return true;
 }
