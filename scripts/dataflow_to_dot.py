@@ -24,16 +24,14 @@ except ImportError:
         print('Both pygraphviz and pydot were not found')
         raise
 
-
-POOL_ACCESS_RE = re.compile(r'__ptr_deref: accessing pool (0x[0-9a-f]+) \(allocation site (0x[0-9a-f]+)\) from (0x[0-9a-f]+)')
+from common import FUZZALLOC_LOG_PTR_DEREF_RE
 
 
 def parse_args():
     parser = ArgumentParser(description='Render datAFLow stats as DOT file')
     parser.add_argument('-i', '--ignore-pool-zero', action='store_true',
                         help='Ignore pool zero accesses')
-    parser.add_argument('--dot', required=True,
-                        help='Path to an output DOT file')
+    parser.add_argument('--dot', help='Path to an output DOT file')
     parser.add_argument('log_path', help='Path to a libfuzzalloc log file')
 
     return parser.parse_args()
@@ -56,7 +54,7 @@ def main():
 
     with open(log_path, 'r') as infile:
         for line in infile:
-            match = POOL_ACCESS_RE.search(line)
+            match = FUZZALLOC_LOG_PTR_DEREF_RE.search(line)
             if not match:
                 continue
 
@@ -76,7 +74,7 @@ def main():
     graph = nx.DiGraph()
     graph.add_weighted_edges_from([(alloc, use, count) for (alloc, use), count
                                    in use_counts.items()])
-    write_dot(graph, args.dot)
+    write_dot(graph, args.dot if args.dot else sys.stdout)
 
     return 0
 

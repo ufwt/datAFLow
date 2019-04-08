@@ -16,7 +16,7 @@ import sys
 from tabulate import tabulate
 
 
-PTR_DEREF_RE = re.compile(r'__ptr_deref: accessing pool (0x[0-9a-f]+) \(allocation site (0x[0-9a-f]+)\) from (0x[0-9a-f]+)')
+from common import FUZZALLOC_LOG_PTR_DEREF_RE
 
 
 PtrDeref = namedtuple('PtrDeref', ['pool_id', 'tag', 'ret_addr'])
@@ -51,7 +51,7 @@ def main():
 
     with open(log_path, 'r') as infile:
         for line in infile:
-            match = PTR_DEREF_RE.search(line)
+            match = FUZZALLOC_LOG_PTR_DEREF_RE.search(line)
             if match:
                 pool_id = int(match.group(1), 16)
                 tag = int(match.group(2), 16)
@@ -63,7 +63,7 @@ def main():
                 ptr_deref_counts[PtrDeref(pool_id, tag, ret_addr)] += 1
 
     #
-    # Print the results
+    # Print/save the results
     #
 
     ptr_deref_table = [(ptr.pool_id, ptr.tag, ptr.ret_addr, count) for
