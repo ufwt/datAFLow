@@ -288,12 +288,12 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
     // call, the underlying type should still be a FunctionType (which we check
     // in the various asserts)
 
-    // I think that we can safely assume that function calls to dynamic memory
-    // allocation functions can only be bitcast
+    // XXX assume that function calls to dynamic memory allocation functions can
+    // only be bitcast
     auto *BitCast = cast<BitCastInst>(ConstExpr->getAsInstruction());
 
     assert(isa<FunctionType>(BitCast->getDestTy()->getPointerElementType()) &&
-           "Must be bitcast of a function call");
+           "Must be a function call bitcast");
     Type *OrigBitCastTy = BitCast->getDestTy()->getPointerElementType();
 
     // Add the tag (i.e., the call site identifier) as the first argument to

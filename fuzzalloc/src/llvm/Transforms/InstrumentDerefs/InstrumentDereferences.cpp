@@ -247,6 +247,11 @@ void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer,
   IRBuilder<> IRB(I);
 
   auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
+  if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
+    PtrAsIntInst->setMetadata(I->getModule()->getMDKindID("nosanitize"),
+                              MDNode::get(IRB.getContext(), None));
+  }
+
   auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                this->TagMask);
   auto *PoolIdCast = IRB.CreateIntCast(PoolId, this->TagTy, false);
@@ -305,10 +310,10 @@ bool InstrumentDereferences::runOnModule(Module &M) {
     for (auto &BB : F) {
       TempsToInstrument.clear();
 
-      for (auto &I : BB) {
+      for (auto &Inst : BB) {
         Value *MaybeMask = nullptr;
 
-        if (Value *Addr = isInterestingMemoryAccess(&I, &IsWrite, &TypeSize,
+        if (Value *Addr = isInterestingMemoryAccess(&Inst, &IsWrite, &TypeSize,
                                                     &Alignment, &MaybeMask)) {
           // If we have a mask, skip instrumentation if we've already
           // instrumented the full object. But don't add to TempsToInstrument
@@ -326,8 +331,10 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           }
         }
         // TODO pointer comparisons?
-        else {
-          CallSite CS(&I);
+        else if (isa<MemIntrinsic>(Inst)) {
+          // ok, take it.
+        } else {
+          CallSite CS(&Inst);
 
           if (CS) {
             // A call inside BB
@@ -339,8 +346,8 @@ bool InstrumentDereferences::runOnModule(Module &M) {
 
         // Finally, check if the instruction has the "noinstrument" metadata
         // attached to it
-        if (!I.getMetadata(M.getMDKindID("fuzzalloc.noinstrument"))) {
-          ToInstrument.push_back(&I);
+        if (!Inst.getMetadata(M.getMDKindID("fuzzalloc.noinstrument"))) {
+          ToInstrument.push_back(&Inst);
         }
       }
     }

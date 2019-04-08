@@ -125,6 +125,9 @@ static Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   // Load the pointer to the dynamically allocated array and create a new GEP
   // instruction. Static arrays use an initial "offset 0" that must be ignored
   auto *Load = IRB.CreateLoad(MallocPtr);
+  Load->setMetadata(GEP->getModule()->getMDKindID("nosanitize"),
+                    MDNode::get(GEP->getContext(), None));
+
   auto *NewGEP = IRB.CreateInBoundsGEP(
       Load, SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
       GEP->hasName() ? GEP->getName() + "_prom" : "");
@@ -226,6 +229,7 @@ AllocaInst *PromoteStaticArrays::promoteArrayAlloca(AllocaInst *Alloca) {
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
+  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
   // Update all the users of the original array to use the dynamically
   // allocated array
@@ -325,6 +329,8 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
                                   ConstantInt::get(ElemTy, i, false)));
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                                   MDNode::get(C, None));
+        StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
+                                  MDNode::get(C, None));
       }
     } else if (auto *Initializer =
                    dyn_cast<ConstantAggregateZero>(OrigGV->getInitializer())) {
@@ -341,6 +347,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
+  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
   // Now that the global variable has been promoted to the heap, it must be
   // loaded before we can do anything else to it. This means that any constant
@@ -366,7 +373,10 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       updateGEP(GEP, NewGV);
       GEP->eraseFromParent();
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
-      U->replaceUsesOfWith(OrigGV, new LoadInst(NewGV, "", Inst));
+      auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
+      LoadNewGV->setMetadata(M->getMDKindID("nosanitize"),
+                             MDNode::get(C, None));
+      U->replaceUsesOfWith(OrigGV, LoadNewGV);
     } else {
       assert(false && "Unsupported user");
     }
