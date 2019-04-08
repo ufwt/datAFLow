@@ -48,6 +48,7 @@ def main():
     #
 
     afl_cmd_line = get_afl_command_line(fuzzer_stats_path)
+    print('replaying AFL target `%s`' % afl_cmd_line.target_cmd_line)
 
     #
     # Replay all of the files in the queue

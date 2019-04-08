@@ -55,6 +55,7 @@ def main():
     #
 
     afl_cmd_line = get_afl_command_line(fuzzer_stats_path)
+    print('replaying AFL target `%s`' % afl_cmd_line.target_cmd_line)
 
     #
     # Run afl-showmap on all of the files in the queue
@@ -73,10 +74,11 @@ def main():
             afl_showmap_args.extend(['-m', afl_cmd_line.memory_limit])
 
         with open(os.devnull, 'w') as devnull:
-            proc = subprocess.Popen(afl_showmap_args + args, stderr=devnull)
+            proc = subprocess.Popen(afl_showmap_args + ['--'] + args,
+                                    stderr=devnull)
             proc.wait()
 
-        print('afl-showmap %s returned %d' % (f, proc.returncode))
+            print('afl-showmap %s returned %d' % (f, proc.returncode))
 
     return 0
 
