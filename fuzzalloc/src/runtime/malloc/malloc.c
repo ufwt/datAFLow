@@ -27,7 +27,7 @@ static int page_size = 0;
 
 static size_t max_pool_size = 0;
 
-#if defined(USE_LOCKS)
+#if defined(FUZZALLOC_USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 

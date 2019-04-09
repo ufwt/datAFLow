@@ -61,7 +61,7 @@ ln -sf compiler-rt/lib/fuzzer Fuzzer
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-build && \
-  (cd fuzzalloc-build && cmake -DUSE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-build && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
 # Replace common.sh with ours (because it supports datAFLow)

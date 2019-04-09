@@ -1,8 +1,8 @@
 add_library(fuzzalloc SHARED malloc.c
                              deref.c)
 
-if(USE_LOCKS)
-  add_definitions(-DUSE_LOCKS)
+if(FUZZALLOC_USE_LOCKS)
+  add_definitions(-DFUZZALLOC_USE_LOCKS)
 endif()
 
 if(AFL_INSTRUMENT)

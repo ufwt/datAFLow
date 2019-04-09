@@ -27,7 +27,7 @@
 #define assert(x)
 #endif
 
-#if defined(USE_LOCKS)
+#if defined(FUZZALLOC_USE_LOCKS)
 #include <pthread.h>
 #endif
 
@@ -130,7 +130,7 @@ struct chunk_t {
 
 //===-- Locks -------------------------------------------------------------===//
 
-#if defined(USE_LOCKS)
+#if defined(FUZZALLOC_USE_LOCKS)
 #define INIT_POOL_LOCK(p) (pthread_mutex_init(&((p)->lock), NULL))
 #define ACQUIRE_POOL_LOCK(p) (pthread_mutex_lock(&((p)->lock)))
 #define RELEASE_POOL_LOCK(p) (pthread_mutex_unlock(&((p)->lock)))
@@ -145,12 +145,12 @@ struct chunk_t {
 
 #define ACQUIRE_MALLOC_GLOBAL_LOCK()
 #define RELEASE_MALLOC_GLOBAL_LOCK()
-#endif // defined(USE_LOCKS)
+#endif // defined(FUZZALLOC_USE_LOCKS)
 
 //===-- Allocation pool format --------------------------------------------===//
 
 struct pool_t {
-#if defined(USE_LOCKS)
+#if defined(FUZZALLOC_USE_LOCKS)
   /// Lock for accessing this pool
   pthread_mutex_t lock;
 #endif
