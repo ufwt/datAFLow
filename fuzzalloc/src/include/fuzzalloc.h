@@ -8,6 +8,8 @@
 #ifndef _FUZZ_ALLOC_H_
 #define _FUZZ_ALLOC_H_
 
+#include <stdint.h>
+
 /// The number of usable bits on the X86-64 architecture
 #define NUM_USABLE_BITS 48
 
