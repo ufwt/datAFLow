@@ -36,6 +36,8 @@ typedef uint8_t bool_t;
 #define FALSE 0
 #define TRUE !FALSE
 
+#define SIZE_T_SIZE (sizeof(size_t))
+
 //===-- Malloc chunk format -----------------------------------------------===//
 
 struct chunk_t {
@@ -57,7 +59,7 @@ struct chunk_t {
 };
 
 /// Size of in-use chunk overhead (in bytes)
-#define IN_USE_CHUNK_OVERHEAD (2 * sizeof(size_t))
+#define IN_USE_CHUNK_OVERHEAD (2 * SIZE_T_SIZE)
 
 /// Size of free chunk overhead (in bytes)
 #define FREE_CHUNK_OVERHEAD (sizeof(struct chunk_t))
@@ -155,7 +157,7 @@ struct pool_t {
   pthread_mutex_t lock;
 #endif
 
-  /// Pool size (in bytes)
+  /// Pool size (in bytes). This includes the overhead of this header
   size_t size;
   /// Free list for this pool
   struct chunk_t *free_list;

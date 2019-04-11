@@ -181,10 +181,11 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // Adjust the allocation size so that it is properly aligned
     size_t pool_size = align(size + POOL_OVERHEAD, POOL_ALIGNMENT);
 
-    // mmap the requested amount of memory
+    // mmap the requested amount of memory. Note that the pages mapped will be
+    // inaccessible until we mprotect them
     DEBUG_MSG("mmap-ing %lu bytes of memory...\n", pool_size);
-    void *mmap_base = mmap(NULL, pool_size, PROT_READ | PROT_WRITE,
-                           MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void *mmap_base =
+        mmap(NULL, pool_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (mmap_base == (void *)(-1)) {
       DEBUG_MSG("mmap failed: %s\n", strerror(errno));
       errno = ENOMEM;
@@ -207,21 +208,17 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     ptrdiff_t adjust = (pool_base - mmap_base) / page_size * page_size;
     if (adjust > 0) {
       munmap(mmap_base, adjust);
-      DEBUG_MSG("unmapped %lu bytes before pool base\n", adjust);
+      DEBUG_MSG("unmapped %lu bytes before pool base (new pool base at %p)\n",
+                adjust, pool_base);
 
       pool_size -= adjust;
     }
 
-    // To ensure alignment with a valid pool tag, we mmap much more memory than
-    // we actually require. Adjust the amount of mmap'd memory to the default
-    // pool size
-    adjust =
-        (pool_size - max_pool_size - POOL_OVERHEAD) * page_size / page_size;
-    if (adjust > 0) {
-      munmap(pool_base + (pool_size - adjust), adjust);
-      DEBUG_MSG("unmapped %lu bytes of unused memory\n", adjust);
-
-      pool_size -= adjust;
+    // Make the mapped pages accessible
+    if (mprotect(pool_base, max_pool_size, PROT_READ | PROT_WRITE)) {
+      DEBUG_MSG("mprotect failed for pool at %p (length %lu bytes)\n",
+                pool_base, max_pool_size);
+      abort();
     }
 
     DEBUG_MSG("allocation pool base at %p (size %lu bytes)\n", pool_base,
@@ -247,7 +244,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // The initial free chunk should not be outside of the allocation pool
     assert((ptrdiff_t)free_chunk < (ptrdiff_t)pool_base + pool_size);
 
-    SET_CHUNK_SIZE(free_chunk, pool_size - req_chunk_size);
+    SET_CHUNK_SIZE(free_chunk, max_pool_size - req_chunk_size);
     SET_CHUNK_FREE(free_chunk);
     SET_PREV_CHUNK_IN_USE(free_chunk);
 
@@ -257,7 +254,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // chunk into the pool's free list. Initialize the pool's lock (if it has
     // one)
     struct pool_t *pool = (void *)pool_base;
-    pool->size = pool_size;
+    pool->size = max_pool_size;
     pool->entry = chunk;
     pool->free_list = free_chunk;
     INIT_POOL_LOCK(pool);
@@ -298,7 +295,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
       DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                 "allocation pool %#x\n",
                 req_chunk_size, pool_tag);
-      // TODO grow the allocation pool
+      // TODO grow the allocation pool via mprotect
       abort();
     }
     size_t free_chunk_size = CHUNK_SIZE(chunk);
@@ -485,7 +482,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
         DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                   "allocation pool %#x\n",
                   new_chunk_size, GET_POOL_TAG(pool));
-        // TODO grow the allocation pool
+        // TODO grow the allocation pool via mprotect
         abort();
       }
       size_t free_chunk_size = CHUNK_SIZE(new_chunk);
