@@ -657,6 +657,11 @@ void InitializeAsanInterceptors() {
   ASAN_INTERCEPT_FUNC(__cxa_atexit);
 #endif
 
+#if FUZZALLOC_ASAN
+  ASAN_INTERCEPT_FUNC(__tagged_malloc);
+  ASAN_INTERCEPT_FUNC(free);
+#endif
+
   InitializePlatformInterceptors();
 
   VReport(1, "AddressSanitizer: libc interceptors initialized\n");

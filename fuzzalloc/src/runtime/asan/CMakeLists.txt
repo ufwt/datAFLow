@@ -210,6 +210,11 @@ else()
         ${CMAKE_CURRENT_BINARY_DIR}/dummy.cc
         APPEND PROPERTY
         OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/clang_rt.asan-dynamic-${arch}.vers)
+
+      if (FUZZALLOC_ASAN AND ${arch} STREQUAL "x86_64")
+        add_definitions(-DFUZZALLOC_ASAN)
+        list(APPEND ASAN_DYNAMIC_LIBS fuzzalloc)
+      endif()
     else()
       set(VERSION_SCRIPT_FLAG)
     endif()

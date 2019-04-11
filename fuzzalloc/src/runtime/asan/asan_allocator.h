@@ -15,18 +15,28 @@
 #ifndef ASAN_ALLOCATOR_H
 #define ASAN_ALLOCATOR_H
 
+// clang-format off
 #include "asan_flags.h"
 #include "asan_internal.h"
 #include "asan_interceptors.h"
 #include "sanitizer_common/sanitizer_allocator.h"
 #include "sanitizer_common/sanitizer_list.h"
+// clang-format on
+
+#if FUZZALLOC_ASAN
+#include "sanitizer_common/fuzzalloc.h"
+#endif // FUZZALLOC_ASAN
 
 namespace __asan {
 
+#if FUZZALLOC_ASAN
+using namespace __fuzzalloc;
+#endif // FUZZALLOC_ASAN
+
 enum AllocType {
-  FROM_MALLOC = 1,  // Memory block came from malloc, calloc, realloc, etc.
-  FROM_NEW = 2,     // Memory block came from operator new.
-  FROM_NEW_BR = 3   // Memory block came from operator new [ ]
+  FROM_MALLOC = 1, // Memory block came from malloc, calloc, realloc, etc.
+  FROM_NEW = 2,    // Memory block came from operator new.
+  FROM_NEW_BR = 3  // Memory block came from operator new [ ]
 };
 
 struct AsanChunk;
@@ -49,16 +59,16 @@ void ReInitializeAllocator(const AllocatorOptions &options);
 void GetAllocatorOptions(AllocatorOptions *options);
 
 class AsanChunkView {
- public:
+public:
   explicit AsanChunkView(AsanChunk *chunk) : chunk_(chunk) {}
-  bool IsValid() const;        // Checks if AsanChunkView points to a valid
-                               // allocated or quarantined chunk.
-  bool IsAllocated() const;    // Checks if the memory is currently allocated.
-  bool IsQuarantined() const;  // Checks if the memory is currently quarantined.
-  uptr Beg() const;            // First byte of user memory.
-  uptr End() const;            // Last byte of user memory.
-  uptr UsedSize() const;       // Size requested by the user.
-  u32 UserRequestedAlignment() const;  // Originally requested alignment.
+  bool IsValid() const;       // Checks if AsanChunkView points to a valid
+                              // allocated or quarantined chunk.
+  bool IsAllocated() const;   // Checks if the memory is currently allocated.
+  bool IsQuarantined() const; // Checks if the memory is currently quarantined.
+  uptr Beg() const;           // First byte of user memory.
+  uptr End() const;           // Last byte of user memory.
+  uptr UsedSize() const;      // Size requested by the user.
+  u32 UserRequestedAlignment() const; // Originally requested alignment.
   uptr AllocTid() const;
   uptr FreeTid() const;
   bool Eq(const AsanChunkView &c) const { return chunk_ == c.chunk_; }
@@ -90,7 +100,7 @@ class AsanChunkView {
     return false;
   }
 
- private:
+private:
   AsanChunk *const chunk_;
 };
 
@@ -98,9 +108,9 @@ AsanChunkView FindHeapChunkByAddress(uptr address);
 AsanChunkView FindHeapChunkByAllocBeg(uptr address);
 
 // List of AsanChunks with total size.
-class AsanChunkFifoList: public IntrusiveList<AsanChunk> {
- public:
-  explicit AsanChunkFifoList(LinkerInitialized) { }
+class AsanChunkFifoList : public IntrusiveList<AsanChunk> {
+public:
+  explicit AsanChunkFifoList(LinkerInitialized) {}
   AsanChunkFifoList() { clear(); }
   void Push(AsanChunk *n);
   void PushList(AsanChunkFifoList *q);
@@ -110,7 +120,8 @@ class AsanChunkFifoList: public IntrusiveList<AsanChunk> {
     IntrusiveList<AsanChunk>::clear();
     size_ = 0;
   }
- private:
+
+private:
   uptr size_;
 };
 
@@ -120,35 +131,35 @@ struct AsanMapUnmapCallback {
 };
 
 #if SANITIZER_CAN_USE_ALLOCATOR64
-# if SANITIZER_FUCHSIA
+#if SANITIZER_FUCHSIA
 const uptr kAllocatorSpace = ~(uptr)0;
-const uptr kAllocatorSize  =  0x40000000000ULL;  // 4T.
+const uptr kAllocatorSize = 0x40000000000ULL; // 4T.
 typedef DefaultSizeClassMap SizeClassMap;
-# elif defined(__powerpc64__)
+#elif defined(__powerpc64__)
 const uptr kAllocatorSpace = ~(uptr)0;
-const uptr kAllocatorSize  =  0x20000000000ULL;  // 2T.
+const uptr kAllocatorSize = 0x20000000000ULL; // 2T.
 typedef DefaultSizeClassMap SizeClassMap;
-# elif defined(__aarch64__) && SANITIZER_ANDROID
+#elif defined(__aarch64__) && SANITIZER_ANDROID
 // Android needs to support 39, 42 and 48 bit VMA.
-const uptr kAllocatorSpace =  ~(uptr)0;
-const uptr kAllocatorSize  =  0x2000000000ULL;  // 128G.
+const uptr kAllocatorSpace = ~(uptr)0;
+const uptr kAllocatorSize = 0x2000000000ULL; // 128G.
 typedef VeryCompactSizeClassMap SizeClassMap;
-# elif defined(__aarch64__)
+#elif defined(__aarch64__)
 // AArch64/SANITIZER_CAN_USER_ALLOCATOR64 is only for 42-bit VMA
 // so no need to different values for different VMA.
-const uptr kAllocatorSpace =  0x10000000000ULL;
-const uptr kAllocatorSize  =  0x10000000000ULL;  // 3T.
+const uptr kAllocatorSpace = 0x10000000000ULL;
+const uptr kAllocatorSize = 0x10000000000ULL; // 3T.
 typedef DefaultSizeClassMap SizeClassMap;
-# elif SANITIZER_WINDOWS
+#elif SANITIZER_WINDOWS
 const uptr kAllocatorSpace = ~(uptr)0;
-const uptr kAllocatorSize  =  0x8000000000ULL;  // 500G
+const uptr kAllocatorSize = 0x8000000000ULL; // 500G
 typedef DefaultSizeClassMap SizeClassMap;
-# else
+#else
 const uptr kAllocatorSpace = 0x600000000000ULL;
-const uptr kAllocatorSize  =  0x40000000000ULL;  // 4T.
+const uptr kAllocatorSize = 0x40000000000ULL; // 4T.
 typedef DefaultSizeClassMap SizeClassMap;
-# endif
-struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
+#endif
+struct AP64 { // Allocator64 parameters. Deliberately using a short name.
   static const uptr kSpaceBeg = kAllocatorSpace;
   static const uptr kSpaceSize = kAllocatorSize;
   static const uptr kMetadataSize = 0;
@@ -158,14 +169,18 @@ struct AP64 {  // Allocator64 parameters. Deliberately using a short name.
 };
 
 typedef SizeClassAllocator64<AP64> PrimaryAllocator;
-#else  // Fallback to SizeClassAllocator32.
+#else // Fallback to SizeClassAllocator32.
+#if FUZZALLOC_ASAN
+// The fuzzalloc allocator only supports 64-bit targets
+#undef FUZZALLOC_ASAN
+#endif // FUZZALLOC_ASAN
 static const uptr kRegionSizeLog = 20;
 static const uptr kNumRegions = SANITIZER_MMAP_RANGE_SIZE >> kRegionSizeLog;
-# if SANITIZER_WORDSIZE == 32
+#if SANITIZER_WORDSIZE == 32
 typedef FlatByteMap<kNumRegions> ByteMap;
-# elif SANITIZER_WORDSIZE == 64
+#elif SANITIZER_WORDSIZE == 64
 typedef TwoLevelByteMap<(kNumRegions >> 12), 1 << 12> ByteMap;
-# endif
+#endif
 typedef CompactSizeClassMap SizeClassMap;
 struct AP32 {
   static const uptr kSpaceBeg = 0;
@@ -177,21 +192,22 @@ struct AP32 {
   typedef AsanMapUnmapCallback MapUnmapCallback;
   static const uptr kFlags = 0;
 };
+
 typedef SizeClassAllocator32<AP32> PrimaryAllocator;
-#endif  // SANITIZER_CAN_USE_ALLOCATOR64
+#endif // SANITIZER_CAN_USE_ALLOCATOR64
 
 static const uptr kNumberOfSizeClasses = SizeClassMap::kNumClasses;
 typedef SizeClassAllocatorLocalCache<PrimaryAllocator> AllocatorCache;
 typedef LargeMmapAllocator<AsanMapUnmapCallback> SecondaryAllocator;
-typedef CombinedAllocator<PrimaryAllocator, AllocatorCache,
-    SecondaryAllocator> AsanAllocator;
-
+typedef CombinedAllocator<PrimaryAllocator, AllocatorCache, SecondaryAllocator>
+    AsanAllocator;
 
 struct AsanThreadLocalMallocStorage {
   uptr quarantine_cache[16];
   AllocatorCache allocator_cache;
   void CommitBack();
- private:
+
+private:
   // These objects are allocated via mmap() and are zero-initialized.
   AsanThreadLocalMallocStorage() {}
 };
@@ -208,6 +224,15 @@ void *asan_realloc(void *p, uptr size, BufferedStackTrace *stack);
 void *asan_valloc(uptr size, BufferedStackTrace *stack);
 void *asan_pvalloc(uptr size, BufferedStackTrace *stack);
 
+#if FUZZALLOC_ASAN
+void *asan___tagged_malloc(tag_t alloc_site_tag, uptr size,
+                           BufferedStackTrace *stack);
+void *asan___tagged_calloc(tag_t alloc_site_tag, uptr nmemb, uptr size,
+                           BufferedStackTrace *stack);
+void *asan___tagged_realloc(tag_t alloc_site_tag, void *p, uptr size,
+                            BufferedStackTrace *stack);
+#endif // FUZZALLOC_ASAN
+
 void *asan_aligned_alloc(uptr alignment, uptr size, BufferedStackTrace *stack);
 int asan_posix_memalign(void **memptr, uptr alignment, uptr size,
                         BufferedStackTrace *stack);
@@ -220,5 +245,5 @@ void asan_mz_force_unlock();
 void PrintInternalAllocatorStats();
 void AsanSoftRssLimitExceededCallback(bool exceeded);
 
-}  // namespace __asan
-#endif  // ASAN_ALLOCATOR_H
+} // namespace __asan
+#endif // ASAN_ALLOCATOR_H

@@ -46,7 +46,7 @@ struct chunk_t {
   struct chunk_t *next;
   /// Pointer to the previous free chunk
   struct chunk_t *prev;
-};
+} __attribute__((__packed__));
 
 /// Size of in-use chunk overhead (in bytes)
 #define IN_USE_CHUNK_OVERHEAD (2 * SIZE_T_SIZE)
