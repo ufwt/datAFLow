@@ -13,6 +13,7 @@
 #include <sys/mman.h> // for mmap
 #include <unistd.h>   // for getpagesize
 
+#include "debug.h"
 #include "malloc_internal.h"
 
 // Forward declarations
@@ -30,6 +31,9 @@ static size_t max_pool_size = 0;
 #if defined(FUZZALLOC_USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
+
+// Defined in deref.c
+extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
 
 #if !defined(NDEBUG)
 static inline void print_free_list(const struct pool_t *pool) {

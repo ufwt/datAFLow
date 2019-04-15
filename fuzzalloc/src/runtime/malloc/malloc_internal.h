@@ -12,24 +12,14 @@
 #error Unsupported platform
 #endif
 
+#include <stddef.h>
 #include <stdint.h>
-
-#include "fuzzalloc.h"
-
-#if !defined(NDEBUG)
-#include <assert.h>
-#include <stdio.h>
-
-#define DEBUG_MSG(format, args...)                                             \
-  fprintf(stderr, "[%s:%d] %s: " format, __FILE__, __LINE__, __func__, ##args)
-#else
-#define DEBUG_MSG(format, ...)
-#define assert(x)
-#endif
 
 #if defined(FUZZALLOC_USE_LOCKS)
 #include <pthread.h>
 #endif
+
+#include "fuzzalloc.h" // for tag_t
 
 typedef uint8_t bool_t;
 
@@ -187,8 +177,4 @@ struct pool_t {
 #define GET_POOL(tag)                                                          \
   ((struct pool_t *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
-//===-- Global variables --------------------------------------------------===//
-
-extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
-
-#endif
+#endif // _MALLOC_INTERNAL_H_

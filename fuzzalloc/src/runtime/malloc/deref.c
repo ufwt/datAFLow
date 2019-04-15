@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 
+#include "debug.h"
 #include "malloc_internal.h"
 
 #if defined(AFL_INSTRUMENT)
