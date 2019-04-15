@@ -14,6 +14,8 @@ cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
 make -j
 ```
 
+We use LLVM 7 (available from http://releases.llvm.org/download.html#7.0.0).
+
 To compile with AFL instrumentation, set the `AFL_INSTRUMENT` CMake flag (i.e.,
 add `-DAFL_INSTRUMENT=On` to the `cmake` command above) and set the `AFL_PATH`
 environment variable to the AFL source code directory.
