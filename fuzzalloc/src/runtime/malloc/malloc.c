@@ -16,8 +16,7 @@
 #include "debug.h"
 #include "malloc_internal.h"
 
-// Forward declarations
-void free(void *ptr);
+//===-- Global variables --------------------------------------------------===//
 
 /// Maps malloc/calloc/realloc allocation call site tags (inserted during
 /// compilation) to allocation pool tags
@@ -35,11 +34,16 @@ static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 // Defined in deref.c
 extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
 
+//===-- Private helper functions ------------------------------------------===//
+
+// Forward declaration
+tag_t get_pool_tag(void *p);
+
 #if !defined(NDEBUG)
 static inline void print_free_list(const struct pool_t *pool) {
   struct chunk_t *chunk = pool->free_list;
 
-  DEBUG_MSG("pool %#x free list\n", GET_POOL_TAG(pool));
+  DEBUG_MSG("pool %#x free list\n", get_pool_tag((void *)pool));
   while (chunk) {
     assert(CHUNK_FREE(chunk));
     DEBUG_MSG("  - %p (size %lu bytes)\n", chunk, CHUNK_SIZE(chunk));
@@ -48,7 +52,7 @@ static inline void print_free_list(const struct pool_t *pool) {
 }
 #endif
 
-static size_t get_pool_size() {
+static size_t init_pool_size() {
   size_t psize = DEFAULT_POOL_SIZE;
 
   char *pool_size_str = getenv(POOL_SIZE_ENV_VAR);
@@ -144,6 +148,16 @@ do_abort:
   abort();
 }
 
+//===-- Public helper functions -------------------------------------------===//
+
+tag_t get_pool_tag(void *p) {
+  return (tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS));
+}
+
+size_t get_pool_size(void *p) { return GET_POOL(get_pool_tag(p))->size; }
+
+//===-- malloc interface --------------------------------------------------===//
+
 void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
   DEBUG_MSG("__tagged_malloc(%#x, %lu) called from %p\n", alloc_site_tag, size,
             __builtin_return_address(0));
@@ -168,7 +182,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
 
     // This should also only happen once
     if (!max_pool_size) {
-      max_pool_size = get_pool_size();
+      max_pool_size = init_pool_size();
     }
 
     // This allocation site has not been used before. Create a new "allocation
@@ -271,7 +285,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // This is the first memory allocation for this allocation site, so save
     // the allocation pool tag into the pool map (and likewise the allocation
     // site tag into the site map)
-    pool_tag = GET_POOL_TAG(pool_base);
+    pool_tag = get_pool_tag(pool_base);
     DEBUG_MSG("pool %#x (size %lu bytes) created for allocation site %#x\n",
               pool_tag, pool_size, alloc_site_tag);
     alloc_site_to_pool_map[alloc_site_tag] = pool_tag;
@@ -398,6 +412,9 @@ void *__tagged_calloc(tag_t alloc_site_tag, size_t nmemb, size_t size) {
   return memset(mem, 0, size);
 }
 
+// Forward declaration
+void free(void *p);
+
 void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
   DEBUG_MSG("__tagged_realloc(%#x, %p, %lu) called from %p\n", alloc_site_tag,
             ptr, size, __builtin_return_address(0));
@@ -417,7 +434,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
     // Do a reallocation
     struct chunk_t *orig_chunk = MEM_TO_CHUNK(ptr);
 
-    struct pool_t *pool = GET_POOL(GET_POOL_TAG(orig_chunk));
+    struct pool_t *pool = GET_POOL(get_pool_tag(orig_chunk));
     ACQUIRE_POOL_LOCK(pool);
 
     struct chunk_t *next_chunk = NEXT_CHUNK(orig_chunk);
@@ -485,7 +502,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       if (!new_chunk) {
         DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
                   "allocation pool %#x\n",
-                  new_chunk_size, GET_POOL_TAG(pool));
+                  new_chunk_size, get_pool_tag(pool));
         // TODO grow the allocation pool via mprotect
         abort();
       }
@@ -603,11 +620,11 @@ void free(void *ptr) {
   struct chunk_t *chunk = MEM_TO_CHUNK(ptr);
   size_t chunk_size = CHUNK_SIZE(chunk);
 
-  struct pool_t *pool = GET_POOL(GET_POOL_TAG(chunk));
+  struct pool_t *pool = GET_POOL(get_pool_tag(chunk));
   ACQUIRE_POOL_LOCK(pool);
 
   DEBUG_MSG("freeing memory at %p (size %lu bytes) from pool %#x\n", chunk,
-            chunk_size, GET_POOL_TAG(pool));
+            chunk_size, get_pool_tag(pool));
 
   // Sanity check that the chunk metadata hasn't been corrupted in some way
   in_use_sanity_check(chunk);

@@ -169,10 +169,6 @@ struct pool_t {
 /// address are unique to a single pool
 #define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
 
-/// Extract the pool tag from the allocated pool
-#define GET_POOL_TAG(p)                                                        \
-  ((tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
-
 /// Get the allocation pool address from an allocation pool tag
 #define GET_POOL(tag)                                                          \
   ((struct pool_t *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))

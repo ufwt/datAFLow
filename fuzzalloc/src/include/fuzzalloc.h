@@ -5,9 +5,10 @@
 // Author: Adrian Herrera
 //
 
-#ifndef _FUZZ_ALLOC_H_
-#define _FUZZ_ALLOC_H_
+#ifndef FUZZALLOC_H
+#define FUZZALLOC_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /// The number of usable bits on the X86-64 architecture
@@ -26,4 +27,10 @@ typedef uint16_t tag_t;
 /// code
 #define DEFAULT_TAG 0
 
-#endif
+/// Extract the pool tag from the allocated pool
+tag_t get_pool_tag(void *p);
+
+/// Get the size of the pool the given allocation belongs to
+size_t get_pool_size(void *p);
+
+#endif // FUZZALLOC_H
