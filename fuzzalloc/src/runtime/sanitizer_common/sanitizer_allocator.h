@@ -32,8 +32,8 @@
 
 typedef __fuzzalloc::tag_t TAG_T;
 
-extern "C" void *__tagged_malloc(TAG_T, SIZE_T);
-extern "C" void free(void *);
+extern "C" void *__tagged_malloc(TAG_T tag, SIZE_T size);
+extern "C" void free(void *ptr);
 
 DECLARE_REAL_AND_INTERCEPTOR(void *, __tagged_malloc, TAG_T, SIZE_T);
 DECLARE_REAL_AND_INTERCEPTOR(void, free, void *);

@@ -46,7 +46,7 @@ size_t get_pool_size(void *p);
 }
 
 #if defined(SANITIZER_ALLOCATOR_H)
-} // __fuzzalloc
+} // namespace __fuzzalloc
 #endif // SANITIZER_ALLOCATOR_H
 #endif // __cplusplus
 

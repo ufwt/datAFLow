@@ -59,7 +59,7 @@ void ReInitializeAllocator(const AllocatorOptions &options);
 void GetAllocatorOptions(AllocatorOptions *options);
 
 class AsanChunkView {
-public:
+ public:
   explicit AsanChunkView(AsanChunk *chunk) : chunk_(chunk) {}
   bool IsValid() const;       // Checks if AsanChunkView points to a valid
                               // allocated or quarantined chunk.
@@ -100,7 +100,7 @@ public:
     return false;
   }
 
-private:
+ private:
   AsanChunk *const chunk_;
 };
 
@@ -109,7 +109,7 @@ AsanChunkView FindHeapChunkByAllocBeg(uptr address);
 
 // List of AsanChunks with total size.
 class AsanChunkFifoList : public IntrusiveList<AsanChunk> {
-public:
+ public:
   explicit AsanChunkFifoList(LinkerInitialized) {}
   AsanChunkFifoList() { clear(); }
   void Push(AsanChunk *n);
@@ -121,7 +121,7 @@ public:
     size_ = 0;
   }
 
-private:
+ private:
   uptr size_;
 };
 
@@ -207,7 +207,7 @@ struct AsanThreadLocalMallocStorage {
   AllocatorCache allocator_cache;
   void CommitBack();
 
-private:
+ private:
   // These objects are allocated via mmap() and are zero-initialized.
   AsanThreadLocalMallocStorage() {}
 };
