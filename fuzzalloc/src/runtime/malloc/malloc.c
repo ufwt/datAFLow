@@ -64,6 +64,8 @@ static size_t init_pool_size() {
                 POOL_SIZE_ENV_VAR, pool_size_str);
       psize = DEFAULT_POOL_SIZE;
     }
+  } else {
+    DEBUG_MSG("%s not set. Using default pool size\n", POOL_SIZE_ENV_VAR);
   }
 
   DEBUG_MSG("using pool size %lu bytes\n", psize);
