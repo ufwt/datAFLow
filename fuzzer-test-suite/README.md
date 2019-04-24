@@ -6,20 +6,35 @@ datAFLow instrumentation.
 
 # Usage
 
-Run `setup.sh` (from any directory where you want your test suite to end up) to
+Run `setup.sh` (from the directory where you want the test suite to be) to
 download the test suite and required tools (AFL and LLVM's
-compiler-rt). You can set the `AFL_PATH` environment variable if you already
-have AFL. Set the `DEBUG` environment variable (e.g., to 1) to build a debug
-version of libfuzzalloc.
+compiler-rt). You can set the `AFL_PATH` and `COMPILER_RT_PATH` environment
+variables if you already have AFL and LLVM's compiler-rt 7.0 respectively. Set
+the `DEBUG` environment variable (e.g., to 1) to build a debug version of
+libfuzzalloc.
 
 Run the following to build a target:
 
 ```bash
-FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
+CC=clang CXX=clang++ FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
 ```
 
 Where `TARGET` is one of the directories inside the fuzzer-test-suite directory
 (e.g., libpng-1.2.56).
+
+Note that in addition to the `datAFLow` `FUZZING_ENGINE`, you can also use
+vanilla AFL by setting `FUZZING_ENGINE=afl` or with no fuzzer instrumentation
+(i.e., just a regular build) by setting `FUZZING_ENGINE=none`.
+
+## With AddressSanitizer (ASan)
+
+If fuzzing with ASan (as described
+[here](https://github.com/HexHive/datAFLow/tree/master/fuzzalloc#with-addresssanitizer-asan)),
+you should set the `ENABLE_ASAN` environment variable when building a target.
+This will:
+
+ * Add the necessary ASan compiler flags; and
+ * Set `ASAN_OPTIONS` in line with AFL: e.g., disabling leak detection, etc.
 
 # Fuzzing example (libxml)
 

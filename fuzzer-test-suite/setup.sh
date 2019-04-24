@@ -50,14 +50,20 @@ else
 fi
 
 # Get compiler-rt
-if [ ! -d "${COMPILER_RT}" ]; then
-  echo "${COMPILER_RT} not found. Downloading LLVM's compiler-rt"
-  mkdir -p ${COMPILER_RT}
-  wget ${COMPILER_RT_URL}
-  tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
-  rm ${COMPILER_RT_TAR}
+if [ -z "${COMPILER_RT_PATH}" ]; then
+    if [ ! -d "${COMPILER_RT}" ]; then
+      echo "${COMPILER_RT} not set. Downloading LLVM's compiler-rt"
+      mkdir -p ${COMPILER_RT}
+      wget ${COMPILER_RT_URL}
+      tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
+      rm ${COMPILER_RT_TAR}
+    fi
+
+    export COMPILER_RT_PATH=${PWD}/${COMPILER_RT}
+else
+    echo "Using LLVM compiler-rt at ${COMPILER_RT_PATH}"
 fi
-ln -sf compiler-rt/lib/fuzzer Fuzzer
+ln -sf ${COMPILER_RT_PATH}/lib/fuzzer Fuzzer
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-build && \
