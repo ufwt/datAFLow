@@ -212,8 +212,24 @@ else()
         OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/clang_rt.asan-dynamic-${arch}.vers)
 
       if (FUZZALLOC_ASAN AND ${arch} STREQUAL "x86_64")
+        if(NOT DEFINED LIBFUZZALLOC_PATH)
+          message(FATAL_ERROR "LIBFUZZALLOC_PATH not specified. "
+                              "Please set LIBFUZZALLOC_PATH to point to libfuzzalloc.so")
+        elseif(NOT EXISTS ${LIBFUZZALLOC_PATH})
+          message(FATAL_ERROR "libfuzzalloc.so does not exist at ${LIBFUZZALLOC_PATH}. "
+                              "Please set LIBFUZZALLOC_PATH appropriately")
+        endif()
+
+        get_filename_component(LIBFUZZALLOC_DIR ${LIBFUZZALLOC_PATH} DIRECTORY)
+        get_filename_component(LIBFUZZALLOC_NAME ${LIBFUZZALLOC_PATH} NAME)
+
+        if(NOT ${LIBFUZZALLOC_NAME} STREQUAL "libfuzzalloc.so")
+          message(FATAL_ERROR "File at ${LIBFUZZALLOC_PATH} is not named libfuzzalloc.so")
+        endif()
+
         add_definitions(-DFUZZALLOC_ASAN)
         list(APPEND ASAN_DYNAMIC_LIBS fuzzalloc)
+        list(APPEND ASAN_DYNAMIC_LINK_FLAGS "-L${LIBFUZZALLOC_DIR}")
       endif()
     else()
       set(VERSION_SCRIPT_FLAG)
