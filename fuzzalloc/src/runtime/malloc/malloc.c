@@ -183,6 +183,9 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     }
 
     // This should also only happen once
+    //
+    // XXX When used with ASan and this is first called, environ does not seem
+    // to have been initialized yet, so we'll always use the default pool size
     if (!max_pool_size) {
       max_pool_size = init_pool_size();
     }
