@@ -18,6 +18,7 @@ ln -sf ${RT_SRC}/asan/asan_allocator.h ${COMPILER_RT_LIB}/asan/asan_allocator.h
 ln -sf ${RT_SRC}/asan/asan_interceptors.cc ${COMPILER_RT_LIB}/asan/asan_interceptors.cc
 ln -sf ${RT_SRC}/asan/asan_malloc_linux.cc ${COMPILER_RT_LIB}/asan/asan_malloc_linux.cc
 ln -sf ${RT_SRC}/asan/CMakeLists.txt ${COMPILER_RT_LIB}/asan/CMakeLists.txt
+ln -sf ${RT_SRC}/asan/tests/CMakeLists.txt ${COMPILER_RT_LIB}/asan/tests/CMakeLists.txt
 
 ln -sf ${RT_SRC}/sanitizer_common/sanitizer_allocator.h ${COMPILER_RT_LIB}/sanitizer_common/sanitizer_allocator.h
 ln -sf ${RT_SRC}/sanitizer_common/sanitizer_fuzzalloc_allocator.h ${COMPILER_RT_LIB}/sanitizer_common/sanitizer_fuzzalloc_allocator.h
