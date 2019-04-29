@@ -119,7 +119,8 @@ static inline void in_use_sanity_check(struct chunk_t *chunk) {
   size_t next_prev_chunk_size = PREV_CHUNK_SIZE(next_chunk);
 
   if (!CHUNK_IN_USE(chunk)) {
-    DEBUG_MSG("chunk %p should be marked in use\n", chunk);
+    DEBUG_MSG("chunk %p (size %lu bytes) should be marked in use\n", chunk,
+              CHUNK_SIZE(chunk));
     goto do_abort;
   }
 
@@ -138,8 +139,8 @@ static inline void in_use_sanity_check(struct chunk_t *chunk) {
   // XXX check `NEXT_CHUNK(PREV_CHUNK(chunk)) == chunk)` ?
 
   if (chunk_size != next_prev_chunk_size) {
-    DEBUG_MSG("chunk %p (size %lu) should equal next chunk %p previous (size "
-              "%lu bytes)\n",
+    DEBUG_MSG("chunk %p (size %lu bytes) should equal next chunk %p previous "
+              "(size %lu bytes)\n",
               chunk, chunk_size, next_chunk, next_prev_chunk_size);
     goto do_abort;
   }

@@ -332,8 +332,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
         StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
       }
-    } else if (auto *Initializer =
-                   dyn_cast<ConstantAggregateZero>(OrigGV->getInitializer())) {
+    } else if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitialier, just memset the dynamically
       // allocated memory to zero
       uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;

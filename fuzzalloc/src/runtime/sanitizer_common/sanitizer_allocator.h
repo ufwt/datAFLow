@@ -35,8 +35,8 @@ typedef __fuzzalloc::tag_t TAG_T;
 extern "C" void *__tagged_malloc(TAG_T tag, SIZE_T size);
 extern "C" void free(void *ptr);
 
-DECLARE_REAL_AND_INTERCEPTOR(void *, __tagged_malloc, TAG_T, SIZE_T);
-DECLARE_REAL_AND_INTERCEPTOR(void, free, void *);
+DECLARE_REAL_AND_INTERCEPTOR(void *, __tagged_malloc, TAG_T, SIZE_T)
+DECLARE_REAL_AND_INTERCEPTOR(void, free, void *)
 #endif // FUZZALLOC_ASAN
 
 namespace __sanitizer {
@@ -96,6 +96,8 @@ template <typename T> INLINE void RandomShuffle(T *a, u32 n, u32 *rand_state) {
 // Only use the fuzzalloc allocator on 64-bit systems
 #include "sanitizer_fuzzalloc_allocator.h"
 #else
+#undef FUZZALLOC_ASAN
+
 #include "sanitizer_allocator_secondary.h"
 #include "sanitizer_allocator_combined.h"
 #endif // FUZZALLOC_ASAN

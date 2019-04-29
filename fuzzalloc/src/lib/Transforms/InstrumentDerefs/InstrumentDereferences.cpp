@@ -280,8 +280,8 @@ bool InstrumentDereferences::doInitialization(Module &M) {
 }
 
 bool InstrumentDereferences::runOnModule(Module &M) {
-  assert(ClInstrumentReads ||
-         ClInstrumentWrites && "Must instrument either loads or stores");
+  assert((ClInstrumentReads || ClInstrumentWrites) &&
+         "Must instrument either loads or stores");
 
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();

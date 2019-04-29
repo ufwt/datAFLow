@@ -170,10 +170,6 @@ struct AP64 { // Allocator64 parameters. Deliberately using a short name.
 
 typedef SizeClassAllocator64<AP64> PrimaryAllocator;
 #else // Fallback to SizeClassAllocator32.
-#if FUZZALLOC_ASAN
-// The fuzzalloc allocator only supports 64-bit targets
-#undef FUZZALLOC_ASAN
-#endif // FUZZALLOC_ASAN
 static const uptr kRegionSizeLog = 20;
 static const uptr kNumRegions = SANITIZER_MMAP_RANGE_SIZE >> kRegionSizeLog;
 #if SANITIZER_WORDSIZE == 32
