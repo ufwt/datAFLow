@@ -149,7 +149,7 @@ class LargeMmapAllocator {
       stat->Sub(AllocatorStatAllocated, h->map_size);
     }
     MapUnmapCallback().OnUnmap(h->map_beg, h->map_size);
-    REAL(free)(p);
+    REAL(free)(reinterpret_cast<void*>(h->map_beg));
   }
 
   uptr TotalMemoryUsed() {
@@ -256,7 +256,7 @@ class LargeMmapAllocator {
 
   void PrintStats() {
     Printf("Stats: LargeMmapAllocator: allocated %zd times, "
-           "remains %zd (%zd K) max %zd M;\n",
+           "remains %zd (%zd K) max %zd M; by size logs: ",
            stats.n_allocs, stats.n_allocs - stats.n_frees,
            stats.currently_allocated >> 10, stats.max_allocated >> 20);
     for (uptr i = 0; i < ARRAY_SIZE(stats.by_size_log); i++) {
