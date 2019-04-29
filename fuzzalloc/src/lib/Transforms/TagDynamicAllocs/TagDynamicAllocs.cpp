@@ -161,7 +161,7 @@ static FuzzallocWhitelist getWhitelist() {
 
 /// Generate a random tag
 ConstantInt *TagDynamicAllocs::generateTag() const {
-  return ConstantInt::get(this->TagTy, RAND(DEFAULT_TAG + 1, TAG_MAX));
+  return ConstantInt::get(this->TagTy, RAND(INST_TAG_START, TAG_MAX));
 }
 
 /// Translates a function type to its tagged version.

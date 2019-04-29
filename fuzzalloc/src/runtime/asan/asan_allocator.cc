@@ -169,7 +169,11 @@ struct QuarantineCallback {
   }
 
   void *Allocate(uptr size) {
+#if FUZZALLOC_ASAN
+    void *res = get_allocator().Allocate(cache_, size, 1, QUARANTINE_TAG);
+#else
     void *res = get_allocator().Allocate(cache_, size, 1);
+#endif // FUZZALLOC_ASAN
     // TODO(alekseys): Consider making quarantine OOM-friendly.
     if (UNLIKELY(!res))
       ReportOutOfMemory(size, stack_);

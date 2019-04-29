@@ -12,10 +12,10 @@
 #include <stdint.h>
 
 #if defined(__cplusplus)
-#if defined(SANITIZER_ALLOCATOR_H)
+#if FUZZALLOC_ASAN
 // Need a separate namespace so that we don't conflict with tag_t in hwasan
 namespace __fuzzalloc {
-#endif // SANITIZER_ALLOCATOR_H
+#endif // FUZZALLOC_ASAN
 
 extern "C" {
 #endif // __cplusplus
@@ -29,12 +29,18 @@ extern "C" {
 /// Tag type
 typedef uint16_t tag_t;
 
-/// The maximum possible tag value
-#define TAG_MAX ((1 << NUM_TAG_BITS) - 1)
-
 /// The default malloc/calloc/realloc tag. Used by default for non-instrumented
 /// code
 #define DEFAULT_TAG 0
+
+/// ASan's quarantine region gets its own allocation region
+#define QUARANTINE_TAG 1
+
+/// LLVM instrumentation can start using tags starting from this value
+#define INST_TAG_START 2
+
+/// The maximum possible tag value
+#define TAG_MAX ((1 << NUM_TAG_BITS) - 1)
 
 /// Extract the pool tag from the allocated pool
 tag_t get_pool_tag(void *p);
@@ -45,9 +51,9 @@ size_t get_pool_size(void *p);
 #if defined(__cplusplus)
 }
 
-#if defined(SANITIZER_ALLOCATOR_H)
+#if FUZZALLOC_ASAN
 } // namespace __fuzzalloc
-#endif // SANITIZER_ALLOCATOR_H
+#endif // FUZZALLOC_ASAN
 #endif // __cplusplus
 
 #endif // FUZZALLOC_H
