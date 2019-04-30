@@ -5,8 +5,8 @@
 // Author: Adrian Herrera
 //
 
-#ifndef _MALLOC_INTERNAL_H_
-#define _MALLOC_INTERNAL_H_
+#ifndef MALLOC_INTERNAL_H
+#define MALLOC_INTERNAL_H
 
 #if !defined(__x86_64__)
 #error Unsupported platform
@@ -160,7 +160,7 @@ struct pool_t {
 
 /// Default pool size (in bytes). Configurable at run-time via an environment
 /// variable
-#define DEFAULT_POOL_SIZE 100000UL
+#define DEFAULT_POOL_SIZE 300000000UL
 
 /// The pool size environment variable
 #define POOL_SIZE_ENV_VAR "FUZZALLOC_POOL_SIZE"
@@ -173,4 +173,4 @@ struct pool_t {
 #define GET_POOL(tag)                                                          \
   ((struct pool_t *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
-#endif // _MALLOC_INTERNAL_H_
+#endif // MALLOC_INTERNAL_H
