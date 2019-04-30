@@ -3407,6 +3407,8 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps) {
   }
 
   fprintf(f, "start_time        : %llu\n"
+             "last_update       : %llu\n"
+             "fuzzer_pid        : %u\n"
              "cycles_done       : %llu\n"
              "execs_done        : %llu\n"
              "execs_per_sec     : %0.02f\n"
@@ -3450,7 +3452,7 @@ static void write_stats_file(double bitmap_cvg, double stability, double eps) {
 
   /* fuzzalloc: log environment variables */
 
-  fprintf(f, "env_vars         : ");
+  fprintf(f, "env_vars          : ");
   while (*environ) {
     fprintf(f, "%s,", *environ++);
   }
