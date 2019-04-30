@@ -55,7 +55,7 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  if [ ! -z $ENABLE_ASAN ]; then
+  if [ ! -z $ASAN_ENABLE ]; then
     echo "ASan enabled"
     export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
@@ -64,7 +64,7 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "afl" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  if [ ! -z $ENABLE_ASAN ]; then
+  if [ ! -z $ASAN_ENABLE ]; then
     echo "ASan enabled"
     export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"

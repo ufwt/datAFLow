@@ -30,7 +30,7 @@ vanilla AFL by setting `FUZZING_ENGINE=afl` or with no fuzzer instrumentation
 
 If fuzzing with ASan (as described
 [here](https://github.com/HexHive/datAFLow/tree/master/fuzzalloc#with-addresssanitizer-asan)),
-you should set the `ENABLE_ASAN` environment variable when building a target.
+you should set the `ASAN_ENABLE` environment variable when building a target.
 This will:
 
  * Add the necessary ASan compiler flags; and
