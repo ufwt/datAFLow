@@ -1,5 +1,4 @@
-//===-- TagDynamicAllocss.cpp - Tag dynamic memory allocs with a unique ID
-//-===//
+//===-- TagDynamicAllocss.cpp - Tag dynamic memory allocs with unique ID --===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,7 +15,9 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include <map>
+#include "llvm/Transforms/TagDynamicAllocs.h"
+
+#include <set>
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -29,10 +30,8 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -54,75 +53,11 @@ static cl::opt<std::string>
 STATISTIC(NumOfTaggedCalls,
           "Number of tagged dynamic memory allocation function calls.");
 
-namespace {
-
 static const char *const FuzzallocMallocFuncName = "__tagged_malloc";
 static const char *const FuzzallocCallocFuncName = "__tagged_calloc";
 static const char *const FuzzallocReallocFuncName = "__tagged_realloc";
 
-/// Whitelist of dynamic memory allocation wrapper functions and global
-/// variables
-class FuzzallocWhitelist {
-private:
-  std::unique_ptr<SpecialCaseList> SCL;
-
-public:
-  FuzzallocWhitelist() = default;
-
-  FuzzallocWhitelist(std::unique_ptr<SpecialCaseList> List)
-      : SCL(std::move(List)){};
-
-  bool isIn(const Function &F) const {
-    return SCL && SCL->inSection("fuzzalloc", "fun", F.getName());
-  }
-
-  bool isIn(const GlobalVariable &GV) const {
-    return SCL && SCL->inSection("fuzzalloc", "gv", GV.getName());
-  }
-};
-
-/// TagDynamicAllocs: Tag dynamic memory allocation function calls (\p malloc,
-/// \p calloc and \p realloc) with a randomly-generated identifier (to identify
-/// their call site) and call the fuzzalloc function instead
-class TagDynamicAllocs : public ModulePass {
-  // Maps function calls to the tagged function that should be called instead^
-  using TaggedFunctionMap = std::map<CallInst *, Function *>;
-
-private:
-  Function *FuzzallocMallocF;
-  Function *FuzzallocCallocF;
-  Function *FuzzallocReallocF;
-
-  FuzzallocWhitelist Whitelist;
-
-  IntegerType *TagTy;
-  IntegerType *SizeTTy;
-
-  ConstantInt *generateTag() const;
-
-  FunctionType *translateTaggedFunctionType(FunctionType *) const;
-  Function *translateTaggedFunction(Function *) const;
-  GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
-
-  TaggedFunctionMap getDynAllocCalls(Function *, const TargetLibraryInfo *);
-
-  CallInst *tagCall(CallInst *, Value *) const;
-  Function *tagFunction(Function *, const TargetLibraryInfo *);
-  GlobalVariable *tagGlobalVariable(GlobalVariable *);
-  GlobalAlias *tagGlobalAlias(GlobalAlias *);
-
-public:
-  static char ID;
-  TagDynamicAllocs() : ModulePass(ID) {}
-
-  void getAnalysisUsage(AnalysisUsage &) const override;
-  bool doInitialization(Module &) override;
-  bool runOnModule(Module &) override;
-};
-
 char TagDynamicAllocs::ID = 0;
-
-} // end anonymous namespace
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
 static Function *checkFuzzallocFunc(Constant *FuncOrBitcast) {
@@ -369,6 +304,8 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
       // Replace the original dynamic memory allocation function call
       CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
       CallWithTaggedF.first->eraseFromParent();
+
+      this->TaggedAllocs.insert(TaggedCall);
     }
   }
 
@@ -416,8 +353,12 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
         if (auto *Call = dyn_cast<CallInst>(LU)) {
           // Replace a call to the function stored in the original global
           // variable with a call to the tagged version
-          Call->replaceAllUsesWith(tagCall(Call, NewLoad));
+          auto *TaggedCall = tagCall(Call, NewLoad);
+
+          Call->replaceAllUsesWith(TaggedCall);
           Call->eraseFromParent();
+
+          this->TaggedAllocs.insert(TaggedCall);
         } else if (auto *PHI = dyn_cast<PHINode>(LU)) {
           // Replace the loaded global variable with the tagged version
           PHI->replaceUsesOfWith(Load, NewLoad);
@@ -455,8 +396,11 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 
               // Replace a call to the function stored in the original global
               // variable with a call to the tagged version
-              Call->replaceAllUsesWith(tagCall(Call, NewPHI));
+              auto *TaggedCall = tagCall(Call, NewPHI);
+              Call->replaceAllUsesWith(TaggedCall);
               Call->eraseFromParent();
+
+              this->TaggedAllocs.insert(TaggedCall);
             }
           }
         } else {
@@ -567,6 +511,8 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       // Replace the original dynamic memory allocation function call
       CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
       CallWithTaggedF.first->eraseFromParent();
+
+      this->TaggedAllocs.insert(TaggedCall);
     }
   }
 
@@ -577,8 +523,10 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   for (auto &GV : M.globals()) {
     if (this->Whitelist.isIn(GV)) {
-      tagGlobalVariable(&GV);
+      auto *TaggedGV = tagGlobalVariable(&GV);
+
       GVsToDelete.push_back(&GV);
+      this->TaggedAllocs.insert(TaggedGV);
     }
   }
 
@@ -590,8 +538,10 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   for (auto &GA : M.aliases()) {
     if (auto *AliaseeF = dyn_cast<Function>(GA.getAliasee())) {
       if (this->Whitelist.isIn(*AliaseeF)) {
-        tagGlobalAlias(&GA);
+        auto *TaggedAlias = tagGlobalAlias(&GA);
+
         GAsToDelete.push_back(&GA);
+        this->TaggedAllocs.insert(TaggedAlias);
       }
     }
   }

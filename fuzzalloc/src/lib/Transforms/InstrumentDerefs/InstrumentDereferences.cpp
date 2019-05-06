@@ -13,6 +13,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Transforms/InstrumentDereferences.h"
+
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
@@ -21,7 +23,6 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
@@ -45,30 +46,7 @@ static cl::opt<bool> ClInstrumentAtomics(
 STATISTIC(NumOfInstrumentedDereferences,
           "Number of pointer dereferences instrumented.");
 
-namespace {
-
 static const char *const InstrumentationName = "__ptr_deref";
-
-class InstrumentDereferences : public ModulePass {
-private:
-  IntegerType *Int64Ty;
-  IntegerType *TagTy;
-
-  ConstantInt *TagShiftSize;
-  ConstantInt *TagMask;
-
-  void doInstrumentDeref(Instruction *, Value *, Function *);
-
-public:
-  static char ID;
-  InstrumentDereferences() : ModulePass(ID) {}
-
-  bool doInitialization(Module &) override;
-  void getAnalysisUsage(AnalysisUsage &) const override;
-  bool runOnModule(Module &) override;
-};
-
-} // end anonymous namespace
 
 char InstrumentDereferences::ID = 0;
 
@@ -363,6 +341,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
         }
 
         doInstrumentDeref(I, Addr, InstrumentationF);
+        this->InstrumentedDereferences.insert(I);
       } else {
         // TODO instrumentMemIntrinsic
       }

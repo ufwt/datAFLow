@@ -107,28 +107,36 @@ static void edit_params(u32 argc, char **argv) {
 
   cc_params[cc_par_cnt++] =
       "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/PromoteStack/PromoteArrays/fuzzalloc-prom-arrays.so";
+      "/Transforms/PromoteStack/PromoteArrays/fuzzalloc-prom-arrays.so";
 
   /* Tag dynamically allocated arrays and redirect them to the fuzzalloc
    * allocator library */
 
-  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Transforms/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
 
   char *fuzzalloc_whitelist = getenv("FUZZALLOC_WHITELIST");
   if (fuzzalloc_whitelist) {
     cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = alloc_printf("-fuzzalloc-whitelist=%s", fuzzalloc_whitelist);
+    cc_params[cc_par_cnt++] = alloc_printf("-fuzzalloc-whitelist=%s",
+                                           fuzzalloc_whitelist);
   }
 
   /* Instrument pointer dereferences */
 
-  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/InstrumentDerefs/fuzzalloc-inst-derefs.so";
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Transforms/InstrumentDerefs/fuzzalloc-inst-derefs.so";
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
+
+  if (getenv("FUZZALLOC_WPA")) {
+    cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
+                              "/Analysis/SVFAnalysis/fuzzalloc-svf-analysis.so";
+  }
 
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";

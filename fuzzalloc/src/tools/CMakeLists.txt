@@ -3,7 +3,7 @@ string(REPLACE " -Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 
 # Get some directory paths to pass to dataflow-clang-fast
 get_filename_component(FUZZALLOC_LLVM_DIR
-                       "${CMAKE_CURRENT_BINARY_DIR}/../lib/Transforms"
+                       "${CMAKE_CURRENT_BINARY_DIR}/../lib/"
                        ABSOLUTE)
 get_filename_component(FUZZALLOC_MALLOC_DIR
                        "${CMAKE_CURRENT_BINARY_DIR}/../runtime/malloc"
