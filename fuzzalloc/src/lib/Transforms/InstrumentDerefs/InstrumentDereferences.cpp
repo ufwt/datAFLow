@@ -13,7 +13,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/InstrumentDereferences.h"
+#include <set>
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
@@ -23,6 +23,7 @@
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
@@ -47,6 +48,29 @@ STATISTIC(NumOfInstrumentedDereferences,
           "Number of pointer dereferences instrumented.");
 
 static const char *const InstrumentationName = "__ptr_deref";
+
+namespace {
+
+class InstrumentDereferences : public ModulePass {
+private:
+  IntegerType *Int64Ty;
+  IntegerType *TagTy;
+
+  ConstantInt *TagShiftSize;
+  ConstantInt *TagMask;
+
+  void doInstrumentDeref(Instruction *, Value *, Function *);
+
+public:
+  static char ID;
+  InstrumentDereferences() : ModulePass(ID) {}
+
+  void getAnalysisUsage(AnalysisUsage &) const override;
+  bool doInitialization(Module &) override;
+  bool runOnModule(Module &) override;
+};
+
+} // anonymous namespace
 
 char InstrumentDereferences::ID = 0;
 
@@ -223,10 +247,15 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer,
                                                Function *InstrumentationF) {
   IRBuilder<> IRB(I);
+  auto *M = I->getModule();
+
+  // This metadata can be used by the static pointer analysis
+  I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
+                 MDNode::get(IRB.getContext(), None));
 
   auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
   if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
-    PtrAsIntInst->setMetadata(I->getModule()->getMDKindID("nosanitize"),
+    PtrAsIntInst->setMetadata(M->getMDKindID("nosanitize"),
                               MDNode::get(IRB.getContext(), None));
   }
 
@@ -323,7 +352,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
         }
 
         // Finally, check if the instruction has the "noinstrument" metadata
-        // attached to it
+        // attached to it (from the array/struct promotion pass)
         if (!Inst.getMetadata(M.getMDKindID("fuzzalloc.noinstrument"))) {
           ToInstrument.push_back(&Inst);
         }
@@ -341,7 +370,6 @@ bool InstrumentDereferences::runOnModule(Module &M) {
         }
 
         doInstrumentDeref(I, Addr, InstrumentationF);
-        this->InstrumentedDereferences.insert(I);
       } else {
         // TODO instrumentMemIntrinsic
       }
