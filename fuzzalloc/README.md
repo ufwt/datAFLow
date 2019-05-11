@@ -62,7 +62,8 @@ cd llvm/build
 # If debugging you can also add -DCMAKE_BUILD_TYPE=Debug -DCOMPILER_RT_DEBUG=On
 cmake .. -DFUZZALLOC_ASAN=On -DLIBFUZZALLOC_PATH=/path/to/libfuzzalloc.so   \
     -DLLVM_BUILD_EXAMPLES=Off -DLLVM_INCLUDE_EXAMPLES=Off                   \
-    -DLLVM_PARALLEL_LINK_JOBS=1 -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
+    -DLLVM_PARALLEL_LINK_JOBS=1 -DLLVM_TARGERTS_TO_BUILD="X86"              \
+    -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
 make -j
 make install
 

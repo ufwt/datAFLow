@@ -53,7 +53,7 @@ private:
   DataLayout *DL;
   IntegerType *IntPtrTy;
 
-  Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t);
+  Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t) const;
   AllocaInst *promoteArrayAlloca(AllocaInst *);
   GlobalVariable *promoteGlobalVariable(GlobalVariable *, Function *);
 
@@ -175,9 +175,9 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
   ConstExpr->destroyConstant();
 }
 
-Instruction *PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB,
-                                                    Type *AllocTy,
-                                                    uint64_t ArrayNumElems) {
+Instruction *
+PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB, Type *AllocTy,
+                                       uint64_t ArrayNumElems) const {
   uint64_t TypeSize = this->DL->getTypeAllocSize(AllocTy);
 
   return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), this->IntPtrTy, AllocTy,
@@ -327,7 +327,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
             Initializer->getElementAsConstant(i),
             IRB.CreateInBoundsGEP(MallocCall,
                                   ConstantInt::get(ElemTy, i, false)));
-        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                                   MDNode::get(C, None));
         StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
@@ -344,7 +344,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   }
 
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
-  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                            MDNode::get(C, None));
   MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
@@ -403,16 +403,18 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   // Static array allocations to promote
   SmallVector<AllocaInst *, 8> AllocasToPromote;
 
+  // lifetime.end intrinsics that will require calls to free to be inserted
+  // before them
+  SmallVector<IntrinsicInst *, 4> LifetimeEnds;
+
+  // Return instructions that may require calls to free to be inserted before
+  // them
+  SmallVector<ReturnInst *, 4> Returns;
+
   for (auto &F : M.functions()) {
     AllocasToPromote.clear();
-
-    // lifetime.end intrinsics that will require calls to free to be inserted
-    // before them
-    SmallVector<IntrinsicInst *, 4> LifetimeEnds;
-
-    // Return instructions that may require calls to free to be inserted before
-    // them
-    SmallVector<ReturnInst *, 4> Returns;
+    LifetimeEnds.clear();
+    Returns.clear();
 
     // Collect all the things!
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -433,30 +435,30 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     // to free at the appropriate locations (either at lifetime.end intrinsics
     // or at return instructions)
     for (auto *Alloca : AllocasToPromote) {
-      // Promote the alloca
+      // Promote the alloca. After this function call all users of the original
+      // alloca are invalid
       auto *NewAlloca = promoteArrayAlloca(Alloca);
 
-      // Check if any of the original allocas are used in any of the
-      // lifetime.end intrinsics. If they are, we should insert the free before
-      // the lifetime.end intrinsic and NOT at function return, otherwise we may
-      // end up with a double free :(
-      bool FreeAtReturn = true;
-
+      // Check if any of the original allocas (which have now been replaced by
+      // the new alloca) are used in any of the lifetime.end intrinsics. If they
+      // are, insert the free before the lifetime.end intrinsic and NOT at
+      // function return, otherwise we may end up with a double free :(
+      bool InsertFreeAtReturn = true;
       for (auto *LifetimeEnd : LifetimeEnds) {
         if (GetUnderlyingObject(LifetimeEnd->getOperand(1), *this->DL) ==
             NewAlloca) {
           insertFree(NewAlloca, LifetimeEnd);
           NumOfFreeInsert++;
 
-          // We've freed at the lifetime.end intrinsic. No need to end when the
-          // function returns
-          FreeAtReturn = false;
+          // We've freed at the lifetime.end intrinsic, so no need to call free
+          // when the function returns
+          InsertFreeAtReturn = false;
         }
       }
 
       // If no lifetime.end intrinsics were found, just free the allocation when
       // the function returns
-      if (FreeAtReturn) {
+      if (InsertFreeAtReturn) {
         for (auto *Return : Returns) {
           insertFree(NewAlloca, Return);
           NumOfFreeInsert++;
