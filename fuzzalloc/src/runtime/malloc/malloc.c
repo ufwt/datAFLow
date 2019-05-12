@@ -182,8 +182,10 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     if (!page_size) {
       page_size = getpagesize();
 
+#if !defined(NDEBUG)
       // To remove unused function warnings
       (void)print_free_list;
+#endif
     }
 
     // This should also only happen once
