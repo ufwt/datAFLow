@@ -16,6 +16,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -51,10 +52,14 @@ namespace {
 class PromoteStaticArrays : public ModulePass {
 private:
   DataLayout *DL;
+  DIBuilder *DBuilder;
   IntegerType *IntPtrTy;
 
   Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t) const;
-  AllocaInst *promoteAlloca(AllocaInst *) const;
+  void insertMalloc(const AllocaInst *, AllocaInst *, Instruction *) const;
+  void copyDebugInfo(const AllocaInst *, AllocaInst *) const;
+  AllocaInst *promoteAlloca(AllocaInst *,
+                            const ArrayRef<IntrinsicInst *> &) const;
   GlobalVariable *promoteGlobalVariable(GlobalVariable *, Function *) const;
 
 public:
@@ -204,7 +209,46 @@ PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB, Type *AllocTy,
                                 nullptr);
 }
 
-AllocaInst *PromoteStaticArrays::promoteAlloca(AllocaInst *Alloca) const {
+/// Insert a call to `malloc` before the `InsertPt` instruction. The result of
+/// the `malloc` call is stored in `NewAlloca`.
+void PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
+                                       AllocaInst *NewAlloca,
+                                       Instruction *InsertPt) const {
+  const Module *M = OrigAlloca->getModule();
+  LLVMContext &C = M->getContext();
+
+  ArrayType *ArrayTy = cast<ArrayType>(OrigAlloca->getAllocatedType());
+  Type *ElemTy = ArrayTy->getArrayElementType();
+
+  uint64_t ArrayNumElems = ArrayTy->getNumElements();
+
+  IRBuilder<> IRB(InsertPt);
+
+  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
+  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
+  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+}
+
+void PromoteStaticArrays::copyDebugInfo(const AllocaInst *OrigAlloca,
+                                        AllocaInst *NewAlloca) const {
+  auto *F = OrigAlloca->getFunction();
+
+  for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+    if (auto *DbgDeclare = dyn_cast<DbgDeclareInst>(&*I)) {
+      if (DbgDeclare->getAddress() == OrigAlloca) {
+        this->DBuilder->insertDeclare(NewAlloca, DbgDeclare->getVariable(),
+                                      DbgDeclare->getExpression(),
+                                      DbgDeclare->getDebugLoc(),
+                                      const_cast<DbgDeclareInst *>(DbgDeclare));
+      }
+    }
+  }
+}
+
+AllocaInst *PromoteStaticArrays::promoteAlloca(
+    AllocaInst *Alloca, const ArrayRef<IntrinsicInst *> &LifetimeStarts) const {
   LLVM_DEBUG(dbgs() << "promoting" << *Alloca << " in function "
                     << Alloca->getFunction()->getName() << ")\n");
 
@@ -216,10 +260,6 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(AllocaInst *Alloca) const {
 
   ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
   Type *ElemTy = ArrayTy->getArrayElementType();
-
-  uint64_t ArrayNumElems = ArrayTy->getNumElements();
-
-  IRBuilder<> IRB(Alloca);
 
   // This will transform something like this:
   //
@@ -239,15 +279,30 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(AllocaInst *Alloca) const {
   //  - `PtrTy` is the target's pointer type
   //  - `Size` is the size of the allocated buffer (equivalent to
   //    `NumElements * sizeof(Ty)`)
-  PointerType *NewAllocaTy = ElemTy->getPointerTo();
-  auto *NewAlloca =
-      IRB.CreateAlloca(NewAllocaTy, nullptr, Alloca->getName() + "_prom");
-  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
 
-  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
-  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                           MDNode::get(C, None));
-  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+  PointerType *NewAllocaTy = ElemTy->getPointerTo();
+  auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
+                                   Alloca->getName() + "_prom", Alloca);
+  copyDebugInfo(Alloca, NewAlloca);
+
+  // Decide where to insert the call to malloc.
+  //
+  // If there are lifetime.start intrinsics, then we must allocate memory at
+  // these intrinsics. Otherwise, we can just perform the allocation after the
+  // alloca instruction.
+  if (LifetimeStarts.empty()) {
+    insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
+  } else {
+    for (auto *LifetimeStart : LifetimeStarts) {
+      if (getUnderlyingAlloca(LifetimeStart->getOperand(1), *this->DL) ==
+          Alloca) {
+        auto *Ptr = LifetimeStart->getOperand(1);
+        assert(isa<Instruction>(Ptr));
+
+        insertMalloc(Alloca, NewAlloca, cast<Instruction>(Ptr));
+      }
+    }
+  }
 
   // Update all the users of the original array to use the dynamically
   // allocated array
@@ -332,6 +387,13 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
   NewGV->copyAttributesFrom(OrigGV);
 
+  // Copy debug info
+  SmallVector<DIGlobalVariableExpression *, 1> GVs;
+  OrigGV->getDebugInfo(GVs);
+  for (auto *GV : GVs) {
+    NewGV->addDebugInfo(GV);
+  }
+
   auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
 
   // If the array had an initializer, we must replicate it so that the malloc'd
@@ -411,6 +473,7 @@ bool PromoteStaticArrays::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
 
   this->DL = new DataLayout(M.getDataLayout());
+  this->DBuilder = new DIBuilder(M);
   this->IntPtrTy = this->DL->getIntPtrType(C);
 
   return false;
@@ -419,12 +482,19 @@ bool PromoteStaticArrays::doInitialization(Module &M) {
 bool PromoteStaticArrays::doFinalization(Module &) {
   delete this->DL;
 
+  this->DBuilder->finalize();
+  delete this->DBuilder;
+
   return false;
 }
 
 bool PromoteStaticArrays::runOnModule(Module &M) {
   // Static array allocations to promote
   SmallVector<AllocaInst *, 8> AllocasToPromote;
+
+  // lifetime.start intrinsics that will require calls to mallic to be inserted
+  // before them
+  SmallVector<IntrinsicInst *, 4> LifetimeStarts;
 
   // lifetime.end intrinsics that will require calls to free to be inserted
   // before them
@@ -436,6 +506,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 
   for (auto &F : M.functions()) {
     AllocasToPromote.clear();
+    LifetimeStarts.clear();
     LifetimeEnds.clear();
     Returns.clear();
 
@@ -446,7 +517,9 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
           AllocasToPromote.push_back(Alloca);
         }
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
-        if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
+        if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_start) {
+          LifetimeStarts.push_back(Intrinsic);
+        } else if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
           LifetimeEnds.push_back(Intrinsic);
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
@@ -460,31 +533,27 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     for (auto *Alloca : AllocasToPromote) {
       // Promote the alloca. After this function call all users of the original
       // alloca are invalid
-      auto *NewAlloca = promoteAlloca(Alloca);
+      auto *NewAlloca = promoteAlloca(Alloca, LifetimeStarts);
 
       // Check if any of the original allocas (which have now been replaced by
       // the new alloca) are used in any lifetime.end intrinsics. If they are,
       // insert the free before the lifetime.end intrinsic and NOT at function
       // return, otherwise we may end up with a double free :(
-      bool InsertFreeAtReturn = true;
-      for (auto *LifetimeEnd : LifetimeEnds) {
-        if (getUnderlyingAlloca(LifetimeEnd->getOperand(1), *this->DL) ==
-            NewAlloca) {
-          insertFree(NewAlloca, LifetimeEnd);
-          NumOfFreeInsert++;
-
-          // We've freed at the lifetime.end intrinsic, so no need to call free
-          // when the function returns
-          InsertFreeAtReturn = false;
-        }
-      }
-
-      // If no lifetime.end intrinsics were found, just free the allocation when
-      // the function returns
-      if (InsertFreeAtReturn) {
+      if (LifetimeEnds.empty()) {
+        // If no lifetime.end intrinsics were found, just free the allocation
+        // when the function returns
         for (auto *Return : Returns) {
           insertFree(NewAlloca, Return);
           NumOfFreeInsert++;
+        }
+      } else {
+        // Otherwise insert the free before each lifetime.end
+        for (auto *LifetimeEnd : LifetimeEnds) {
+          if (getUnderlyingAlloca(LifetimeEnd->getOperand(1), *this->DL) ==
+              NewAlloca) {
+            insertFree(NewAlloca, LifetimeEnd);
+            NumOfFreeInsert++;
+          }
         }
       }
 
