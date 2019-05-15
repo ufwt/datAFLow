@@ -318,7 +318,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // into the existing allocation pool
     DEBUG_MSG("reusing pool %p (allocation site %#x)\n", pool, alloc_site_tag);
 
-    // Find a suitably-sized free chunk in the allocation pool for this tag
+    // Find a suitably-sized free chunk in this tag's allocation pool
     struct chunk_t *chunk = find_free_chunk(pool, req_chunk_size);
     if (!chunk) {
       DEBUG_MSG("unable to find a free chunk (min. size %lu bytes) in "
@@ -327,7 +327,7 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
       // TODO grow the allocation pool via mprotect
       abort();
     }
-    size_t free_chunk_size = CHUNK_SIZE(chunk);
+    size_t orig_chunk_size = CHUNK_SIZE(chunk);
 
     // Save a pointer to the chunk after the current chunk BEFORE we resize the
     // current chunk
@@ -337,6 +337,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     SET_CHUNK_SIZE(chunk, req_chunk_size);
     SET_CHUNK_IN_USE(chunk);
 
+    // The free chunk is any space left in the chunk that we just marked as
+    // being in use
     struct chunk_t *free_chunk = NEXT_CHUNK(chunk);
     assert(within_allocation_pool(pool, free_chunk));
     SET_PREV_CHUNK_IN_USE(free_chunk);
@@ -351,8 +353,8 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     // isn't much we can do - just leave it.
     //
     // XXX duplicate code in __tagged_realloc
-    if (free_chunk_size - req_chunk_size > FREE_CHUNK_OVERHEAD) {
-      SET_CHUNK_SIZE(free_chunk, free_chunk_size - req_chunk_size);
+    if (orig_chunk_size - req_chunk_size > FREE_CHUNK_OVERHEAD) {
+      SET_CHUNK_SIZE(free_chunk, orig_chunk_size - req_chunk_size);
       SET_CHUNK_FREE(free_chunk);
 
       // Unlink the chunk from the free list and update its pointers to point to
@@ -379,13 +381,13 @@ void *__tagged_malloc(tag_t alloc_site_tag, size_t size) {
     } else {
       DEBUG_MSG(
           "%lu bytes is not enough space to create a new free chunk at %p\n",
-          free_chunk_size - req_chunk_size, free_chunk);
+          orig_chunk_size - req_chunk_size, free_chunk);
 
       // If there is any free space left in the chunk, there is not much we can
       // do here except mark the chunk as being in use - the chunk is too small
       // to hold all the required metadata of a free chunk :(
-      if (free_chunk_size > req_chunk_size) {
-        SET_CHUNK_SIZE(free_chunk, free_chunk_size - req_chunk_size);
+      if (orig_chunk_size > req_chunk_size) {
+        SET_CHUNK_SIZE(free_chunk, orig_chunk_size - req_chunk_size);
         SET_CHUNK_IN_USE(free_chunk);
         SET_PREV_CHUNK_IN_USE(next_chunk);
       }
@@ -517,7 +519,7 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
         // TODO grow the allocation pool via mprotect
         abort();
       }
-      size_t free_chunk_size = CHUNK_SIZE(new_chunk);
+      size_t orig_new_chunk_size = CHUNK_SIZE(new_chunk);
 
       // Save a pointer to the chunk after the new chunk BEFORE we resize the
       // new chunk
@@ -536,8 +538,8 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       // the free list
       //
       // XXX duplicate code from __tagged_malloc
-      if (free_chunk_size - new_chunk_size > FREE_CHUNK_OVERHEAD) {
-        SET_CHUNK_SIZE(free_chunk, free_chunk_size - new_chunk_size);
+      if (orig_new_chunk_size - new_chunk_size > FREE_CHUNK_OVERHEAD) {
+        SET_CHUNK_SIZE(free_chunk, orig_new_chunk_size - new_chunk_size);
         SET_CHUNK_FREE(free_chunk);
 
         // Unlink the chunk from the free list and update its pointers to point
@@ -562,13 +564,13 @@ void *__tagged_realloc(tag_t alloc_site_tag, void *ptr, size_t size) {
       } else {
         DEBUG_MSG(
             "%lu bytes is not enough space to create a new free chunk at %p\n",
-            free_chunk_size - new_chunk_size, free_chunk);
+            orig_new_chunk_size - new_chunk_size, free_chunk);
 
         // If there is any free space left in the chunk, there is not much we
         // can do here except mark the chunk as being in use - the chunk is too
         // small to hold all the required metadata of a free chunk :(
-        if (free_chunk_size > new_chunk_size) {
-          SET_CHUNK_SIZE(free_chunk, free_chunk_size - new_chunk_size);
+        if (orig_new_chunk_size > new_chunk_size) {
+          SET_CHUNK_SIZE(free_chunk, orig_new_chunk_size - new_chunk_size);
           SET_CHUNK_IN_USE(free_chunk);
           SET_PREV_CHUNK_IN_USE(next_new_chunk);
         }
