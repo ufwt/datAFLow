@@ -56,7 +56,8 @@ private:
   IntegerType *IntPtrTy;
 
   Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t) const;
-  void insertMalloc(const AllocaInst *, AllocaInst *, Instruction *) const;
+  Instruction *insertMalloc(const AllocaInst *, AllocaInst *,
+                            Instruction *) const;
   void copyDebugInfo(const AllocaInst *, AllocaInst *) const;
   AllocaInst *promoteAlloca(AllocaInst *,
                             const ArrayRef<IntrinsicInst *> &) const;
@@ -86,6 +87,7 @@ static Value *getUnderlyingAlloca(Value *V, const DataLayout &DL) {
     return getUnderlyingAlloca(Load->getPointerOperand(), DL);
   } else {
     assert(false && "Failed to get underlying alloca");
+    return nullptr;
   }
 }
 
@@ -211,9 +213,9 @@ PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB, Type *AllocTy,
 
 /// Insert a call to `malloc` before the `InsertPt` instruction. The result of
 /// the `malloc` call is stored in `NewAlloca`.
-void PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
-                                       AllocaInst *NewAlloca,
-                                       Instruction *InsertPt) const {
+Instruction *PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
+                                               AllocaInst *NewAlloca,
+                                               Instruction *InsertPt) const {
   const Module *M = OrigAlloca->getModule();
   LLVMContext &C = M->getContext();
 
@@ -229,6 +231,8 @@ void PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
   MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+
+  return MallocCall;
 }
 
 void PromoteStaticArrays::copyDebugInfo(const AllocaInst *OrigAlloca,
@@ -621,7 +625,7 @@ static void registerPromoteStaticArraysPass(const PassManagerBuilder &,
 }
 
 static RegisterStandardPasses
-    RegisterPromoteStaticArraysPass(PassManagerBuilder::EP_OptimizerLast,
+    RegisterPromoteStaticArraysPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
                                     registerPromoteStaticArraysPass);
 
 static RegisterStandardPasses
