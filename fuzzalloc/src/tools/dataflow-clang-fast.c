@@ -133,17 +133,6 @@ static void edit_params(u32 argc, char **argv) {
   cc_params[cc_par_cnt++] = "-mllvm";
   cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
 
-  if (getenv("FUZZALLOC_WPA")) {
-    cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                              "/Analysis/SVFAnalysis/fuzzalloc-svf-analysis.so";
-    cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = "-ander";
-    cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = "-dump-pag";
-    cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = "-print-pts";
-  }
-
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-debug";
