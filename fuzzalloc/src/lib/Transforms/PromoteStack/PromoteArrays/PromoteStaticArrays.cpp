@@ -147,6 +147,10 @@ static Function *createArrayPromDtor(Module &M) {
 static Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   IRBuilder<> IRB(GEP);
 
+  // Ensure that the GEP is wellformed
+  assert(GEP->getNumIndices() > 1 && isa<ConstantInt>(*GEP->idx_begin()) &&
+         cast<ConstantInt>(*GEP->idx_begin())->isZero());
+
   // Load the pointer to the dynamically allocated array and create a new GEP
   // instruction. Static arrays use an initial "offset 0" that must be ignored
   auto *Load = IRB.CreateLoad(MallocPtr);
