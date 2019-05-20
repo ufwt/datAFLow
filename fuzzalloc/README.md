@@ -10,15 +10,15 @@ LLVM passes to transform your target to use `libfuzzalloc`.
 ```bash
 mkdir build
 cd build
-cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ..
+cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DAFL_PATH=/path/to./afl/source ..
 make -j
 ```
 
 We use LLVM 7.0 (available from http://releases.llvm.org/download.html#7.0.0).
 
-To compile with AFL instrumentation, set the `AFL_INSTRUMENT` CMake flag (i.e.,
-add `-DAFL_INSTRUMENT=On` to the `cmake` command above) and set the `AFL_PATH`
-environment variable to the AFL source code directory.
+To compile the [SVF](https://github.com/SVF-tools/SVF) analysis pass,
+set the `SVF_PATH` CMake flag (or environment variable) to point to the SVF
+source code directory.
 
 # Usage
 
@@ -62,7 +62,7 @@ cd llvm/build
 # If debugging you can also add -DCMAKE_BUILD_TYPE=Debug -DCOMPILER_RT_DEBUG=On
 cmake .. -DFUZZALLOC_ASAN=On -DLIBFUZZALLOC_PATH=/path/to/libfuzzalloc.so   \
     -DLLVM_BUILD_EXAMPLES=Off -DLLVM_INCLUDE_EXAMPLES=Off                   \
-    -DLLVM_PARALLEL_LINK_JOBS=1 -DLLVM_TARGERTS_TO_BUILD="X86"              \
+    -DLLVM_PARALLEL_LINK_JOBS=1 -DLLVM_TARGETS_TO_BUILD="X86"               \
     -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
 make -j
 make install

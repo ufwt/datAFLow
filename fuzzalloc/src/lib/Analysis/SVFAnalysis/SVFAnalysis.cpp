@@ -22,8 +22,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
-// SVF includes
-#include "WPA/WPAPass.h"
+#include "WPA/WPAPass.h" // from SVF
 
 using namespace llvm;
 

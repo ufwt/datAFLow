@@ -37,11 +37,8 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-// From AFL
-#include "debug.h"
-
-// From fuzzalloc
-#include "fuzzalloc.h"
+#include "debug.h"     // from AFL
+#include "fuzzalloc.h" // from fuzzalloc
 
 using namespace llvm;
 

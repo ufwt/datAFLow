@@ -1,8 +1,10 @@
 if(NOT DEFINED AFL_PATH AND DEFINED ENV{AFL_PATH})
   set(AFL_PATH "$ENV{AFL_PATH}")
-else()
-  # By default assume that the AFL source is in the root source directory
-  set(AFL_PATH "${CMAKE_SOURCE_DIR}/afl-2.52b")
+endif()
+
+if(NOT DEFINED AFL_PATH)
+    message(FATAL_ERROR "AFL source code path not specified."
+                        "Set AFL_PATH appropriately.")
 endif()
 
 get_filename_component(AFL_PATH ${AFL_PATH} ABSOLUTE)
@@ -15,8 +17,9 @@ else()
                       "Set AFL_PATH appropriately.")
 endif()
 
-include_directories(include)
 include_directories(${AFL_PATH})
+
+include_directories(include)
 
 add_subdirectory(lib)
 add_subdirectory(runtime)
