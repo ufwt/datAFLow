@@ -18,10 +18,10 @@ from sh import Command
 from tabulate import tabulate
 
 
-FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfInstrumentedDereferences')
-FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfAllocaArrayPromotion')
-FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
-FUZZALLOC_TAG_ALLOCS_RE = re.compile(r'\[([a-zA-Z0-9.]+)\] (\d+) NumOfTaggedCalls')
+FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfInstrumentedDereferences')
+FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAllocaArrayPromotion')
+FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
+FUZZALLOC_TAG_ALLOCS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedCalls')
 
 
 class ModuleStats(object):
