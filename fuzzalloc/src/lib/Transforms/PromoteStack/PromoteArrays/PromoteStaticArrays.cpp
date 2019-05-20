@@ -147,18 +147,15 @@ static Function *createArrayPromDtor(Module &M) {
 static Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   IRBuilder<> IRB(GEP);
 
-  // Ensure that the GEP is wellformed
-  assert(GEP->getNumIndices() > 1 && isa<ConstantInt>(*GEP->idx_begin()) &&
-         cast<ConstantInt>(*GEP->idx_begin())->isZero());
-
   // Load the pointer to the dynamically allocated array and create a new GEP
-  // instruction. Static arrays use an initial "offset 0" that must be ignored
+  // instruction. It seems that the simplest way is to cast the loaded pointer
+  // to the original array type
   auto *Load = IRB.CreateLoad(MallocPtr);
   Load->setMetadata(GEP->getModule()->getMDKindID("nosanitize"),
                     MDNode::get(GEP->getContext(), None));
-
+  auto *Bitcast = IRB.CreateBitCast(Load, GEP->getOperand(0)->getType());
   auto *NewGEP = IRB.CreateInBoundsGEP(
-      Load, SmallVector<Value *, 4>(GEP->idx_begin() + 1, GEP->idx_end()),
+      Bitcast, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
       GEP->hasName() ? GEP->getName() + "_prom" : "");
 
   // Update all the users of the original GEP instruction to use the updated
