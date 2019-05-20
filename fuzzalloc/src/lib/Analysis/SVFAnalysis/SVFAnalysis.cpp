@@ -35,6 +35,8 @@ class SVFAnalysis : public ModulePass {
   using ValueSet = SmallPtrSet<const Value *, 24>;
 
 private:
+  AliasResults Aliases;
+
   ValueSet collectTaggedAllocs(Module &M) const;
   ValueSet collectInstrumentedDereferences(Module &M) const;
 
@@ -43,6 +45,7 @@ public:
   SVFAnalysis() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
+  void print(llvm::raw_ostream &, const Module *) const override;
   bool runOnModule(Module &) override;
 };
 
@@ -84,17 +87,28 @@ void SVFAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
+void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
+  for (auto AliasPair : this->Aliases) {
+    auto *Alloc = AliasPair.first;
+    auto *Deref = AliasPair.second;
+
+    Alloc->print(O);
+    O << " -> ";
+    Deref->print(O);
+    O << "\n";
+  }
+}
+
 bool SVFAnalysis::runOnModule(Module &M) {
   auto TaggedAllocs = collectTaggedAllocs(M);
   auto InstrumentedDerefs = collectInstrumentedDereferences(M);
 
   auto &WPAAnalysis = getAnalysis<WPAPass>();
-  AliasResults Aliases;
 
   for (auto TaggedAlloc : TaggedAllocs) {
     for (auto InstrumentedDeref : InstrumentedDerefs) {
       if (WPAAnalysis.alias(TaggedAlloc, InstrumentedDeref)) {
-        Aliases.insert(std::make_pair(TaggedAlloc, InstrumentedDeref));
+        this->Aliases.insert(std::make_pair(TaggedAlloc, InstrumentedDeref));
       }
     }
   }
