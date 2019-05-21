@@ -36,8 +36,19 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
   fi
 
-  export CC="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
-  export CXX="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
+  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
+  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
+
+  if [ -z $CC ]; then
+    CC="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
+  fi
+
+  if [ -z $CXX ]; then
+    CXX="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
+  fi
+
+  export CC
+  export CXX
 else
   export CC=${CC:-"clang"}
   export CXX=${CXX:-"clang++"}
