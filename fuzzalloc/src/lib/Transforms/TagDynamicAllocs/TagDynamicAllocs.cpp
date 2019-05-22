@@ -81,9 +81,6 @@ public:
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
-  // Maps function calls to the tagged function that should be called instead^
-  using TaggedFunctionMap = std::map<CallInst *, Function *>;
-
 private:
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
@@ -100,8 +97,7 @@ private:
   Function *translateTaggedFunction(Function *) const;
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
-  TaggedFunctionMap getDynAllocCalls(Function *, const TargetLibraryInfo *);
-
+  Value *tagUser(User *, const TargetLibraryInfo *);
   CallInst *tagCall(CallInst *, Value *) const;
   Function *tagFunction(Function *, const TargetLibraryInfo *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
@@ -217,42 +213,49 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
   return cast<GlobalVariable>(NewGV);
 }
 
-/// Maps all dynamic memory allocation function calls in the function `F` to
-/// the appropriate tagged function call.
-///
-/// For example, `malloc` maps to `__tagged_malloc`, while functions listed in
-/// the fuzzalloc whitelist are mapped to their tagged versions.
-TagDynamicAllocs::TaggedFunctionMap
-TagDynamicAllocs::getDynAllocCalls(Function *F, const TargetLibraryInfo *TLI) {
-  TaggedFunctionMap AllocCalls;
+/// Translate users of a dynamic memory allocation function so that they use the
+/// tagged version instead.
+Value *TagDynamicAllocs::tagUser(User *U, const TargetLibraryInfo *TLI) {
+  LLVM_DEBUG(dbgs() << "replacing user of tagged function " << *U << '\n');
 
-  for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-    if (auto *Call = dyn_cast<CallInst>(&*I)) {
-      // It's not going to be an intrinsic
-      if (isa<IntrinsicInst>(Call)) {
-        continue;
-      }
+  Value *NewV = nullptr;
 
-      // The result of a dynamic memory allocation function call is typically
-      // cast. To determine the actual function being called, we must remove
-      // these casts
-      auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
+  if (auto *Call = dyn_cast<CallInst>(U)) {
+    // The result of a dynamic memory allocation function call is typically
+    // cast. To determine the actual function being called, we must remove
+    // these casts
+    auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
 
-      if (isMallocLikeFn(Call, TLI)) {
-        AllocCalls.emplace(Call, this->FuzzallocMallocF);
-      } else if (isCallocLikeFn(Call, TLI)) {
-        AllocCalls.emplace(Call, this->FuzzallocCallocF);
-      } else if (isReallocLikeFn(Call, TLI)) {
-        AllocCalls.emplace(Call, this->FuzzallocReallocF);
-      } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
-        if (this->Whitelist.isIn(*CalledFunc)) {
-          AllocCalls.emplace(Call, translateTaggedFunction(CalledFunc));
-        }
+    // Work out which tagged function we need to replace the existing
+    // function with
+    Function *NewF = nullptr;
+
+    if (isMallocLikeFn(Call, TLI)) {
+      NewF = this->FuzzallocMallocF;
+    } else if (isCallocLikeFn(Call, TLI)) {
+      NewF = this->FuzzallocCallocF;
+    } else if (isReallocLikeFn(Call, TLI)) {
+      NewF = this->FuzzallocReallocF;
+    } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
+      if (this->Whitelist.isIn(*CalledFunc)) {
+        NewF = translateTaggedFunction(CalledFunc);
       }
     }
+
+    // Replace the original dynamic memory allocation function call
+    if (NewF) {
+      auto *TaggedCall = tagCall(Call, NewF);
+
+      Call->replaceAllUsesWith(TaggedCall);
+      Call->eraseFromParent();
+
+      NewV = TaggedCall;
+    }
+  } else {
+    // TODO
   }
 
-  return AllocCalls;
+  return NewV;
 }
 
 /// Replace a function call (`OrigCall`) with a call to `NewCallee` that is
@@ -338,9 +341,6 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 /// eventually (if at all) called by the allocation wrapper function, the
 /// already-generated tag is passed through to the appropriate fuzzalloc
 /// function.
-///
-/// A whitelist of allocation wrapper functions can be passed through as a
-/// command-line argument.
 Function *TagDynamicAllocs::tagFunction(Function *OrigF,
                                         const TargetLibraryInfo *TLI) {
   LLVM_DEBUG(dbgs() << "tagging function " << OrigF->getName() << '\n');
@@ -363,19 +363,8 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
     SmallVector<ReturnInst *, 8> Returns;
     CloneFunctionInto(TaggedF, OrigF, VMap, true, Returns);
 
-    // Get all the dynamic memory allocation function calls that the allocation
-    // wrapper function makes and replace them with a call to the appropriate
-    // tagged function (which may be a fuzzalloc function or another
-    // whitelisted function)
-    TaggedFunctionMap AllocCalls = getDynAllocCalls(TaggedF, TLI);
-
-    for (auto &CallWithTaggedF : AllocCalls) {
-      auto *TaggedCall = tagCall(CallWithTaggedF.first, CallWithTaggedF.second);
-
-      // Replace the original dynamic memory allocation function call
-      CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
-      CallWithTaggedF.first->eraseFromParent();
-    }
+    // Update the contents of the function (i.e., the instructions) when we
+    // update the users of the dynamic memory allocation function
   }
 
   return TaggedF;
@@ -390,6 +379,7 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
 /// be passed through as a command-line argument.
 GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
   LLVM_DEBUG(dbgs() << "tagging global variable " << *OrigGV << '\n');
+
   GlobalVariable *TaggedGV = translateTaggedGlobalVariable(OrigGV);
   Type *TaggedGVTy = TaggedGV->getValueType();
 
@@ -544,8 +534,6 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
                             Int8PtrTy, this->SizeTTy));
 
-  // Replace whitelisted memory allocation functions with a tagged version.
-  // Mark the original function for deletion
   SmallVector<Function *, 8> FuncsToDelete = {M.getFunction("malloc"),
                                               M.getFunction("calloc"),
                                               M.getFunction("realloc")};
@@ -557,25 +545,13 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
-  // Collect and tag function calls as required
-  TaggedFunctionMap AllocCalls;
+  for (auto &F : FuncsToDelete) {
+    if (!F) {
+      continue;
+    }
 
-  for (auto &F : M.functions()) {
-    AllocCalls.clear();
-
-    // Maps malloc/calloc/realloc calls to the appropriate fuzzalloc function
-    // (__tagged_malloc, __tagged_calloc, and __tagged_realloc respectively),
-    // as well as whitelisted function calls, to their tagged versions
-    AllocCalls = getDynAllocCalls(&F, TLI);
-
-    // Tag all of the dynamic allocation function calls with an integer value
-    // that represents the allocation site
-    for (auto &CallWithTaggedF : AllocCalls) {
-      auto *TaggedCall = tagCall(CallWithTaggedF.first, CallWithTaggedF.second);
-
-      // Replace the original dynamic memory allocation function call
-      CallWithTaggedF.first->replaceAllUsesWith(TaggedCall);
-      CallWithTaggedF.first->eraseFromParent();
+    for (auto *U : F->users()) {
+      tagUser(U, TLI);
     }
   }
 
