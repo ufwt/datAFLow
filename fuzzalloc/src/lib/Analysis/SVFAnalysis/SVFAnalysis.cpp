@@ -74,7 +74,17 @@ SVFAnalysis::collectInstrumentedDereferences(Module &M) const {
   for (auto &F : M) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (I->getMetadata(M.getMDKindID("fuzzalloc.instrumented_deref"))) {
-        InstrumentedDerefs.insert(&*I);
+        if (auto *Load = dyn_cast<LoadInst>(&*I)) {
+          InstrumentedDerefs.insert(Load->getPointerOperand());
+        } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
+          InstrumentedDerefs.insert(Store->getPointerOperand());
+        } else if (auto *RMW = dyn_cast<AtomicRMWInst>(&*I)) {
+          InstrumentedDerefs.insert(RMW->getPointerOperand());
+        } else if (auto *XCHG = dyn_cast<AtomicCmpXchgInst>(&*I)) {
+          InstrumentedDerefs.insert(XCHG->getPointerOperand());
+        } else {
+          assert(false && "Unsupported instruction");
+        }
       }
     }
   }
