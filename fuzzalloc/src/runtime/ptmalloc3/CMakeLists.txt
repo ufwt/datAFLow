@@ -1,6 +1,23 @@
-add_custom_target(libptmalloc3
-                  COMMAND make linux-shared
-                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-add_custom_command(TARGET libptmalloc3
-                   POST_BUILD
-                   COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/libptmalloc3.so ${CMAKE_CURRENT_BINARY_DIR})
+add_library(ptmalloc3 SHARED ptmalloc3.c malloc.c)
+
+set_property(SOURCE ptmalloc3.c
+             PROPERTY COMPILE_DEFINITIONS
+             USE_TSD_DATA_HACK MSPACES=1)
+if(FUZZALLOC_USE_LOCKS)
+  set_property(SOURCE malloc.c
+               PROPERTY COMPILE_DEFINITIONS
+               USE_TSD_DATA_HACK ONLY_MSPACES USE_LOCKS=1)
+else()
+  set_property(SOURCE malloc.c
+               PROPERTY COMPILE_DEFINITIONS
+               USE_TSD_DATA_HACK ONLY_MSPACES)
+endif()
+
+# Need to remove -Werror
+string(REPLACE " -Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+
+target_include_directories(ptmalloc3 PRIVATE
+                           "${CMAKE_CURRENT_SOURCE_DIR}"
+                           "${CMAKE_CURRENT_SOURCE_DIR}/sysdeps/pthread"
+                           "${CMAKE_CURRENT_SOURCE_DIR}/sysdeps/generic")
+target_link_libraries(ptmalloc3 PRIVATE pthread)
