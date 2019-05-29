@@ -16,7 +16,7 @@ libfuzzalloc.
 Run the following to build a target:
 
 ```bash
-CC=clang CXX=clang++ FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
+FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
 ```
 
 Where `TARGET` is one of the directories inside the fuzzer-test-suite directory
