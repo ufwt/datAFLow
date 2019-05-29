@@ -85,10 +85,9 @@ static Value *getUnderlyingAlloca(Value *V, const DataLayout &DL) {
     return Alloca;
   } else if (auto *Load = dyn_cast<LoadInst>(Obj)) {
     return getUnderlyingAlloca(Load->getPointerOperand(), DL);
-  } else {
-    assert(false && "Failed to get underlying alloca");
-    return nullptr;
   }
+
+  return Obj;
 }
 
 static bool isPromotableType(Type *Ty) {
@@ -151,8 +150,6 @@ static Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   // instruction. It seems that the simplest way is to cast the loaded pointer
   // to the original array type
   auto *Load = IRB.CreateLoad(MallocPtr);
-  Load->setMetadata(GEP->getModule()->getMDKindID("nosanitize"),
-                    MDNode::get(GEP->getContext(), None));
   auto *Bitcast = IRB.CreateBitCast(Load, GEP->getOperand(0)->getType());
   auto *NewGEP = IRB.CreateInBoundsGEP(
       Bitcast, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
@@ -231,7 +228,6 @@ Instruction *PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
-  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
   return MallocCall;
 }
@@ -259,9 +255,6 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(
 
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
-
-  const Module *M = Alloca->getModule();
-  LLVMContext &C = M->getContext();
 
   ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
   Type *ElemTy = ArrayTy->getArrayElementType();
@@ -357,8 +350,6 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(
       // We must load the array from the heap before we do anything with it
 
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", cast<Instruction>(U));
-      LoadNewAlloca->setMetadata(M->getMDKindID("nosanitize"),
-                                 MDNode::get(C, None));
       U->replaceUsesOfWith(Alloca, LoadNewAlloca);
     }
   }
@@ -419,8 +410,6 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
                                   ConstantInt::get(ElemTy, i, false)));
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                                   MDNode::get(C, None));
-        StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
-                                  MDNode::get(C, None));
       }
     } else if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitialier, just memset the dynamically
@@ -436,7 +425,6 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                            MDNode::get(C, None));
-  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
   // Now that the global variable has been promoted to the heap, it must be
   // loaded before we can do anything else to it. This means that any constant
@@ -463,8 +451,6 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       GEP->eraseFromParent();
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
-      LoadNewGV->setMetadata(M->getMDKindID("nosanitize"),
-                             MDNode::get(C, None));
       U->replaceUsesOfWith(OrigGV, LoadNewGV);
     } else {
       assert(false && "Unsupported user");
@@ -505,6 +491,9 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   // before them
   SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
+  // llvm.memset intrinsics that may require fixing alignment
+  SmallVector<MemSetInst *, 4> Memsets;
+
   // Return instructions that may require calls to free to be inserted before
   // them
   SmallVector<ReturnInst *, 4> Returns;
@@ -513,6 +502,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     AllocasToPromote.clear();
     LifetimeStarts.clear();
     LifetimeEnds.clear();
+    Memsets.clear();
     Returns.clear();
 
     // Collect all the things!
@@ -526,6 +516,8 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
           LifetimeStarts.push_back(Intrinsic);
         } else if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
           LifetimeEnds.push_back(Intrinsic);
+        } else if (Intrinsic->getIntrinsicID() == Intrinsic::memset) {
+          Memsets.push_back(cast<MemSetInst>(Intrinsic));
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
         Returns.push_back(Return);
@@ -559,6 +551,16 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
             insertFree(NewAlloca, LifetimeEnd);
             NumOfFreeInsert++;
           }
+        }
+      }
+
+      // Array allocas may be memset at initialization (e.g., when assigned the
+      // emptry string ""). The memset alignment may be suitable for the old
+      // static array, but may break the new dynamically allocated pointer. To
+      // be safe we remove any alignment and let LLVM decide what is appropriate
+      for (auto *Memset : Memsets) {
+        if (getUnderlyingAlloca(Memset->getDest(), *this->DL) == NewAlloca) {
+          Memset->setDestAlignment(0);
         }
       }
 
