@@ -1,7 +1,3 @@
-if(NOT DEFINED SVF_PATH AND DEFINED ENV{SVF_PATH})
-  set(SVF_PATH "$ENV{SVF_PATH}")
-endif()
-
 if(DEFINED SVF_PATH)
   # Need to remove -Werror when using SVF source code
   string(REPLACE " -Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")

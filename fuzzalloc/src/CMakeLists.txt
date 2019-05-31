@@ -2,6 +2,10 @@ if(NOT DEFINED AFL_PATH AND DEFINED ENV{AFL_PATH})
   set(AFL_PATH "$ENV{AFL_PATH}")
 endif()
 
+if(NOT DEFINED SVF_PATH AND DEFINED ENV{SVF_PATH})
+  set(SVF_PATH "$ENV{SVF_PATH}")
+endif()
+
 if(NOT DEFINED AFL_PATH)
     message(FATAL_ERROR "AFL source code path not specified."
                         "Set AFL_PATH appropriately.")
