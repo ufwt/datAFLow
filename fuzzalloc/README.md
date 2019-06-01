@@ -16,10 +16,6 @@ make -j
 
 We use LLVM 7.0 (available from http://releases.llvm.org/download.html#7.0.0).
 
-To compile the [SVF](https://github.com/SVF-tools/SVF) analysis pass,
-set the `SVF_PATH` CMake flag (or environment variable) to point to the SVF
-source code directory.
-
 # Usage
 
 `libfuzzalloc` is a drop-in replacement for malloc and friends. When using

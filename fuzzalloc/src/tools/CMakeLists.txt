@@ -14,7 +14,4 @@ add_definitions(-DFUZZALLOC_LLVM_DIR="${FUZZALLOC_LLVM_DIR}"
 
 add_executable(dataflow-clang-fast dataflow-clang-fast.c)
 add_executable(dataflow-clang-fast++ dataflow-clang-fast.c)
-
-if(DEFINED SVF_PATH)
-  add_executable(dataflow-wpa dataflow-wpa.c)
-endif()
+add_executable(dataflow-wpa dataflow-wpa.c)
