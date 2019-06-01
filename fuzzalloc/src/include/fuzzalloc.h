@@ -45,9 +45,6 @@ typedef uint16_t tag_t;
 /// Extract the pool tag from the allocated pool
 tag_t get_pool_tag(void *p);
 
-/// Get the size of the pool the given allocation belongs to
-size_t get_pool_size(void *p);
-
 #if defined(__cplusplus)
 }
 
