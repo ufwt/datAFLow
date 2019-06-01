@@ -558,6 +558,9 @@ static const ei_pair ei_pairs[]= {
     {"memalign", ExtAPI::EFT_ALLOC},
     {"valloc", ExtAPI::EFT_ALLOC},
     {"SRE_LockCreate", ExtAPI::EFT_ALLOC},
+    // fuzzalloc allocation routines 
+    {"__tagged_malloc", ExtAPI::EFT_ALLOC},
+    {"__tagged_calloc", ExtAPI::EFT_ALLOC},
 
     {"\01mmap64", ExtAPI::EFT_NOSTRUCT_ALLOC},
     //FIXME: this is like realloc but with arg1.
@@ -664,6 +667,8 @@ static const ei_pair ei_pairs[]= {
     //As above, but also stores the last string into *arg2.
     {"strtok_r", ExtAPI::EFT_REALLOC},
     {"xrealloc", ExtAPI::EFT_REALLOC},
+    // fuzzalloc allocation routines
+    {"__tagged_realloc", ExtAPI::EFT_REALLOC},
 
     {"SSL_CTX_free", ExtAPI::EFT_FREE},
     {"SSL_free", ExtAPI::EFT_FREE},
