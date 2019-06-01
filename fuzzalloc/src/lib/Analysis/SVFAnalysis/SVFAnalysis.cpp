@@ -59,6 +59,8 @@ SVFAnalysis::ValueSet SVFAnalysis::collectTaggedAllocs(Module &M) const {
   for (auto &F : M) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (I->getMetadata(M.getMDKindID("fuzzalloc.tagged_alloc"))) {
+        assert(isa<CallInst>(&*I) &&
+               "Tagged allocations must be call instructions");
         TaggedAllocs.insert(&*I);
       }
     }
@@ -99,11 +101,17 @@ void SVFAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 
 void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
   for (auto AliasPair : this->Aliases) {
-    auto *Alloc = AliasPair.first;
+    auto *Alloc = cast<CallInst>(AliasPair.first);
     auto *Deref = AliasPair.second;
 
-    Alloc->print(O);
-    O << " -> ";
+    // The first argument to a tagged allocation routine is always the
+    // allocation site tag
+    uint64_t AllocSiteTag =
+        cast<ConstantInt>(Alloc->getArgOperand(0))->getZExtValue();
+
+    O << "    allocation site 0x";
+    O.write_hex(AllocSiteTag);
+    O << " accessed by ";
     Deref->print(O);
     O << "\n";
   }
