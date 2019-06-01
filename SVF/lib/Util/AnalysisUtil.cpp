@@ -527,7 +527,6 @@ void analysisUtil::processArguments(int argc, char **argv, int &arg_num, char **
     bool first_ir_file = true;
     for (s32_t i = 0; i < argc; ++i) {
         std::string argument(argv[i]);
-        size_t arg_len = argument.size();
         if (analysisUtil::isIRFile(argument)) {
             if (find(moduleNameVec.begin(), moduleNameVec.end(), argument)
                     == moduleNameVec.end())

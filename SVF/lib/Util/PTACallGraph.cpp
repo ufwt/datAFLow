@@ -156,7 +156,6 @@ void PTACallGraph::addDirectCallGraphEdge(const llvm::Instruction* call) {
 
     PTACallGraphNode* caller = getCallGraphNode(call->getParent()->getParent());
     PTACallGraphNode* callee = getCallGraphNode(getCallee(call));
-    const Function *fun = getCallee(call);
 
     if(PTACallGraphEdge* callEdge = hasGraphEdge(caller,callee, PTACallGraphEdge::CallRetEdge)) {
         callEdge->addDirectCallSite(call);

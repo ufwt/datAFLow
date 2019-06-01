@@ -93,6 +93,8 @@ public:
 
     /// We start from here
     virtual bool runOnModule(llvm::Module& module) {
+        SVFModule svfModule(module);
+        runOnModule(svfModule);
         return false;
     }
 

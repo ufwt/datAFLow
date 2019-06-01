@@ -52,7 +52,8 @@ public:
     }
     /// We start from here
     virtual bool runOnModule(llvm::Module& module) {
-        return runOnModule(module);
+        SVFModule svfModule(module);
+        return runOnModule(svfModule);
     }
 
     /// We start from here
