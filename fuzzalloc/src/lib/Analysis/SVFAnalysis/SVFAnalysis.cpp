@@ -12,9 +12,10 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include <set>
+#include <unordered_set>
 
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -30,9 +31,18 @@ using namespace llvm;
 
 namespace {
 
+struct FuzzallocAlias {
+  const Value *TaggedAlloc;
+  const Value *InstrumentedDeref;
+  const AliasResult Result;
+
+  FuzzallocAlias(const Value *TA, const Value *ID, const AliasResult &R)
+      : TaggedAlloc(TA), InstrumentedDeref(ID), Result(R) {}
+};
+
 class SVFAnalysis : public ModulePass {
-  using AliasResults = std::set<std::pair<const Value *, const Value *>>;
   using ValueSet = SmallPtrSet<const Value *, 24>;
+  using AliasResults = std::unordered_set<const FuzzallocAlias *>;
 
 private:
   AliasResults Aliases;
@@ -43,6 +53,7 @@ private:
 public:
   static char ID;
   SVFAnalysis() : ModulePass(ID) {}
+  virtual ~SVFAnalysis();
 
   void getAnalysisUsage(AnalysisUsage &) const override;
   void print(llvm::raw_ostream &, const Module *) const override;
@@ -52,6 +63,12 @@ public:
 } // end anonymous namespace
 
 char SVFAnalysis::ID = 0;
+
+SVFAnalysis::~SVFAnalysis() {
+  for (auto *Alias : Aliases) {
+    delete Alias;
+  }
+}
 
 SVFAnalysis::ValueSet SVFAnalysis::collectTaggedAllocs(Module &M) const {
   SVFAnalysis::ValueSet TaggedAllocs;
@@ -100,9 +117,10 @@ void SVFAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
-  for (auto AliasPair : this->Aliases) {
-    auto *Alloc = cast<CallInst>(AliasPair.first);
-    auto *Deref = AliasPair.second;
+  for (auto *Alias : this->Aliases) {
+    auto *Alloc = cast<CallInst>(Alias->TaggedAlloc);
+    auto *Deref = cast<Instruction>(Alias->InstrumentedDeref);
+    auto AResult = Alias->Result;
 
     // The first argument to a tagged allocation routine is always the
     // allocation site tag
@@ -111,8 +129,15 @@ void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
 
     O << "    allocation site 0x";
     O.write_hex(AllocSiteTag);
-    O << " accessed by ";
-    Deref->print(O);
+    if (DILocation *AllocLoc = Alloc->getDebugLoc()) {
+      O << " (" << AllocLoc->getFilename() << ":" << AllocLoc->getLine() << ")";
+    }
+    O << (AResult == MustAlias ? " IS " : " MAY BE ");
+    O << "accessed in function ";
+    O << Deref->getFunction()->getName();
+    if (DILocation *DerefLoc = Deref->getDebugLoc()) {
+      O << " (" << DerefLoc->getFilename() << ":" << DerefLoc->getLine() << ")";
+    }
     O << "\n";
   }
 }
@@ -125,8 +150,10 @@ bool SVFAnalysis::runOnModule(Module &M) {
 
   for (auto TaggedAlloc : TaggedAllocs) {
     for (auto InstrumentedDeref : InstrumentedDerefs) {
-      if (WPAAnalysis.alias(TaggedAlloc, InstrumentedDeref)) {
-        this->Aliases.insert(std::make_pair(TaggedAlloc, InstrumentedDeref));
+      AliasResult Res = WPAAnalysis.alias(TaggedAlloc, InstrumentedDeref);
+      if (Res) {
+        this->Aliases.emplace(
+            new FuzzallocAlias(TaggedAlloc, InstrumentedDeref, Res));
       }
     }
   }
