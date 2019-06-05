@@ -21,7 +21,7 @@ AFL_URL="http://lcamtuf.coredump.cx/afl/releases/${AFL_TAR}"
 
 COMPILER_RT="compiler-rt"
 COMPILER_RT_TAR="compiler-rt-7.0.1.src.tar.xz"
-COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
+COMPILER_RT_URL="http://releases.llvm.org/7.0.0/${COMPILER_RT_TAR}"
 
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then

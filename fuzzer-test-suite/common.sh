@@ -7,12 +7,12 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow none"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
 
-SCRIPT_DIR=$(dirname $0)
+SCRIPT_DIR=$(dirname $(realpath -s $0))
 EXECUTABLE_NAME_BASE=$(basename $SCRIPT_DIR)-${FUZZING_ENGINE}
 LIBFUZZER_SRC=${LIBFUZZER_SRC:-$(dirname $(dirname $SCRIPT_DIR))/Fuzzer}
 AFL_SRC=${AFL_SRC:-$(dirname $(dirname $SCRIPT_DIR))/AFL}
@@ -21,14 +21,15 @@ FUZZ_CXXFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address
 CORPUS=CORPUS-$EXECUTABLE_NAME_BASE
 JOBS=${JOBS:-"8"}
 
-if [[ $FUZZING_ENGINE == "afl" ]]; then
-  export AFL_PATH=${AFL_SRC}
-
-  export CC="${AFL_PATH}/afl-clang-fast"
-  export CXX="${AFL_PATH}/afl-clang-fast++"
+if [[ $FUZZING_ENGINE == "fsanitize_fuzzer" ]]; then
+  FSANITIZE_FUZZER_FLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address,fuzzer-no-link -fsanitize-address-use-after-scope"
+  export CFLAGS=${CFLAGS:-$FSANITIZE_FUZZER_FLAGS}
+  export CXXFLAGS=${CXXFLAGS:-$FSANITIZE_FUZZER_FLAGS}
+elif [[ $FUZZING_ENGINE == "coverage" ]]; then
+  export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
+  export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
-  FUZZALLOC_BUILD_DIR=$(realpath "${SCRIPT_DIR}/../../fuzzalloc-build")
-
+  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
   export AFL_PATH=${AFL_SRC}
   export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
 
@@ -39,32 +40,9 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
   export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
 
-  if [ -z $CC ]; then
-    CC="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
-  fi
+  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast}
+  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++}
 
-  if [ -z $CXX ]; then
-    CXX="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
-  fi
-
-  export CC
-  export CXX
-else
-  export CC=${CC:-"clang"}
-  export CXX=${CXX:-"clang++"}
-fi
-
-export CPPFLAGS=${CPPFLAGS:-"-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"}
-export LIB_FUZZING_ENGINE="libFuzzingEngine-${FUZZING_ENGINE}.a"
-
-if [[ $FUZZING_ENGINE == "fsanitize_fuzzer" ]]; then
-  FSANITIZE_FUZZER_FLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address,fuzzer-no-link -fsanitize-address-use-after-scope"
-  export CFLAGS=${CFLAGS:-$FSANITIZE_FUZZER_FLAGS}
-  export CXXFLAGS=${CXXFLAGS:-$FSANITIZE_FUZZER_FLAGS}
-elif [[ $FUZZING_ENGINE == "coverage" ]]; then
-  export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
-  export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
-elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   if [ ! -z $ASAN_ENABLE ]; then
     echo "ASan enabled"
@@ -74,6 +52,11 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "afl" ]]; then
+  export AFL_PATH=${AFL_SRC}
+
+  export CC="${AFL_PATH}/afl-clang-fast"
+  export CXX="${AFL_PATH}/afl-clang-fast++"
+
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   if [ ! -z $ASAN_ENABLE ]; then
     echo "ASan enabled"
@@ -81,12 +64,15 @@ elif [[ $FUZZING_ENGINE == "afl" ]]; then
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
   fi
   export CXXFLAGS=${CFLAGS}
-elif [[ $FUZZING_ENGINE == "none" ]]; then
-  export LIB_FUZZING_ENGINE=""
 else
   export CFLAGS=${CFLAGS:-"$FUZZ_CXXFLAGS"}
   export CXXFLAGS=${CXXFLAGS:-"$FUZZ_CXXFLAGS"}
 fi
+
+export CC=${CC:-"clang"}
+export CXX=${CXX:-"clang++"}
+export CPPFLAGS=${CPPFLAGS:-"-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"}
+export LIB_FUZZING_ENGINE="libFuzzingEngine-${FUZZING_ENGINE}.a"
 
 get_git_revision() {
   GIT_REPO="$1"
@@ -107,10 +93,6 @@ get_svn_revision() {
   SVN_REVISION="$2"
   TO_DIR="$3"
   [ ! -e $TO_DIR ] && svn co -r$SVN_REVISION $SVN_REPO $TO_DIR
-}
-
-build_none() {
-  true
 }
 
 build_datAFLow() {
