@@ -406,8 +406,8 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       for (unsigned i = 0; i < NumElems; ++i) {
         auto *StoreToNewGV = IRB.CreateStore(
             Initializer->getElementAsConstant(i),
-            IRB.CreateInBoundsGEP(MallocCall,
-                                  ConstantInt::get(ElemTy, i, false)));
+            IRB.CreateInBoundsGEP(
+                MallocCall, ConstantInt::get(Type::getInt32Ty(C), i, false)));
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                                   MDNode::get(C, None));
       }
