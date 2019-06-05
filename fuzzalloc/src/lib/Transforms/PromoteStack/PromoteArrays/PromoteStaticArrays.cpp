@@ -464,7 +464,7 @@ bool PromoteStaticArrays::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
 
   this->DL = new DataLayout(M.getDataLayout());
-  this->DBuilder = new DIBuilder(M);
+  this->DBuilder = new DIBuilder(M, false);
   this->IntPtrTy = this->DL->getIntPtrType(C);
 
   return false;
