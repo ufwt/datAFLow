@@ -93,11 +93,11 @@ private:
 
   ConstantInt *generateTag() const;
 
-  FunctionType *translateTaggedFunctionType(FunctionType *) const;
-  Function *translateTaggedFunction(Function *) const;
+  FunctionType *translateTaggedFunctionType(const FunctionType *) const;
+  Function *translateTaggedFunction(const Function *) const;
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
-  Value *tagUser(User *, const TargetLibraryInfo *);
+  Value *tagUser(User *, const Function *, const TargetLibraryInfo *);
   CallInst *tagCall(CallInst *, Value *) const;
   Function *tagFunction(Function *, const TargetLibraryInfo *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
@@ -165,7 +165,7 @@ ConstantInt *TagDynamicAllocs::generateTag() const {
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// to the given function type.
 FunctionType *
-TagDynamicAllocs::translateTaggedFunctionType(FunctionType *OrigFTy) const {
+TagDynamicAllocs::translateTaggedFunctionType(const FunctionType *OrigFTy) const {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
   TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
                        OrigFTy->param_end());
@@ -179,11 +179,11 @@ TagDynamicAllocs::translateTaggedFunctionType(FunctionType *OrigFTy) const {
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// and prepends the function name with "__tagged_". The returned function also
 /// has metadata set denoting that it is a tagged function.
-Function *TagDynamicAllocs::translateTaggedFunction(Function *OrigF) const {
+Function *TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
-  Module *M = OrigF->getParent();
+  Module *M = const_cast<Module*>(OrigF->getParent());
   auto *NewC = M->getOrInsertFunction(NewFName.str(), NewFTy);
 
   assert(isa<Function>(NewC) && "Translated tagged function not a function");
@@ -215,8 +215,10 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
 
 /// Translate users of a dynamic memory allocation function so that they use the
 /// tagged version instead.
-Value *TagDynamicAllocs::tagUser(User *U, const TargetLibraryInfo *TLI) {
-  LLVM_DEBUG(dbgs() << "replacing user of tagged function " << *U << '\n');
+Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
+                                 const TargetLibraryInfo *TLI) {
+  LLVM_DEBUG(dbgs() << "replacing user " << *U << " of tagged function "
+                    << F->getName() << '\n');
 
   Value *NewV = nullptr;
 
@@ -551,7 +553,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
 
     for (auto *U : F->users()) {
-      tagUser(U, TLI);
+      tagUser(U, F, TLI);
     }
   }
 
