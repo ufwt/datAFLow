@@ -45,6 +45,8 @@ class SVFAnalysis : public ModulePass {
   using AliasResults = std::unordered_set<const FuzzallocAlias *>;
 
 private:
+  unsigned long NumAllocs;
+  unsigned long NumDerefs;
   AliasResults Aliases;
 
   ValueSet collectTaggedAllocs(Module &M) const;
@@ -117,26 +119,40 @@ void SVFAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
+  O << "  num. tagged allocs: " << this->NumAllocs << "\n";
+  O << "  num. instrumented derefs: " << this->NumDerefs << "\n";
+
   for (auto *Alias : this->Aliases) {
     auto *Alloc = cast<CallInst>(Alias->TaggedAlloc);
-    auto *Deref = cast<Instruction>(Alias->InstrumentedDeref);
+    auto *Deref = Alias->InstrumentedDeref;
     auto AResult = Alias->Result;
 
-    // The first argument to a tagged allocation routine is always the
+    // The first argument to a tagged allocation routine should always be the
     // allocation site tag
-    uint64_t AllocSiteTag =
-        cast<ConstantInt>(Alloc->getArgOperand(0))->getZExtValue();
+    O << "    ";
+    if (auto *FirstArg = dyn_cast<ConstantInt>(Alloc->getArgOperand(0))) {
+      uint64_t AllocSiteTag = FirstArg->getZExtValue();
 
-    O << "    allocation site 0x";
-    O.write_hex(AllocSiteTag);
+      O << "allocation site 0x";
+      O.write_hex(AllocSiteTag);
+    } else {
+      Alloc->print(O);
+    }
+
     if (DILocation *AllocLoc = Alloc->getDebugLoc()) {
       O << " (" << AllocLoc->getFilename() << ":" << AllocLoc->getLine() << ")";
     }
     O << (AResult == MustAlias ? " IS " : " MAY BE ");
-    O << "accessed in function ";
-    O << Deref->getFunction()->getName();
-    if (DILocation *DerefLoc = Deref->getDebugLoc()) {
-      O << " (" << DerefLoc->getFilename() << ":" << DerefLoc->getLine() << ")";
+    if (auto *DerefInst = dyn_cast<Instruction>(Deref)) {
+      O << "accessed in function ";
+      O << DerefInst->getFunction()->getName();
+      if (DILocation *DerefLoc = DerefInst->getDebugLoc()) {
+        O << " (" << DerefLoc->getFilename() << ":" << DerefLoc->getLine()
+          << ")";
+      }
+    } else {
+      O << "accessed by ";
+      Deref->print(O);
     }
     O << "\n";
   }
@@ -145,6 +161,9 @@ void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
 bool SVFAnalysis::runOnModule(Module &M) {
   auto TaggedAllocs = collectTaggedAllocs(M);
   auto InstrumentedDerefs = collectInstrumentedDereferences(M);
+
+  this->NumAllocs = TaggedAllocs.size();
+  this->NumDerefs = InstrumentedDerefs.size();
 
   auto &WPAAnalysis = getAnalysis<WPAPass>();
 
