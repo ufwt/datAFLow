@@ -164,8 +164,8 @@ ConstantInt *TagDynamicAllocs::generateTag() const {
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// to the given function type.
-FunctionType *
-TagDynamicAllocs::translateTaggedFunctionType(const FunctionType *OrigFTy) const {
+FunctionType *TagDynamicAllocs::translateTaggedFunctionType(
+    const FunctionType *OrigFTy) const {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
   TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
                        OrigFTy->param_end());
@@ -179,11 +179,12 @@ TagDynamicAllocs::translateTaggedFunctionType(const FunctionType *OrigFTy) const
 /// This inserts a tag (i.e., the call site identifier) as the first argument
 /// and prepends the function name with "__tagged_". The returned function also
 /// has metadata set denoting that it is a tagged function.
-Function *TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
+Function *
+TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
-  Module *M = const_cast<Module*>(OrigF->getParent());
+  Module *M = const_cast<Module *>(OrigF->getParent());
   auto *NewC = M->getOrInsertFunction(NewFName.str(), NewFTy);
 
   assert(isa<Function>(NewC) && "Translated tagged function not a function");
@@ -246,12 +247,7 @@ Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
 
     // Replace the original dynamic memory allocation function call
     if (NewF) {
-      auto *TaggedCall = tagCall(Call, NewF);
-
-      Call->replaceAllUsesWith(TaggedCall);
-      Call->eraseFromParent();
-
-      NewV = TaggedCall;
+      NewV = tagCall(Call, NewF);
     }
   } else {
     // TODO
@@ -327,6 +323,10 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
       TaggedCall->getModule()->getMDKindID("fuzzalloc.tagged_alloc"),
       MDNode::get(IRB.getContext(), None));
   NumOfTaggedCalls++;
+
+  // Replace the users of the original call
+  OrigCall->replaceAllUsesWith(TaggedCall);
+  OrigCall->eraseFromParent();
 
   return TaggedCall;
 }
@@ -414,10 +414,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
         if (auto *Call = dyn_cast<CallInst>(LU)) {
           // Replace a call to the function stored in the original global
           // variable with a call to the tagged version
-          auto *TaggedCall = tagCall(Call, NewLoad);
-
-          Call->replaceAllUsesWith(TaggedCall);
-          Call->eraseFromParent();
+          tagCall(Call, NewLoad);
         } else if (auto *PHI = dyn_cast<PHINode>(LU)) {
           // Replace the loaded global variable with the tagged version
           PHI->replaceUsesOfWith(Load, NewLoad);
@@ -455,9 +452,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 
               // Replace a call to the function stored in the original global
               // variable with a call to the tagged version
-              auto *TaggedCall = tagCall(Call, NewPHI);
-              Call->replaceAllUsesWith(TaggedCall);
-              Call->eraseFromParent();
+              tagCall(Call, NewPHI);
             }
           }
         } else {
