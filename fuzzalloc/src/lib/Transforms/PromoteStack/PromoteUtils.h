@@ -1,4 +1,4 @@
-//===-- PromoteCommon.cpp - Promote static arrays to mallocs --------------===//
+//===-- PromoteUtils.h - Promote static arrays to mallocs -----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,12 +12,15 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FUZZALLOC_PROMOTE_COMMON_H
-#define FUZZALLOC_PROMOTE_COMMON_H
+#ifndef FUZZALLOC_PROMOTE_UTILS_H
+#define FUZZALLOC_PROMOTE_UTILS_H
 
-#include "llvm/IR/Instructions.h"
+namespace llvm {
+class Instruction;
+class Value;
+} // namespace llvm
 
 /// Insert a call to \c free for the given alloca
 void insertFree(llvm::Value *, llvm::Instruction *);
 
-#endif // FUZZALLOC_PROMOTE_COMMON_H
+#endif // FUZZALLOC_PROMOTE_UTILS_H

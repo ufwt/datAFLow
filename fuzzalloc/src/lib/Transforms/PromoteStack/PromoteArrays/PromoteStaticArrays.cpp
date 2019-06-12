@@ -27,7 +27,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
-#include "PromoteCommon.h"
+#include "PromoteUtils.h"
 #include "debug.h" // from afl
 
 using namespace llvm;

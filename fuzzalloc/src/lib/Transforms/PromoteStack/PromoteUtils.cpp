@@ -1,4 +1,4 @@
-//===-- PromoteCommon.cpp - Promote static arrays to mallocs --------------===//
+//===-- PromoteUtils.cpp - Promote static arrays to mallocs ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -14,7 +14,7 @@
 
 #include "llvm/IR/Instructions.h"
 
-#include "PromoteCommon.h"
+#include "PromoteUtils.h"
 
 using namespace llvm;
 
