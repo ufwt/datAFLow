@@ -28,6 +28,7 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "PromoteUtils.h"
+#include "Utils.h"
 #include "debug.h" // from afl
 
 using namespace llvm;
@@ -75,20 +76,6 @@ public:
 } // end anonymous namespace
 
 char PromoteStaticArrays::ID = 0;
-
-/// Similar to `GetUnderlyingObject`, except that load instructions are followed
-/// so that we can find the underlying alloca instruction.
-static Value *getUnderlyingAlloca(Value *V, const DataLayout &DL) {
-  auto *Obj = GetUnderlyingObject(V, DL);
-
-  if (auto *Alloca = dyn_cast<AllocaInst>(Obj)) {
-    return Alloca;
-  } else if (auto *Load = dyn_cast<LoadInst>(Obj)) {
-    return getUnderlyingAlloca(Load->getPointerOperand(), DL);
-  }
-
-  return Obj;
-}
 
 static bool isPromotableType(Type *Ty) {
   if (!Ty->isArrayTy()) {
@@ -292,8 +279,8 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(
     insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
   } else {
     for (auto *LifetimeStart : LifetimeStarts) {
-      if (getUnderlyingAlloca(LifetimeStart->getOperand(1), *this->DL) ==
-          Alloca) {
+      if (GetUnderlyingObjectThroughLoads(LifetimeStart->getOperand(1),
+                                          *this->DL) == Alloca) {
         auto *Ptr = LifetimeStart->getOperand(1);
         assert(isa<Instruction>(Ptr));
 
@@ -546,8 +533,8 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
       } else {
         // Otherwise insert the free before each lifetime.end
         for (auto *LifetimeEnd : LifetimeEnds) {
-          if (getUnderlyingAlloca(LifetimeEnd->getOperand(1), *this->DL) ==
-              NewAlloca) {
+          if (GetUnderlyingObjectThroughLoads(LifetimeEnd->getOperand(1),
+                                              *this->DL) == NewAlloca) {
             insertFree(NewAlloca, LifetimeEnd);
             NumOfFreeInsert++;
           }
@@ -559,7 +546,8 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
       // static array, but may break the new dynamically allocated pointer. To
       // be safe we remove any alignment and let LLVM decide what is appropriate
       for (auto *Memset : Memsets) {
-        if (getUnderlyingAlloca(Memset->getDest(), *this->DL) == NewAlloca) {
+        if (GetUnderlyingObjectThroughLoads(Memset->getDest(), *this->DL) ==
+            NewAlloca) {
           Memset->setDestAlignment(0);
         }
       }
