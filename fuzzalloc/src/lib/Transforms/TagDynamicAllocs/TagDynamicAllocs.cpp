@@ -21,9 +21,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/IndirectCallSiteVisitor.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#include "Utils.h"
 #include "debug.h"     // from AFL
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -82,6 +83,7 @@ public:
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
 private:
+  Function *AbortF;
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
   Function *FuzzallocReallocF;
@@ -91,14 +93,18 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
+  std::map<std::pair<const StructType *, unsigned>, const Function *>
+      PoisonedStructs;
+
   ConstantInt *generateTag() const;
 
   FunctionType *translateTaggedFunctionType(const FunctionType *) const;
   Function *translateTaggedFunction(const Function *) const;
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
-  Value *tagUser(User *, const Function *, const TargetLibraryInfo *);
+  Value *tagUser(User *, Function *, const TargetLibraryInfo *);
   CallInst *tagCall(CallInst *, Value *) const;
+  CallInst *tagPossibleIndirectCall(CallInst *) const;
   Function *tagFunction(Function *, const TargetLibraryInfo *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
   GlobalAlias *tagGlobalAlias(GlobalAlias *);
@@ -114,6 +120,7 @@ public:
 
 } // anonymous namespace
 
+static const char *const AbortFuncName = "abort";
 static const char *const FuzzallocMallocFuncName = "__tagged_malloc";
 static const char *const FuzzallocCallocFuncName = "__tagged_calloc";
 static const char *const FuzzallocReallocFuncName = "__tagged_realloc";
@@ -138,6 +145,19 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
                             bool LookThroughBitCast = false) {
   return isAllocationFn(V, TLI, LookThroughBitCast) &&
          !isAllocLikeFn(V, TLI, LookThroughBitCast);
+}
+
+static Type *stripPointerType(const Type *Ty) {
+  if (!Ty->isPointerTy()) {
+    return const_cast<Type *>(Ty);
+  }
+
+  Type *ElemTy = Ty->getPointerElementType();
+  while (ElemTy->isPointerTy()) {
+    ElemTy = ElemTy->getPointerElementType();
+  }
+
+  return ElemTy;
 }
 
 static FuzzallocWhitelist getWhitelist() {
@@ -215,8 +235,10 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
 }
 
 /// Translate users of a dynamic memory allocation function so that they use the
-/// tagged version instead.
-Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
+/// tagged version instead. Also poisons structs that are assigned dynamic
+/// memory allocation functions so that we can rewrite (indirect) calls to these
+/// struct elements later
+Value *TagDynamicAllocs::tagUser(User *U, Function *F,
                                  const TargetLibraryInfo *TLI) {
   LLVM_DEBUG(dbgs() << "replacing user " << *U << " of tagged function "
                     << F->getName() << '\n');
@@ -225,8 +247,7 @@ Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
 
   if (auto *Call = dyn_cast<CallInst>(U)) {
     // The result of a dynamic memory allocation function call is typically
-    // cast. To determine the actual function being called, we must remove
-    // these casts
+    // cast. Strip this cast to determine the actual function being called
     auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
 
     // Work out which tagged function we need to replace the existing
@@ -249,8 +270,34 @@ Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
     if (NewF) {
       NewV = tagCall(Call, NewF);
     }
+  } else if (auto *Store = dyn_cast<StoreInst>(U)) {
+    const DataLayout &DL = F->getParent()->getDataLayout();
+
+    int64_t ByteOffset;
+    const Value *PtrBase = GetPointerBaseWithConstantOffsetThroughLoads(
+        Store->getPointerOperand(), ByteOffset, DL);
+    Type *PtrBaseTy = stripPointerType(PtrBase->getType());
+
+    // If the memory allocation function is being written to a struct element
+    // (or a pointer to a struct element), poison that struct (and the element
+    // index that we are writing to) so that we can tag it later
+    if (PtrBaseTy->isStructTy()) {
+      StructType *StructTy = cast<StructType>(PtrBaseTy);
+      const StructLayout *SL = DL.getStructLayout(StructTy);
+      unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
+
+      this->PoisonedStructs.emplace(std::make_pair(StructTy, StructIdx), F);
+    } else {
+      // TODO handle other types
+      assert(false && "Unsupported type");
+    }
+
+    // TODO do something more sensible than forcing a runtime crash
+    Store->replaceUsesOfWith(
+        F, CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store));
   } else {
-    // TODO
+    // TODO handle other users
+    assert(false && "Unsupported user");
   }
 
   return NewV;
@@ -258,12 +305,13 @@ Value *TagDynamicAllocs::tagUser(User *U, const Function *F,
 
 /// Replace a function call (`OrigCall`) with a call to `NewCallee` that is
 /// tagged with an allocation site identifier.
+///
+/// The caller must update the users of the original function call to use the
+/// tagged version.
 CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
                                     Value *NewCallee) const {
-  LLVM_DEBUG(dbgs() << "replacing function call" << *OrigCall
-                    << " with a tagged call to" << *NewCallee
-                    << " (in function " << OrigCall->getFunction()->getName()
-                    << ")\n");
+  LLVM_DEBUG(dbgs() << "tagging function call " << *OrigCall << " (in function "
+                    << OrigCall->getFunction()->getName() << ")\n");
 
   // The tag value depends where the function call is occuring. If the tagged
   // function is being called from within another tagged function, just pass
@@ -331,9 +379,50 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   return TaggedCall;
 }
 
-/// Sometimes a PUT does not call a dynamic memory allocation function
-/// directly, but rather via a allocation wrapper function. For these PUTs, we
-/// must tag the calls to the allocation wrapper function (the `OrigF`
+/// Possibly replace an indirect function call (`OrigCall`) with a call to a
+/// tagged version of the function.
+///
+/// When will the function call be replaced? Only if the function being called
+/// is stored within a poisoned struct. That is, a struct where a whitelisted
+/// allocation function was stored into.
+///
+/// If the call is not replaced, the original function call is returned.
+CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
+  LLVM_DEBUG(dbgs() << "possibly tagging indirect function call " << *OrigCall
+                    << " (in function " << OrigCall->getFunction()->getName()
+                    << ")\n");
+
+  auto *CalledValue = OrigCall->getCalledValue();
+  const DataLayout &DL = OrigCall->getModule()->getDataLayout();
+
+  // Check if the value being called originated from a struct alloca
+  int64_t ByteOffset;
+  const Value *PtrBase =
+      GetPointerBaseWithConstantOffsetThroughLoads(CalledValue, ByteOffset, DL);
+  Type *PtrBaseTy = stripPointerType(PtrBase->getType());
+  if (!PtrBaseTy->isStructTy()) {
+    return OrigCall;
+  }
+
+  // If the called value did originate from a struct alloca, check if the struct
+  // type is poisoned
+  StructType *StructTy = cast<StructType>(PtrBaseTy);
+  const StructLayout *SL = DL.getStructLayout(StructTy);
+  unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
+  auto PoisonedStructIt = this->PoisonedStructs.find({StructTy, StructIdx});
+  if (PoisonedStructIt == this->PoisonedStructs.end()) {
+    return OrigCall;
+  }
+
+  // If the struct type is poisoned, retrieve the function that was assigned to
+  // tthis struct element and tag it
+  Function *TaggedF = translateTaggedFunction(PoisonedStructIt->second);
+  return tagCall(OrigCall, TaggedF);
+}
+
+/// Sometimes a program does not call a dynamic memory allocation function
+/// directly, but rather via a allocation wrapper function. For these programs,
+/// we must tag the calls to the allocation wrapper function (the `OrigF`
 /// argument), rather than the underlying \p malloc / \p calloc / \p realloc
 /// call.
 ///
@@ -456,11 +545,15 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
             }
           }
         } else {
-          assert(false && "Other users of global variables not yet supported");
+          // TODO handle other users
+          assert(false && "Unsupported user");
         }
       }
 
       Load->eraseFromParent();
+    } else {
+      // TODO handle other users
+      assert(false && "Unsupported global variable user");
     }
   }
 
@@ -491,7 +584,7 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
       OrigGA->getParent());
 
   // TODO handle users
-  assert(OrigGA->getNumUses() == 0 && "Not yet implemented");
+  assert(OrigGA->getNumUses() == 0 && "Not supported");
 
   return NewGA;
 }
@@ -516,7 +609,14 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
-  PointerType *Int8PtrTy = Type::getInt8PtrTy(M.getContext());
+  LLVMContext &C = M.getContext();
+  PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
+  Type *VoidTy = Type::getVoidTy(C);
+
+  this->AbortF =
+      checkFuzzallocFunc(M.getOrInsertFunction(AbortFuncName, VoidTy));
+  this->AbortF->setDoesNotReturn();
+  this->AbortF->setDoesNotThrow();
 
   // Create the tagged memory allocation functions. These functions take the
   // take the same arguments as the original dynamic memory allocation
@@ -547,8 +647,21 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       continue;
     }
 
-    for (auto *U : F->users()) {
+    // Cache users
+    SmallVector<User *, 8> Users(F->user_begin(), F->user_end());
+
+    for (auto *U : Users) {
+      // This will also poison structs (see below)
       tagUser(U, F, TLI);
+    }
+  }
+
+  // Handle poisoned structs. These are structs that have a memory allocation
+  // function stored to one of their elements and are thus called indirectly
+  for (auto &F : M.functions()) {
+    for (auto *IndirectCall : findIndirectCallSites(F)) {
+      assert(isa<CallInst>(IndirectCall));
+      tagPossibleIndirectCall(cast<CallInst>(IndirectCall));
     }
   }
 
@@ -583,18 +696,12 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // Delete all the things marked for deletion
 
   for (auto *GA : GAsToDelete) {
-    // TODO this is probably not a great idea. There shouldn't be any call or
-    // load instructions at this point, but who knows what other funky things
-    // the authors have done
-    GA->replaceAllUsesWith(UndefValue::get(GA->getType()));
+    assert(GA->getNumUses() == 0 && "Global alias still has uses");
     GA->eraseFromParent();
   }
 
   for (auto *GV : GVsToDelete) {
-    // TODO this is probably not a great idea. There shouldn't be any call or
-    // load instructions at this point, but who knows what other funky things
-    // the authors have done
-    GV->replaceAllUsesWith(UndefValue::get(GV->getType()));
+    assert(GV->getNumUses() == 0 && "Global variable still has uses");
     GV->eraseFromParent();
   }
 
@@ -603,12 +710,11 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       continue;
     }
 
-    // TODO this is probably not a great idea. There shouldn't be any call or
-    // load instructions at this point, but who knows what other funky things
-    // the authors have done
-    F->replaceAllUsesWith(UndefValue::get(F->getType()));
+    assert(F->getNumUses() == 0 && "Function still has uses");
     F->eraseFromParent();
   }
+
+  // Finished!
 
   OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfTaggedCalls.getValue(),
       NumOfTaggedCalls.getName(), NumOfTaggedCalls.getDesc());

@@ -26,4 +26,10 @@ llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
                                              const llvm::DataLayout &,
                                              unsigned = 6);
 
+/// Like `GetPointerBaseWithConstantOffset` in ValueTracking analysis, except
+/// that it looks through load instructions
+llvm::Value *
+GetPointerBaseWithConstantOffsetThroughLoads(llvm::Value *, int64_t &,
+                                             const llvm::DataLayout &);
+
 #endif // FUZZALLOC_UTILS_H
