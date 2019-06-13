@@ -82,6 +82,9 @@ public:
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
+public:
+  using PoisonedStructElement = std::pair<const StructType *, unsigned>;
+
 private:
   Function *AbortF;
   Function *FuzzallocMallocF;
@@ -93,8 +96,7 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  std::map<std::pair<const StructType *, unsigned>, const Function *>
-      PoisonedStructs;
+  std::map<PoisonedStructElement, const Function *> PoisonedStructs;
 
   ConstantInt *generateTag() const;
 
@@ -158,6 +160,32 @@ static Type *stripPointerType(const Type *Ty) {
   }
 
   return ElemTy;
+}
+
+static TagDynamicAllocs::PoisonedStructElement
+poisonStructElement(StructType *StructTy, int64_t ByteOffset,
+                    const DataLayout &DL) {
+  const StructLayout *SL = DL.getStructLayout(StructTy);
+  unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
+  Type *ElemTy = StructTy->getElementType(StructIdx);
+
+  // Handle nested structs. The recursion will eventually bottom out at some
+  // primitive type (ideally, a function pointer).
+  //
+  // The idea is that the byte offset (calculated via
+  // GetPointerBaseWithConstantOffset) may point to some inner struct. If this
+  // is the case, then we want to poison the element in the inner struct.
+  if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
+    if (!ElemStructTy->isOpaque()) {
+      return poisonStructElement(
+          ElemStructTy, ByteOffset - SL->getElementOffset(StructIdx), DL);
+    }
+  }
+
+  // The poisoned element must be a function pointer
+  assert(StructTy->getElementType(StructIdx)->isPointerTy());
+
+  return {StructTy, StructIdx};
 }
 
 static FuzzallocWhitelist getWhitelist() {
@@ -272,27 +300,25 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     const DataLayout &DL = F->getParent()->getDataLayout();
-
     int64_t ByteOffset;
     const Value *PtrBase = GetPointerBaseWithConstantOffsetThroughLoads(
         Store->getPointerOperand(), ByteOffset, DL);
     Type *PtrBaseTy = stripPointerType(PtrBase->getType());
 
-    // If the memory allocation function is being written to a struct element
-    // (or a pointer to a struct element), poison that struct (and the element
-    // index that we are writing to) so that we can tag it later
+    // If the memory allocation function is being written to a struct element,
+    // poison that struct (and the element index that we are writing to) so that
+    // we can tag it later
     if (PtrBaseTy->isStructTy()) {
-      StructType *StructTy = cast<StructType>(PtrBaseTy);
-      const StructLayout *SL = DL.getStructLayout(StructTy);
-      unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
+      auto PoisonedStructElem =
+          poisonStructElement(cast<StructType>(PtrBaseTy), ByteOffset, DL);
 
-      this->PoisonedStructs.emplace(std::make_pair(StructTy, StructIdx), F);
+      this->PoisonedStructs.emplace(PoisonedStructElem, F);
     } else {
       // TODO handle other types
       assert(false && "Unsupported type");
     }
 
-    // TODO do something more sensible than forcing a runtime crash
+    // TODO do something more sensible than forcing a runtime abort
     Store->replaceUsesOfWith(
         F, CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store));
   } else {
@@ -406,10 +432,9 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
 
   // If the called value did originate from a struct alloca, check if the struct
   // type is poisoned
-  StructType *StructTy = cast<StructType>(PtrBaseTy);
-  const StructLayout *SL = DL.getStructLayout(StructTy);
-  unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
-  auto PoisonedStructIt = this->PoisonedStructs.find({StructTy, StructIdx});
+  auto PoisonedStructElem =
+      poisonStructElement(cast<StructType>(PtrBaseTy), ByteOffset, DL);
+  auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
   if (PoisonedStructIt == this->PoisonedStructs.end()) {
     return OrigCall;
   }
