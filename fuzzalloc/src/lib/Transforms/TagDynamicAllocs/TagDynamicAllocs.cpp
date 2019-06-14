@@ -25,7 +25,9 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/IndirectCallSiteVisitor.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
+#include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -37,7 +39,6 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#include "Utils.h"
 #include "debug.h"     // from AFL
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -149,17 +150,32 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
          !isAllocLikeFn(V, TLI, LookThroughBitCast);
 }
 
-static Type *stripPointerType(const Type *Ty) {
-  if (!Ty->isPointerTy()) {
-    return const_cast<Type *>(Ty);
-  }
+static std::pair<StructType *, int64_t>
+getTBAAStructTypeWithOffset(const Instruction *I) {
+  // Retreive the TBAA metadata
+  MemoryLocation ML = MemoryLocation::get(I);
+  AAMDNodes AATags = ML.AATags;
+  const MDNode *TBAA = AATags.TBAA;
+  assert(TBAA && "TBAA must be enabled");
 
-  Type *ElemTy = Ty->getPointerElementType();
-  while (ElemTy->isPointerTy()) {
-    ElemTy = ElemTy->getPointerElementType();
-  }
+  // Pull apart the access tag
+  const MDNode *BaseNode = dyn_cast<MDNode>(TBAA->getOperand(0));
+  const ConstantInt *Offset =
+      mdconst::dyn_extract<ConstantInt>(TBAA->getOperand(2));
 
-  return ElemTy;
+  // TBAA struct type descriptors are represented as MDNodes with an odd number
+  // of operands. Retrieve the struct based on the string in the struct type
+  // descriptor (the first operand)
+  if (BaseNode->getNumOperands() % 2 == 1) {
+    const MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+    StructType *StructTy = I->getModule()->getTypeByName(
+        "struct." + StructTyName->getString().str());
+    assert(StructTy);
+
+    return {StructTy, Offset->getSExtValue()};
+  } else {
+    assert(false && "Non-struct access tag");
+  }
 }
 
 static TagDynamicAllocs::PoisonedStructElement
@@ -271,8 +287,6 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
   LLVM_DEBUG(dbgs() << "replacing user " << *U << " of tagged function "
                     << F->getName() << '\n');
 
-  Value *NewV = nullptr;
-
   if (auto *Call = dyn_cast<CallInst>(U)) {
     // The result of a dynamic memory allocation function call is typically
     // cast. Strip this cast to determine the actual function being called
@@ -296,37 +310,38 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
 
     // Replace the original dynamic memory allocation function call
     if (NewF) {
-      NewV = tagCall(Call, NewF);
+      return tagCall(Call, NewF);
+    } else {
+      // This should never happen
+      assert(false);
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
-    const DataLayout &DL = F->getParent()->getDataLayout();
-    int64_t ByteOffset;
-    const Value *PtrBase = GetPointerBaseWithConstantOffsetThroughLoads(
-        Store->getPointerOperand(), ByteOffset, DL);
-    Type *PtrBaseTy = stripPointerType(PtrBase->getType());
+    const Module *M = F->getParent();
+    const DataLayout &DL = M->getDataLayout();
 
-    // If the memory allocation function is being written to a struct element,
-    // poison that struct (and the element index that we are writing to) so that
-    // we can tag it later
-    if (PtrBaseTy->isStructTy()) {
-      auto PoisonedStructElem =
-          poisonStructElement(cast<StructType>(PtrBaseTy), ByteOffset, DL);
+    // TODO
+    assert(!isa<GlobalVariable>(Store->getPointerOperand()) &&
+           "Not implemented");
 
-      this->PoisonedStructs.emplace(PoisonedStructElem, F);
-    } else {
-      // TODO handle other types
-      assert(false && "Unsupported type");
-    }
+    // Determine the struct type and the index that we are storing the dynamic
+    // allocation function to from TBAA metadata. "Poison" the struct and offset
+    // so that we can tag it later
+    auto StructTyWithOffset = getTBAAStructTypeWithOffset(Store);
+    auto PoisonedStructElem = poisonStructElement(
+        StructTyWithOffset.first, StructTyWithOffset.second, DL);
+    this->PoisonedStructs.emplace(PoisonedStructElem, F);
 
-    // TODO do something more sensible than forcing a runtime abort
+    // TODO do something more sensible than forcing a runtime abort. This
+    // *should* only kick in if the address of the poisoned struct element is
+    // taken
     Store->replaceUsesOfWith(
         F, CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store));
+
+    return Store;
   } else {
     // TODO handle other users
     assert(false && "Unsupported user");
   }
-
-  return NewV;
 }
 
 /// Replace a function call (`OrigCall`) with a call to `NewCallee` that is
@@ -410,37 +425,36 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 ///
 /// When will the function call be replaced? Only if the function being called
 /// is stored within a poisoned struct. That is, a struct where a whitelisted
-/// allocation function was stored into.
+/// allocation function was stored into. This is determined via TBAA metadata.
 ///
 /// If the call is not replaced, the original function call is returned.
 CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
-  LLVM_DEBUG(dbgs() << "possibly tagging indirect function call " << *OrigCall
+  LLVM_DEBUG(dbgs() << "(possibly) tagging indirect function call " << *OrigCall
                     << " (in function " << OrigCall->getFunction()->getName()
                     << ")\n");
 
+  const Module *M = OrigCall->getModule();
+  const DataLayout &DL = M->getDataLayout();
   auto *CalledValue = OrigCall->getCalledValue();
-  const DataLayout &DL = OrigCall->getModule()->getDataLayout();
 
-  // Check if the value being called originated from a struct alloca
-  int64_t ByteOffset;
-  const Value *PtrBase =
-      GetPointerBaseWithConstantOffsetThroughLoads(CalledValue, ByteOffset, DL);
-  Type *PtrBaseTy = stripPointerType(PtrBase->getType());
-  if (!PtrBaseTy->isStructTy()) {
+  // Get the source of the indirect call and retrieve its TBAA struct type
+  Value *Obj = GetUnderlyingObject(CalledValue, DL);
+  if (!isa<Instruction>(Obj)) {
     return OrigCall;
   }
+  auto StructTyWithOffset = getTBAAStructTypeWithOffset(cast<Instruction>(Obj));
 
-  // If the called value did originate from a struct alloca, check if the struct
-  // type is poisoned
-  auto PoisonedStructElem =
-      poisonStructElement(cast<StructType>(PtrBaseTy), ByteOffset, DL);
+  // If the called value did originate from a struct , check if the struct type
+  // is poisoned at this offset
+  auto PoisonedStructElem = poisonStructElement(StructTyWithOffset.first,
+                                                StructTyWithOffset.second, DL);
   auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
   if (PoisonedStructIt == this->PoisonedStructs.end()) {
     return OrigCall;
   }
 
-  // If the struct type is poisoned, retrieve the function that was assigned to
-  // tthis struct element and tag it
+  // If the struct type is poisoned, retrieve the function that was assigned
+  // to this struct element and tag it
   Function *TaggedF = translateTaggedFunction(PoisonedStructIt->second);
   return tagCall(OrigCall, TaggedF);
 }
