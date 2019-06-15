@@ -58,8 +58,7 @@ STATISTIC(NumOfTaggedCalls,
 
 namespace {
 
-/// Whitelist of dynamic memory allocation wrapper functions and global
-/// variables
+/// Whitelist of dynamic memory allocation wrapper functions
 class FuzzallocWhitelist {
 private:
   std::unique_ptr<SpecialCaseList> SCL;
@@ -72,10 +71,6 @@ public:
 
   bool isIn(const Function &F) const {
     return SCL && SCL->inSection("fuzzalloc", "fun", F.getName());
-  }
-
-  bool isIn(const GlobalVariable &GV) const {
-    return SCL && SCL->inSection("fuzzalloc", "gv", GV.getName());
   }
 };
 
@@ -97,10 +92,12 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
+  SmallPtrSet<GlobalVariable *, 16> GVsToTag;
   std::map<PoisonedStructElement, const Function *> PoisonedStructs;
 
   ConstantInt *generateTag() const;
 
+  bool isTaggableFunction(const Function *) const;
   FunctionType *translateTaggedFunctionType(const FunctionType *) const;
   Function *translateTaggedFunction(const Function *) const;
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
@@ -150,6 +147,13 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
          !isAllocLikeFn(V, TLI, LookThroughBitCast);
 }
 
+static bool hasTBAAMetadata(const Instruction *I) {
+  AAMDNodes AATags;
+  I->getAAMetadata(AATags);
+
+  return AATags.TBAA != nullptr;
+}
+
 static std::pair<StructType *, int64_t>
 getTBAAStructTypeWithOffset(const Instruction *I) {
   // Retreive the TBAA metadata
@@ -188,9 +192,9 @@ poisonStructElement(StructType *StructTy, int64_t ByteOffset,
   // Handle nested structs. The recursion will eventually bottom out at some
   // primitive type (ideally, a function pointer).
   //
-  // The idea is that the byte offset (calculated via
-  // GetPointerBaseWithConstantOffset) may point to some inner struct. If this
-  // is the case, then we want to poison the element in the inner struct.
+  // The idea is that the byte offset (read from TBAA access metadata) may
+  // point to some inner struct. If this is the case, then we want to poison
+  // the element in the inner struct so that we can tag calls to it later
   if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
     if (!ElemStructTy->isOpaque()) {
       return poisonStructElement(
@@ -222,6 +226,13 @@ static FuzzallocWhitelist getWhitelist() {
 /// Generate a random tag
 ConstantInt *TagDynamicAllocs::generateTag() const {
   return ConstantInt::get(this->TagTy, RAND(INST_TAG_START, TAG_MAX));
+}
+
+bool TagDynamicAllocs::isTaggableFunction(const Function *F) const {
+  StringRef Name = F->getName();
+
+  return Name == "malloc" || Name == "calloc" || Name == "realloc" ||
+         this->Whitelist.isIn(*F);
 }
 
 /// Translates a function type to its tagged version.
@@ -306,36 +317,38 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
       if (this->Whitelist.isIn(*CalledFunc)) {
         NewF = translateTaggedFunction(CalledFunc);
       }
-    }
-
-    // Replace the original dynamic memory allocation function call
-    if (NewF) {
-      return tagCall(Call, NewF);
     } else {
       // This should never happen
       assert(false);
     }
+
+    // Replace the original dynamic memory allocation function call
+    return tagCall(Call, NewF);
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     const Module *M = F->getParent();
     const DataLayout &DL = M->getDataLayout();
 
-    // TODO
-    assert(!isa<GlobalVariable>(Store->getPointerOperand()) &&
-           "Not implemented");
+    if (auto *OrigGV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
+      // If the store is to a global variable, tag it
+      tagGlobalVariable(OrigGV);
+    } else {
+      //  TODO check that the store is to a struct
 
-    // Determine the struct type and the index that we are storing the dynamic
-    // allocation function to from TBAA metadata. "Poison" the struct and offset
-    // so that we can tag it later
-    auto StructTyWithOffset = getTBAAStructTypeWithOffset(Store);
-    auto PoisonedStructElem = poisonStructElement(
-        StructTyWithOffset.first, StructTyWithOffset.second, DL);
-    this->PoisonedStructs.emplace(PoisonedStructElem, F);
+      // Determine the struct type and the index that we are storing the dynamic
+      // allocation function to from TBAA metadata. "Poison" the struct and
+      // offset so that we can tag it later
+      auto StructTyWithOffset = getTBAAStructTypeWithOffset(Store);
+      auto PoisonedStructElem = poisonStructElement(
+          StructTyWithOffset.first, StructTyWithOffset.second, DL);
+      this->PoisonedStructs.emplace(PoisonedStructElem, F);
 
-    // TODO do something more sensible than forcing a runtime abort. This
-    // *should* only kick in if the address of the poisoned struct element is
-    // taken
-    Store->replaceUsesOfWith(
-        F, CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store));
+      // TODO do something more sensible than forcing a runtime abort. This
+      // *should* only kick in if the address of the poisoned struct element is
+      // taken
+      auto *AbortCast =
+          CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store);
+      Store->replaceUsesOfWith(F, AbortCast);
+    }
 
     return Store;
   } else {
@@ -437,26 +450,33 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
   const DataLayout &DL = M->getDataLayout();
   auto *CalledValue = OrigCall->getCalledValue();
 
-  // Get the source of the indirect call and retrieve its TBAA struct type
+  // Get the source of the indirect call. If the called value didn't come from a
+  // load, we can't do anything about it
   Value *Obj = GetUnderlyingObject(CalledValue, DL);
-  if (!isa<Instruction>(Obj)) {
+  if (!isa<LoadInst>(Obj)) {
     return OrigCall;
   }
-  auto StructTyWithOffset = getTBAAStructTypeWithOffset(cast<Instruction>(Obj));
+  auto *ObjLoad = cast<LoadInst>(Obj);
 
-  // If the called value did originate from a struct , check if the struct type
-  // is poisoned at this offset
-  auto PoisonedStructElem = poisonStructElement(StructTyWithOffset.first,
-                                                StructTyWithOffset.second, DL);
-  auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
-  if (PoisonedStructIt == this->PoisonedStructs.end()) {
+  if (hasTBAAMetadata(ObjLoad)) {
+    auto StructTyWithOffset = getTBAAStructTypeWithOffset(ObjLoad);
+
+    // If the called value did originate from a struct , check if the struct
+    // type is poisoned at this offset
+    auto PoisonedStructElem = poisonStructElement(
+        StructTyWithOffset.first, StructTyWithOffset.second, DL);
+    auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
+    if (PoisonedStructIt == this->PoisonedStructs.end()) {
+      return OrigCall;
+    }
+
+    // If the struct type is poisoned, retrieve the function that was assigned
+    // to this struct element and tag it
+    Function *TaggedF = translateTaggedFunction(PoisonedStructIt->second);
+    return tagCall(OrigCall, TaggedF);
+  } else {
     return OrigCall;
   }
-
-  // If the struct type is poisoned, retrieve the function that was assigned
-  // to this struct element and tag it
-  Function *TaggedF = translateTaggedFunction(PoisonedStructIt->second);
-  return tagCall(OrigCall, TaggedF);
 }
 
 /// Sometimes a program does not call a dynamic memory allocation function
@@ -505,29 +525,41 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF,
 /// must be updated to point to a tagged version of the dynamic memory
 /// allocation function.
 ///
-/// A whitelist of global variables containing allocation wrapper functions can
-/// be passed through as a command-line argument.
+/// Which global variables get tagged is determined by stores of whitelisted
+/// functions.
 GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
   LLVM_DEBUG(dbgs() << "tagging global variable " << *OrigGV << '\n');
 
+  // Cache users
+  SmallVector<User *, 16> Users(OrigGV->user_begin(), OrigGV->user_end());
+
+  // Save the global variable so we can erase it later
+  this->GVsToTag.insert(OrigGV);
+
+  // Translate the global variable to get a tagged version. Since it is a globa;
+  // variable casting to a pointer type is safe (all globals are pointers)
   GlobalVariable *TaggedGV = translateTaggedGlobalVariable(OrigGV);
-  Type *TaggedGVTy = TaggedGV->getValueType();
+  PointerType *TaggedGVTy = cast<PointerType>(TaggedGV->getValueType());
 
   // Replace the initializer (if it exists) with a tagged version
   if (OrigGV->hasInitializer()) {
     auto *OrigInitializer = OrigGV->getInitializer();
 
-    // The initializer must be a function because we are only interested in
-    // global variables that point to dynamic memory allocation functions
-    assert(isa<Function>(OrigInitializer) &&
-           "The initializer must be a function");
-    TaggedGV->setInitializer(
-        translateTaggedFunction(cast<Function>(OrigInitializer)));
+    if (auto *InitializerF = dyn_cast<Function>(OrigInitializer)) {
+      // Tag the initializer function
+      TaggedGV->setInitializer(translateTaggedFunction(InitializerF));
+    } else if (auto *NullPointer =
+                   dyn_cast<ConstantPointerNull>(OrigInitializer)) {
+      // Retype the null pointer initializer
+      TaggedGV->setInitializer(ConstantPointerNull::get(TaggedGVTy));
+    } else {
+      assert(false && "Unsupported global variable initializer");
+    }
   }
 
   // Replace all the users of the global variable. Currently we only deal with
   // loads
-  for (auto *U : OrigGV->users()) {
+  for (auto *U : Users) {
     if (auto *Load = dyn_cast<LoadInst>(U)) {
       // Cache users
       SmallVector<User *, 8> LoadUsers(Load->user_begin(), Load->user_end());
@@ -590,6 +622,19 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
       }
 
       Load->eraseFromParent();
+    } else if (auto *Store = dyn_cast<StoreInst>(U)) {
+      // The only things that should be written to a tagged global variable are
+      // functions that are going to be tagged
+      assert(isa<Function>(Store->getValueOperand()));
+      Function *F = cast<Function>(Store->getValueOperand());
+      assert(isTaggableFunction(F));
+
+      auto *NewStore =
+          new StoreInst(translateTaggedFunction(F), TaggedGV,
+                        Store->isVolatile(), Store->getAlignment(),
+                        Store->getOrdering(), Store->getSyncScopeID(), Store);
+      Store->replaceAllUsesWith(NewStore);
+      Store->eraseFromParent();
     } else {
       // TODO handle other users
       assert(false && "Unsupported global variable user");
@@ -670,27 +715,28 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
       M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
                             Int8PtrTy, this->SizeTTy));
 
-  SmallVector<Function *, 8> FuncsToDelete = {M.getFunction("malloc"),
-                                              M.getFunction("calloc"),
-                                              M.getFunction("realloc")};
+  SmallVector<Function *, 8> FuncsToTag = {M.getFunction("malloc"),
+                                           M.getFunction("calloc"),
+                                           M.getFunction("realloc")};
 
   for (auto &F : M.functions()) {
     if (this->Whitelist.isIn(F)) {
       tagFunction(&F, TLI);
-      FuncsToDelete.push_back(&F);
+      FuncsToTag.push_back(&F);
     }
   }
 
-  for (auto &F : FuncsToDelete) {
+  for (auto &F : FuncsToTag) {
     if (!F) {
       continue;
     }
 
     // Cache users
-    SmallVector<User *, 8> Users(F->user_begin(), F->user_end());
+    SmallVector<User *, 16> Users(F->user_begin(), F->user_end());
 
     for (auto *U : Users) {
-      // This will also poison structs (see below)
+      // This will also poison structs and global variables that are assigned a
+      // tagged function (see below)
       tagUser(U, F, TLI);
     }
   }
@@ -704,53 +750,40 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
-  // Replace whitelisted global variables (that presumably store a pointer to a
-  // memory alloation function) with a tagged version. Mark the original global
-  // variable for deletion
-  SmallVector<GlobalVariable *, 8> GVsToDelete;
-
-  for (auto &GV : M.globals()) {
-    if (this->Whitelist.isIn(GV)) {
-      tagGlobalVariable(&GV);
-
-      GVsToDelete.push_back(&GV);
-    }
-  }
-
   // Replace global aliases pointing to whitelisted functions/global variables
   // to point to a tagged function/global variable instead. Mark the original
   // alias for deletion
-  SmallVector<GlobalAlias *, 8> GAsToDelete;
+  SmallVector<GlobalAlias *, 8> GAsToTag;
 
   for (auto &GA : M.aliases()) {
     if (auto *AliaseeF = dyn_cast<Function>(GA.getAliasee())) {
       if (this->Whitelist.isIn(*AliaseeF)) {
         tagGlobalAlias(&GA);
 
-        GAsToDelete.push_back(&GA);
+        GAsToTag.push_back(&GA);
       }
     }
   }
 
-  // Delete all the things marked for deletion
+  // Delete all the things that have been tagged
 
-  for (auto *GA : GAsToDelete) {
-    assert(GA->getNumUses() == 0 && "Global alias still has uses");
-    GA->eraseFromParent();
-  }
-
-  for (auto *GV : GVsToDelete) {
-    assert(GV->getNumUses() == 0 && "Global variable still has uses");
-    GV->eraseFromParent();
-  }
-
-  for (auto *F : FuncsToDelete) {
+  for (auto *F : FuncsToTag) {
     if (!F) {
       continue;
     }
 
     assert(F->getNumUses() == 0 && "Function still has uses");
     F->eraseFromParent();
+  }
+
+  for (auto *GV : this->GVsToTag) {
+    assert(GV->getNumUses() == 0 && "Global variable still has uses");
+    GV->eraseFromParent();
+  }
+
+  for (auto *GA : GAsToTag) {
+    assert(GA->getNumUses() == 0 && "Global alias still has uses");
+    GA->eraseFromParent();
   }
 
   // Finished!
