@@ -3,6 +3,3 @@ fun:xmlMalloc*
 fun:xmlMemMalloc*
 fun:xmlReallocLoc*
 fun:xmlMemRealloc*
-
-gv:xmlMalloc*
-gv:xmlRealloc*
