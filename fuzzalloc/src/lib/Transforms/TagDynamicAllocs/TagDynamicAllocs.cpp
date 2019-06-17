@@ -92,7 +92,8 @@ private:
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  SmallPtrSet<GlobalVariable *, 16> GVsToTag;
+  SmallPtrSet<GlobalAlias *, 8> GAsToTag;
+  SmallPtrSet<GlobalVariable *, 8> GVsToTag;
   std::map<PoisonedStructElement, const Function *> PoisonedStructs;
 
   ConstantInt *generateTag() const;
@@ -352,6 +353,9 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
     }
 
     return Store;
+  } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
+    // Tag global aliases
+    return tagGlobalAlias(GA);
   } else {
     // TODO handle other users
     assert(false && "Unsupported user");
@@ -654,6 +658,9 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
   LLVM_DEBUG(dbgs() << "tagging global alias " << *OrigGA << '\n');
 
+  // Save the global alias so we can erase it later
+  this->GAsToTag.insert(OrigGA);
+
   Constant *OrigAliasee = OrigGA->getAliasee();
   Constant *NewAliasee = nullptr;
 
@@ -754,22 +761,17 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     }
   }
 
-  // Replace global aliases pointing to whitelisted functions/global variables
-  // to point to a tagged function/global variable instead. Mark the original
-  // alias for deletion
-  SmallVector<GlobalAlias *, 8> GAsToTag;
+  // Delete all the things that have been tagged
 
-  for (auto &GA : M.aliases()) {
-    if (auto *AliaseeF = dyn_cast<Function>(GA.getAliasee())) {
-      if (this->Whitelist.isIn(*AliaseeF)) {
-        tagGlobalAlias(&GA);
-
-        GAsToTag.push_back(&GA);
-      }
-    }
+  for (auto *GA : this->GAsToTag) {
+    assert(GA->getNumUses() == 0 && "Global alias still has uses");
+    GA->eraseFromParent();
   }
 
-  // Delete all the things that have been tagged
+  for (auto *GV : this->GVsToTag) {
+    assert(GV->getNumUses() == 0 && "Global variable still has uses");
+    GV->eraseFromParent();
+  }
 
   for (auto *F : FuncsToTag) {
     if (!F) {
@@ -778,16 +780,6 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
     assert(F->getNumUses() == 0 && "Function still has uses");
     F->eraseFromParent();
-  }
-
-  for (auto *GV : this->GVsToTag) {
-    assert(GV->getNumUses() == 0 && "Global variable still has uses");
-    GV->eraseFromParent();
-  }
-
-  for (auto *GA : GAsToTag) {
-    assert(GA->getNumUses() == 0 && "Global alias still has uses");
-    GA->eraseFromParent();
   }
 
   // Finished!
