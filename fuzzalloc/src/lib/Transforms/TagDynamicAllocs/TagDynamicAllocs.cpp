@@ -170,16 +170,16 @@ getTBAAStructTypeWithOffset(const Instruction *I) {
   // TBAA struct type descriptors are represented as MDNodes with an odd number
   // of operands. Retrieve the struct based on the string in the struct type
   // descriptor (the first operand)
-  if (BaseNode->getNumOperands() % 2 == 1) {
-    const MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
-    StructType *StructTy = I->getModule()->getTypeByName(
-        "struct." + StructTyName->getString().str());
-    assert(StructTy);
+  assert(BaseNode->getNumOperands() % 2 == 1 && "Non-struct access tag");
 
-    return {StructTy, Offset->getSExtValue()};
-  } else {
-    assert(false && "Non-struct access tag");
+  const MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+  StructType *StructTy = I->getModule()->getTypeByName(
+      "struct." + StructTyName->getString().str());
+  if (!StructTy) {
+    return {nullptr, 0};
   }
+
+  return {StructTy, Offset->getSExtValue()};
 }
 
 static TagDynamicAllocs::PoisonedStructElement
@@ -338,6 +338,7 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
       // allocation function to from TBAA metadata. "Poison" the struct and
       // offset so that we can tag it later
       auto StructTyWithOffset = getTBAAStructTypeWithOffset(Store);
+      assert(StructTyWithOffset.first != nullptr);
       auto PoisonedStructElem = poisonStructElement(
           StructTyWithOffset.first, StructTyWithOffset.second, DL);
       this->PoisonedStructs.emplace(PoisonedStructElem, F);
@@ -460,6 +461,9 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
 
   if (hasTBAAMetadata(ObjLoad)) {
     auto StructTyWithOffset = getTBAAStructTypeWithOffset(ObjLoad);
+    if (!StructTyWithOffset.first) {
+      return OrigCall;
+    }
 
     // If the called value did originate from a struct , check if the struct
     // type is poisoned at this offset
