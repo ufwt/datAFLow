@@ -356,6 +356,9 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
   } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
     // Tag global aliases
     return tagGlobalAlias(GA);
+  } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
+    // Tag global variable
+    return tagGlobalVariable(GV);
   } else {
     // TODO handle other users
     assert(false && "Unsupported user");
@@ -542,7 +545,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
   SmallVector<User *, 16> Users(OrigGV->user_begin(), OrigGV->user_end());
 
   // Save the global variable so we can erase it later
-  this->GVsToTag.insert(OrigGV);
+  assert(this->GVsToTag.insert(OrigGV).second);
 
   // Translate the global variable to get a tagged version. Since it is a globa;
   // variable casting to a pointer type is safe (all globals are pointers)
@@ -659,29 +662,30 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
   LLVM_DEBUG(dbgs() << "tagging global alias " << *OrigGA << '\n');
 
   // Save the global alias so we can erase it later
-  this->GAsToTag.insert(OrigGA);
+  assert(this->GAsToTag.insert(OrigGA).second);
 
   Constant *OrigAliasee = OrigGA->getAliasee();
-  Constant *NewAliasee = nullptr;
+  Constant *TaggedAliasee = nullptr;
 
   if (auto *AliaseeF = dyn_cast<Function>(OrigAliasee)) {
-    NewAliasee = translateTaggedFunction(AliaseeF);
+    TaggedAliasee = translateTaggedFunction(AliaseeF);
   } else if (auto *AliaseeGV = dyn_cast<GlobalVariable>(OrigAliasee)) {
-    NewAliasee = translateTaggedGlobalVariable(AliaseeGV);
+    TaggedAliasee = translateTaggedGlobalVariable(AliaseeGV);
   } else {
-    assert(false && "The aliasee must be a function or global variable");
+    assert(false &&
+           "Global alias aliasee must be a function or global variable");
   }
 
-  auto *NewGA = GlobalAlias::create(
-      NewAliasee->getType()->getPointerElementType(),
-      NewAliasee->getType()->getPointerAddressSpace(), OrigGA->getLinkage(),
-      OrigGA->hasName() ? "__tagged_" + OrigGA->getName() : "", NewAliasee,
+  auto *TaggedGA = GlobalAlias::create(
+      TaggedAliasee->getType()->getPointerElementType(),
+      TaggedAliasee->getType()->getPointerAddressSpace(), OrigGA->getLinkage(),
+      OrigGA->hasName() ? "__tagged_" + OrigGA->getName() : "", TaggedAliasee,
       OrigGA->getParent());
 
   // TODO handle users
   assert(OrigGA->getNumUses() == 0 && "Not supported");
 
-  return NewGA;
+  return TaggedGA;
 }
 
 void TagDynamicAllocs::getAnalysisUsage(AnalysisUsage &AU) const {
