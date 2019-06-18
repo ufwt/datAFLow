@@ -14,4 +14,6 @@ add_definitions(-DFUZZALLOC_LLVM_DIR="${FUZZALLOC_LLVM_DIR}"
 
 add_executable(dataflow-clang-fast dataflow-clang-fast.c)
 add_executable(dataflow-clang-fast++ dataflow-clang-fast.c)
+add_executable(dataflow-collect-tags dataflow-collect-tags.c)
+add_executable(dataflow-collect-tags++ dataflow-collect-tags.c)
 add_executable(dataflow-wpa dataflow-wpa.c)

@@ -39,7 +39,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#include "TagDynamicAllocsUtil.h"
+#include "Utils.h"
 #include "debug.h"     // from AFL
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -92,7 +92,7 @@ private:
 
   SmallPtrSet<GlobalAlias *, 8> GAsToTag;
   SmallPtrSet<GlobalVariable *, 8> GVsToTag;
-  std::map<StructElement, const Function *> PoisonedStructs;
+  std::map<StructOffset, const Function *> PoisonedStructs;
 
   ConstantInt *generateTag() const;
 
@@ -181,7 +181,7 @@ getTBAAStructTypeWithOffset(const Instruction *I) {
   return {StructTy, Offset->getSExtValue()};
 }
 
-static StructElement poisonStructElement(StructType *StructTy,
+static StructOffset poisonStructOffset(StructType *StructTy,
                                          int64_t ByteOffset,
                                          const DataLayout &DL) {
   const StructLayout *SL = DL.getStructLayout(StructTy);
@@ -196,7 +196,7 @@ static StructElement poisonStructElement(StructType *StructTy,
   // the element in the inner struct so that we can tag calls to it later
   if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
     if (!ElemStructTy->isOpaque()) {
-      return poisonStructElement(
+      return poisonStructOffset(
           ElemStructTy, ByteOffset - SL->getElementOffset(StructIdx), DL);
     }
   }
@@ -338,7 +338,7 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
       // offset so that we can tag it later
       auto StructTyWithOffset = getTBAAStructTypeWithOffset(Store);
       assert(StructTyWithOffset.first != nullptr);
-      auto PoisonedStructElem = poisonStructElement(
+      auto PoisonedStructElem = poisonStructOffset(
           StructTyWithOffset.first, StructTyWithOffset.second, DL);
       this->PoisonedStructs.emplace(PoisonedStructElem, F);
 
@@ -351,12 +351,12 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
     }
 
     return Store;
-  } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
-    // Tag global aliases
-    return tagGlobalAlias(GA);
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Tag global variable
     return tagGlobalVariable(GV);
+  } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
+    // Tag global aliases
+    return tagGlobalAlias(GA);
   } else {
     // TODO handle other users
     assert(false && "Unsupported user");
@@ -472,7 +472,7 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
 
     // If the called value did originate from a struct , check if the struct
     // type is poisoned at this offset
-    auto PoisonedStructElem = poisonStructElement(
+    auto PoisonedStructElem = poisonStructOffset(
         StructTyWithOffset.first, StructTyWithOffset.second, DL);
     auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
     if (PoisonedStructIt == this->PoisonedStructs.end()) {

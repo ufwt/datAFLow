@@ -17,8 +17,12 @@
 
 namespace llvm {
 class DataLayout;
+class StructType;
 class Value;
 } // namespace llvm
+
+/// A struct type and an offset into that struct
+using StructOffset = std::pair<const llvm::StructType *, unsigned>;
 
 /// Like `GetUnderlyingObject` in ValueTracking analysis, except that it looks
 /// through load instructions
