@@ -1,4 +1,4 @@
-//===-- TagDynamicAllocss.cpp - Tag dynamic memory allocs with unique ID --===//
+//===-- TagDynamicAllocs.cpp - Tag dynamic memory allocs with unique ID ---===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -39,6 +39,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#include "TagDynamicAllocsUtil.h"
 #include "debug.h"     // from AFL
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -78,9 +79,6 @@ public:
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
-public:
-  using PoisonedStructElement = std::pair<const StructType *, unsigned>;
-
 private:
   Function *AbortF;
   Function *FuzzallocMallocF;
@@ -94,7 +92,7 @@ private:
 
   SmallPtrSet<GlobalAlias *, 8> GAsToTag;
   SmallPtrSet<GlobalVariable *, 8> GVsToTag;
-  std::map<PoisonedStructElement, const Function *> PoisonedStructs;
+  std::map<StructElement, const Function *> PoisonedStructs;
 
   ConstantInt *generateTag() const;
 
@@ -183,9 +181,9 @@ getTBAAStructTypeWithOffset(const Instruction *I) {
   return {StructTy, Offset->getSExtValue()};
 }
 
-static TagDynamicAllocs::PoisonedStructElement
-poisonStructElement(StructType *StructTy, int64_t ByteOffset,
-                    const DataLayout &DL) {
+static StructElement poisonStructElement(StructType *StructTy,
+                                         int64_t ByteOffset,
+                                         const DataLayout &DL) {
   const StructLayout *SL = DL.getStructLayout(StructTy);
   unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
   Type *ElemTy = StructTy->getElementType(StructIdx);
