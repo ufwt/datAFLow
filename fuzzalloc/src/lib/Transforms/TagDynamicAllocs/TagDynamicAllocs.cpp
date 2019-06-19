@@ -34,12 +34,11 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#include "Utils.h"
+#include "Common.h"
 #include "debug.h"     // from AFL
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -51,29 +50,14 @@ using namespace llvm;
 #define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
 
 static cl::opt<std::string>
-    ClWhitelist("fuzzalloc-whitelist",
-                cl::desc("Path to memory allocation whitelist file"));
+    ClLogPath("fuzzalloc-tag-log",
+              cl::desc("Path to log file containing values to tag"),
+              cl::Required);
 
 STATISTIC(NumOfTaggedCalls,
           "Number of tagged dynamic memory allocation function calls.");
 
 namespace {
-
-/// Whitelist of dynamic memory allocation wrapper functions
-class FuzzallocWhitelist {
-private:
-  std::unique_ptr<SpecialCaseList> SCL;
-
-public:
-  FuzzallocWhitelist() = default;
-
-  FuzzallocWhitelist(std::unique_ptr<SpecialCaseList> List)
-      : SCL(std::move(List)){};
-
-  bool isIn(const Function &F) const {
-    return SCL && SCL->inSection("fuzzalloc", "fun", F.getName());
-  }
-};
 
 /// TagDynamicAllocs: Tag dynamic memory allocation function calls (\p malloc,
 /// \p calloc and \p realloc) with a randomly-generated identifier (to identify
@@ -85,16 +69,16 @@ private:
   Function *FuzzallocCallocF;
   Function *FuzzallocReallocF;
 
-  FuzzallocWhitelist Whitelist;
-
   IntegerType *TagTy;
   IntegerType *SizeTTy;
 
-  SmallPtrSet<GlobalAlias *, 8> GAsToTag;
-  SmallPtrSet<GlobalVariable *, 8> GVsToTag;
-  std::map<StructOffset, const Function *> PoisonedStructs;
+  SmallPtrSet<Function *, 8> FunctionsToTag;
+  SmallPtrSet<GlobalVariable *, 8> GlobalVariablesToTag;
+  SmallPtrSet<GlobalAlias *, 8> GlobalAliasesToTag;
+  std::map<StructOffset, const Function *> StructOffsetsToTag;
 
   ConstantInt *generateTag() const;
+  void getTaggedValues(const Module &);
 
   bool isTaggableFunction(const Function *) const;
   FunctionType *translateTaggedFunctionType(const FunctionType *) const;
@@ -181,9 +165,8 @@ getTBAAStructTypeWithOffset(const Instruction *I) {
   return {StructTy, Offset->getSExtValue()};
 }
 
-static StructOffset poisonStructOffset(StructType *StructTy,
-                                         int64_t ByteOffset,
-                                         const DataLayout &DL) {
+static StructOffset poisonStructOffset(StructType *StructTy, int64_t ByteOffset,
+                                       const DataLayout &DL) {
   const StructLayout *SL = DL.getStructLayout(StructTy);
   unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
   Type *ElemTy = StructTy->getElementType(StructIdx);
@@ -207,24 +190,28 @@ static StructOffset poisonStructOffset(StructType *StructTy,
   return {StructTy, StructIdx};
 }
 
-static FuzzallocWhitelist getWhitelist() {
-  if (ClWhitelist.empty()) {
-    return FuzzallocWhitelist();
-  }
-
-  if (!sys::fs::exists(ClWhitelist)) {
-    std::string Err;
-    raw_string_ostream Stream(Err);
-    Stream << "fuzzalloc whitelist does not exist at " << ClWhitelist;
-    report_fatal_error(Err);
-  }
-
-  return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
-}
-
 /// Generate a random tag
 ConstantInt *TagDynamicAllocs::generateTag() const {
   return ConstantInt::get(this->TagTy, RAND(INST_TAG_START, TAG_MAX));
+}
+
+void TagDynamicAllocs::getTaggedValues(const Module &M) {
+  auto InputOrErr = MemoryBuffer::getFile(ClLogPath);
+  std::error_code EC = InputOrError.getError();
+  if (EC) {
+    std::string Err;
+    raw_string_ostream Stream(Err);
+    Stream << "Unable to open fuzzalloc tag log at " << ClLogPath << ": "
+           << EC.message();
+    report_fatal_error(Err);
+  }
+
+  SmallVector<StringRef, 16> Lines;
+  StringRef InputData = InputOrErr.get()->getBuffer();
+  InputData.split(Lines, '\n', /* MaxSplit */ -1, /* KeepEmpty */ false);
+
+  for (auto Line : Lines) {
+  }
 }
 
 bool TagDynamicAllocs::isTaggableFunction(const Function *F) const {
@@ -340,7 +327,7 @@ Value *TagDynamicAllocs::tagUser(User *U, Function *F,
       assert(StructTyWithOffset.first != nullptr);
       auto PoisonedStructElem = poisonStructOffset(
           StructTyWithOffset.first, StructTyWithOffset.second, DL);
-      this->PoisonedStructs.emplace(PoisonedStructElem, F);
+      this->StructOffsetsToTag.emplace(PoisonedStructElem, F);
 
       // TODO do something more sensible than forcing a runtime abort. This
       // *should* only kick in if the address of the poisoned struct element is
@@ -472,10 +459,10 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
 
     // If the called value did originate from a struct , check if the struct
     // type is poisoned at this offset
-    auto PoisonedStructElem = poisonStructOffset(
-        StructTyWithOffset.first, StructTyWithOffset.second, DL);
-    auto PoisonedStructIt = this->PoisonedStructs.find(PoisonedStructElem);
-    if (PoisonedStructIt == this->PoisonedStructs.end()) {
+    auto PoisonedStructElem = poisonStructOffset(StructTyWithOffset.first,
+                                                 StructTyWithOffset.second, DL);
+    auto PoisonedStructIt = this->StructOffsetsToTag.find(PoisonedStructElem);
+    if (PoisonedStructIt == this->StructOffsetsToTag.end()) {
       return OrigCall;
     }
 
@@ -543,7 +530,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
   SmallVector<User *, 16> Users(OrigGV->user_begin(), OrigGV->user_end());
 
   // Save the global variable so we can erase it later
-  assert(this->GVsToTag.insert(OrigGV).second);
+  assert(this->GlobalVariablesToTag.insert(OrigGV).second);
 
   // Translate the global variable to get a tagged version. Since it is a globa;
   // variable casting to a pointer type is safe (all globals are pointers)
@@ -660,7 +647,7 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
   LLVM_DEBUG(dbgs() << "tagging global alias " << *OrigGA << '\n');
 
   // Save the global alias so we can erase it later
-  assert(this->GAsToTag.insert(OrigGA).second);
+  assert(this->GlobalAliasesToTag.insert(OrigGA).second);
 
   Constant *OrigAliasee = OrigGA->getAliasee();
   Constant *TaggedAliasee = nullptr;
@@ -696,8 +683,6 @@ bool TagDynamicAllocs::doInitialization(Module &M) {
 
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   this->SizeTTy = DL.getIntPtrType(C);
-
-  this->Whitelist = getWhitelist();
 
   return false;
 }
@@ -765,12 +750,12 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   // Delete all the things that have been tagged
 
-  for (auto *GA : this->GAsToTag) {
+  for (auto *GA : this->GlobalAliasesToTag) {
     assert(GA->getNumUses() == 0 && "Global alias still has uses");
     GA->eraseFromParent();
   }
 
-  for (auto *GV : this->GVsToTag) {
+  for (auto *GV : this->GlobalVariablesToTag) {
     assert(GV->getNumUses() == 0 && "Global variable still has uses");
     GV->eraseFromParent();
   }

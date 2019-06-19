@@ -1,4 +1,4 @@
-//===-- PromoteUtils.cpp - Promote static arrays to mallocs ---------------===//
+//===-- PromoteCommon.h - Promote static arrays to mallocs ----------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,14 +12,15 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/Instructions.h"
+#ifndef FUZZALLOC_PROMOTE_COMMON_H
+#define FUZZALLOC_PROMOTE_COMMON_H
 
-#include "PromoteUtils.h"
+namespace llvm {
+class Instruction;
+class Value;
+} // namespace llvm
 
-using namespace llvm;
+/// Insert a call to \c free for the given alloca
+void insertFree(llvm::Value *, llvm::Instruction *);
 
-void insertFree(Value *MallocPtr, Instruction *Inst) {
-  // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = new LoadInst(MallocPtr, "", Inst);
-  CallInst::CreateFree(LoadMalloc, Inst);
-}
+#endif // FUZZALLOC_PROMOTE_COMMON_H

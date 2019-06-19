@@ -1,4 +1,4 @@
-//===-- Utils.cpp - LLVM transform utils ----------------------------------===//
+//===-- Common.cpp - LLVM transform utils ---------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// LLVM transform utility functions.
+/// Common functionality.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -18,7 +18,7 @@
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/Operator.h"
 
-#include "Utils.h"
+#include "Common.h"
 
 using namespace llvm;
 

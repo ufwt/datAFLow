@@ -1,4 +1,4 @@
-//===-- Utils.h - LLVM transform utils ------------------------------------===//
+//===-- Common.h - LLVM transform utils -----------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,12 +8,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// LLVM transform utility functions.
+/// Common functionality.
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FUZZALLOC_UTILS_H
-#define FUZZALLOC_UTILS_H
+#ifndef FUZZALLOC_COMMON_H
+#define FUZZALLOC_COMMON_H
 
 namespace llvm {
 class DataLayout;
@@ -30,4 +30,4 @@ llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
                                              const llvm::DataLayout &,
                                              unsigned = 6);
 
-#endif // FUZZALLOC_UTILS_H
+#endif // FUZZALLOC_COMMON_H
