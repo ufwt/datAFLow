@@ -1,1 +1,2 @@
+add_subdirectory(CollectTags)
 add_subdirectory(SVFAnalysis)

@@ -34,8 +34,9 @@ static void edit_params(u32 argc, char **argv) {
 
   /* Collect values to tag */
 
-  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/CollectTags/fuzzalloc-collect-tags.so";
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Analysis/CollectTags/fuzzalloc-collect-tags.so";
 
   char *fuzzalloc_tag_log = getenv("FUZZALLOC_TAG_LOG");
   if (fuzzalloc_tag_log) {
