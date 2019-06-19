@@ -15,6 +15,7 @@
 
 #include <map>
 
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -28,6 +29,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "Utils.h"
+#include "debug.h" // from afl
 
 using namespace llvm;
 
@@ -35,11 +37,17 @@ using namespace llvm;
 
 static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
-              cl::desc("Path to log file for values to tag"), cl::Required);
+              cl::desc("Path to log file containing values to tag"),
+              cl::Required);
 
 static cl::opt<std::string>
     ClWhitelist("fuzzalloc-whitelist",
                 cl::desc("Path to memory allocation whitelist file"));
+
+STATISTIC(NumOfFunctions, "Number of functions to tag.");
+STATISTIC(NumOfGlobalVariables, "Number of global variables to tag.");
+STATISTIC(NumOfGlobalAliases, "Number of global aliases to tag.");
+STATISTIC(NumOfStructOffsets, "Number of struct offsets to tag.");
 
 namespace {
 
@@ -64,9 +72,9 @@ class CollectTags : public ModulePass {
 private:
   FuzzallocWhitelist Whitelist;
 
-  SmallPtrSet<const Function *, 16> FunctionsToTag;
-  SmallPtrSet<const GlobalVariable *, 16> GlobalVariablesToTag;
-  SmallPtrSet<const GlobalAlias *, 16> GlobalAliasesToTag;
+  SmallPtrSet<const Function *, 8> FunctionsToTag;
+  SmallPtrSet<const GlobalVariable *, 8> GlobalVariablesToTag;
+  SmallPtrSet<const GlobalAlias *, 8> GlobalAliasesToTag;
   std::map<StructOffset, const Function *> StructOffsetsToTag;
 
   void tagUser(const User *, const Function *, const TargetLibraryInfo *);
@@ -116,7 +124,7 @@ static StructOffset getStructOffset(StructType *StructTy, int64_t ByteOffset,
   // primitive type (ideally, a function pointer).
   //
   // The idea is that the byte offset (read from TBAA access metadata) may
-  // point to some inner struct. If this is the case, then we want to poison
+  // point to some inner struct. If this is the case, then we want to record
   // the element in the inner struct so that we can tag calls to it later
   if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
     if (!ElemStructTy->isOpaque()) {
@@ -125,7 +133,7 @@ static StructOffset getStructOffset(StructType *StructTy, int64_t ByteOffset,
     }
   }
 
-  // The poisoned element must be a function pointer
+  // The recordedd struct element must be a function pointer
   assert(StructTy->getElementType(StructIdx)->isPointerTy());
 
   return {StructTy, StructIdx};
@@ -170,6 +178,7 @@ void CollectTags::tagUser(const User *U, const Function *F,
     if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
       // Store to a global variable
       this->GlobalVariablesToTag.insert(GV);
+      NumOfGlobalVariables++;
     } else {
       //  TODO check that the store is to a struct
 
@@ -181,13 +190,16 @@ void CollectTags::tagUser(const User *U, const Function *F,
       auto StructOff = getStructOffset(StructTyWithOffset.first,
                                        StructTyWithOffset.second, DL);
       this->StructOffsetsToTag.emplace(StructOff, F);
+      NumOfStructOffsets++;
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Global variable user
     this->GlobalVariablesToTag.insert(GV);
+    NumOfGlobalVariables++;
   } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
     // Global alias user
     this->GlobalAliasesToTag.insert(GA);
+    NumOfGlobalAliases++;
   } else {
     assert(false && "Unsupported user");
   }
@@ -201,7 +213,8 @@ void CollectTags::saveTaggedValues(const Module &M) const {
   if (EC) {
     std::string Err;
     raw_string_ostream Stream(Err);
-    Stream << "unable to open fuzzalloc tag log at " << ClLogPath;
+    Stream << "unable to open fuzzalloc tag log at " << ClLogPath << ": "
+           << EC.message();
     report_fatal_error(Err);
   }
 
@@ -254,10 +267,12 @@ bool CollectTags::runOnModule(Module &M) {
 
   this->FunctionsToTag.insert({M.getFunction("malloc"), M.getFunction("calloc"),
                                M.getFunction("realloc")});
+  NumOfFunctions = 3;
 
   for (const auto &F : M.functions()) {
     if (this->Whitelist.isIn(F)) {
       this->FunctionsToTag.insert(&F);
+      NumOfFunctions++;
     }
   }
 
@@ -272,6 +287,26 @@ bool CollectTags::runOnModule(Module &M) {
   }
 
   saveTaggedValues(M);
+
+  if (NumOfFunctions > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfFunctions.getValue(),
+        NumOfFunctions.getName(), NumOfFunctions.getDesc());
+  }
+  if (NumOfGlobalVariables > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfGlobalVariables.getValue(), NumOfGlobalVariables.getName(),
+        NumOfGlobalVariables.getDesc());
+  }
+  if (NumOfGlobalAliases > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfGlobalAliases.getValue(), NumOfGlobalAliases.getName(),
+        NumOfGlobalAliases.getDesc());
+  }
+  if (NumOfStructOffsets > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfStructOffsets.getValue(), NumOfStructOffsets.getName(),
+        NumOfStructOffsets.getDesc());
+  }
 
   return false;
 }
