@@ -255,8 +255,6 @@ TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   assert(isa<Function>(NewC) && "Translated tagged function not a function");
   auto *NewF = cast<Function>(NewC);
 
-  NewF->setMetadata(M->getMDKindID("fuzzalloc.tagged_function"),
-                    MDNode::get(M->getContext(), None));
   return NewF;
 }
 
@@ -352,7 +350,7 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   // Otherwise, generate a new tag. This is determined by reading the metadata
   // of the function
   auto *ParentF = OrigCall->getFunction();
-  Value *Tag = ParentF->hasMetadata("fuzzalloc.tagged_function")
+  Value *Tag = this->FunctionsToTag.count(ParentF) > 0
                    ? ParentF->arg_begin()
                    : static_cast<Value *>(generateTag());
 
