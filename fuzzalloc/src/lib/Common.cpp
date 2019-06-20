@@ -13,9 +13,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/InstructionSimplify.h"
+#include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 
 #include "Common.h"
@@ -73,4 +75,59 @@ Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
   }
 
   return V;
+}
+
+StructOffset getStructOffset(const StructType *StructTy, unsigned ByteOffset,
+                             const DataLayout &DL) {
+  const StructLayout *SL =
+      DL.getStructLayout(const_cast<StructType *>(StructTy));
+  unsigned StructIdx = SL->getElementContainingOffset(ByteOffset);
+  Type *ElemTy = StructTy->getElementType(StructIdx);
+
+  // Handle nested structs. The recursion will eventually bottom out at some
+  // primitive type (ideally, a function pointer).
+  //
+  // The idea is that the byte offset (read from TBAA access metadata) may
+  // point to some inner struct. If this is the case, then we want to record
+  // the element in the inner struct so that we can tag calls to it later
+  if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
+    if (!ElemStructTy->isOpaque()) {
+      return getStructOffset(ElemStructTy,
+                             ByteOffset - SL->getElementOffset(StructIdx), DL);
+    }
+  }
+
+  // The recordedd struct element must be a function pointer
+  assert(StructTy->getElementType(StructIdx)->isPointerTy());
+
+  return {StructTy, StructIdx};
+}
+
+Optional<StructOffset> getStructOffsetFromTBAA(const Instruction *I) {
+  // Retreive the TBAA metadata
+  MemoryLocation ML = MemoryLocation::get(I);
+  AAMDNodes AATags = ML.AATags;
+  const MDNode *TBAA = AATags.TBAA;
+  if (!TBAA) {
+    return None;
+  }
+
+  // Pull apart the access tag
+  const MDNode *BaseNode = dyn_cast<MDNode>(TBAA->getOperand(0));
+  const ConstantInt *Offset =
+      mdconst::dyn_extract<ConstantInt>(TBAA->getOperand(2));
+
+  // TBAA struct type descriptors are represented as MDNodes with an odd number
+  // of operands. Retrieve the struct based on the string in the struct type
+  // descriptor (the first operand)
+  assert(BaseNode->getNumOperands() % 2 == 1 && "Non-struct access tag");
+
+  const MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+  StructType *StructTy = I->getModule()->getTypeByName(
+      "struct." + StructTyName->getString().str());
+  if (!StructTy) {
+    return None;
+  }
+
+  return Optional<StructOffset>({StructTy, Offset->getSExtValue()});
 }

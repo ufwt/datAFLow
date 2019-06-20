@@ -116,11 +116,11 @@ static void edit_params(u32 argc, char **argv) {
       "-fplugin=" FUZZALLOC_LLVM_DIR
       "/Transforms/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
 
-  char *fuzzalloc_whitelist = getenv("FUZZALLOC_WHITELIST");
-  if (fuzzalloc_whitelist) {
+  char *fuzzalloc_tag_log = getenv("FUZZALLOC_TAG_LOG");
+  if (fuzzalloc_tag_log) {
     cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = alloc_printf("-fuzzalloc-whitelist=%s",
-                                           fuzzalloc_whitelist);
+    cc_params[cc_par_cnt++] =
+        alloc_printf("-fuzzalloc-tag-log=%s", fuzzalloc_tag_log);
   }
 
   /* Instrument pointer dereferences */
