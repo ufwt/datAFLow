@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow tag"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -21,6 +21,8 @@ FUZZ_CXXFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address
 CORPUS=CORPUS-$EXECUTABLE_NAME_BASE
 JOBS=${JOBS:-"8"}
 
+export LIB_FUZZING_ENGINE="libFuzzingEngine-${FUZZING_ENGINE}.a"
+
 if [[ $FUZZING_ENGINE == "fsanitize_fuzzer" ]]; then
   FSANITIZE_FUZZER_FLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address,fuzzer-no-link -fsanitize-address-use-after-scope"
   export CFLAGS=${CFLAGS:-$FSANITIZE_FUZZER_FLAGS}
@@ -33,8 +35,10 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export AFL_PATH=${AFL_SRC}
   export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
 
-  if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
-    export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
+  if [ -z $FUZZALLOC_TAG_LOG ]; then
+    echo "Error: FUZZALLOC_TAG_LOG environment variable not specified" && exit 1
+  elif [ ! -f $FUZZALLOC_TAG_LOG ]; then
+    echo "Error: Invalid tag log file at $FUZZALLOC_TAG_LOG" && exit 1
   fi
 
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
@@ -51,6 +55,24 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   fi
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
+elif [[ $FUZZING_ENGINE == "tag" ]]; then
+  export LIB_FUZZING_ENGINE=""
+  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
+
+  if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
+    export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
+  fi
+
+  export FUZZALLOC_TAG_LOG="$(basename $SCRIPT_DIR).tags"
+
+  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags"
+  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags++"
+
+  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags}
+  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags}
+
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "afl" ]]; then
   export AFL_PATH=${AFL_SRC}
 
@@ -72,7 +94,6 @@ fi
 export CC=${CC:-"clang"}
 export CXX=${CXX:-"clang++"}
 export CPPFLAGS=${CPPFLAGS:-"-DFUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION"}
-export LIB_FUZZING_ENGINE="libFuzzingEngine-${FUZZING_ENGINE}.a"
 
 get_git_revision() {
   GIT_REPO="$1"
@@ -99,6 +120,10 @@ build_datAFLow() {
   clang++ $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
   ar r $LIB_FUZZING_ENGINE afl_driver.o
   rm *.o
+}
+
+build_tag() {
+  true
 }
 
 build_afl() {
