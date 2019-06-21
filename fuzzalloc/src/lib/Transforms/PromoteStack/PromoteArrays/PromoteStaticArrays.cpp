@@ -158,7 +158,7 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
 
   SmallVector<User *, 4> Users(ConstExpr->user_begin(), ConstExpr->user_end());
 
-  // At this pont, all of the users must be instructions. We can just insert a
+  // At this point, all of the users must be instructions. We can just insert a
   // new instruction representing the constant expression before each user
   for (auto *U : Users) {
     if (auto *PHI = dyn_cast<PHINode>(U)) {
@@ -310,10 +310,10 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(
           Store->getPointerOperandType()->getPointerElementType();
 
       // Only cast the new alloca if the types don't match
-      auto *AllocaReplace =
-          (StorePtrElemTy == NewAllocaTy)
-              ? static_cast<Instruction *>(NewAlloca)
-              : new BitCastInst(NewAlloca, StorePtrElemTy, "", Store);
+      auto *AllocaReplace = (StorePtrElemTy == NewAllocaTy)
+                                ? static_cast<Instruction *>(NewAlloca)
+                                : CastInst::CreatePointerCast(
+                                      NewAlloca, StorePtrElemTy, "", Store);
 
       U->replaceUsesOfWith(Alloca, AllocaReplace);
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
@@ -330,7 +330,7 @@ AllocaInst *PromoteStaticArrays::promoteAlloca(
       auto *AllocaReplace =
           (SelectTy == NewAllocaTy)
               ? static_cast<Instruction *>(NewAlloca)
-              : new BitCastInst(NewAlloca, SelectTy, "", Select);
+              : CastInst::CreatePointerCast(NewAlloca, SelectTy, "", Select);
 
       U->replaceUsesOfWith(Alloca, AllocaReplace);
     } else {

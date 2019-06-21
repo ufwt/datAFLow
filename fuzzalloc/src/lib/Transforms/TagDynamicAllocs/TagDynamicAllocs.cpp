@@ -77,6 +77,8 @@ private:
   SmallPtrSet<GlobalAlias *, 8> GlobalAliasesToTag;
   std::map<StructOffset, const Function *> StructOffsetsToTag;
 
+  Constant *castAbort(Type *) const;
+
   ConstantInt *generateTag() const;
   void getTaggedValues(const Module &);
 
@@ -130,6 +132,10 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
                             bool LookThroughBitCast = false) {
   return isAllocationFn(V, TLI, LookThroughBitCast) &&
          !isAllocLikeFn(V, TLI, LookThroughBitCast);
+}
+
+Constant *TagDynamicAllocs::castAbort(Type *Ty) const {
+  return ConstantExpr::getBitCast(this->AbortF, Ty);
 }
 
 /// Generate a random tag
@@ -302,12 +308,26 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     } else if (isReallocLikeFn(Call, TLI)) {
       NewF = this->FuzzallocReallocF;
     } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
-      // Must be a custom wrapper function
-      NewF = translateTaggedFunction(CalledFunc);
+      if (this->FunctionsToTag.count(CalledFunc) > 0) {
+        // The user is the called function itself. Tag the function call
+        NewF = translateTaggedFunction(CalledFunc);
+      } else {
+        // The user of a dynamic allocation function must be an argument to the
+        // function
+        //
+        // There isn't much we can do in this case (because we do not perform an
+        // interprocedural analysis) except to replace the function pointer with
+        // a pointer to the abort function and handle this at runtime
+
+        // TODO
+        assert(false);
+      }
     }
 
     // Replace the original dynamic memory allocation function call
-    tagCall(Call, NewF);
+    if (NewF) {
+      tagCall(Call, NewF);
+    }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
       // Tag stores to global variables
@@ -318,9 +338,7 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
       // TODO do something more sensible than forcing a runtime abort. This
       // *should* only kick in if the address of the poisoned struct element is
       // taken
-      auto *AbortCast =
-          CastInst::CreatePointerCast(this->AbortF, F->getType(), "", Store);
-      Store->replaceUsesOfWith(F, AbortCast);
+      Store->replaceUsesOfWith(F, castAbort(F->getType()));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Tag global variables
@@ -363,19 +381,13 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   Value *CastNewCallee;
   IRBuilder<> IRB(OrigCall);
 
-  if (auto *ConstExpr = dyn_cast<ConstantExpr>(OrigCall->getCalledValue())) {
+  if (auto *BitCast = dyn_cast<BitCastOperator>(OrigCall->getCalledValue())) {
     // Sometimes the result of the original dynamic memory allocation function
-    // call is cast to some other pointer type. Because this is a function
-    // call, the underlying type should still be a FunctionType (which we check
-    // in the various asserts)
-
-    // XXX assume that function calls to dynamic memory allocation functions can
-    // only be bitcast
-    auto *BitCast = cast<BitCastInst>(ConstExpr->getAsInstruction());
-
-    assert(isa<FunctionType>(BitCast->getDestTy()->getPointerElementType()) &&
-           "Must be a function call bitcast");
+    // call is cast to some other pointer type. because this is a function
+    // call, the underlying type should still be a function type
     Type *OrigBitCastTy = BitCast->getDestTy()->getPointerElementType();
+    assert(isa<FunctionType>(OrigBitCastTy) &&
+           "Must be a function call bitcast");
 
     // Add the tag (i.e., the call site identifier) as the first argument to
     // the cast function type
@@ -384,10 +396,6 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 
     // The callee is a cast version of the tagged function
     CastNewCallee = IRB.CreateBitCast(NewCallee, NewBitCastTy->getPointerTo());
-
-    // getAsInstruction leaves the instruction floating around and unattached to
-    // anything, so we must manually delete it
-    BitCast->deleteValue();
   } else {
     // The function call result was not cast, so there is no need to do
     // anything to the callee
@@ -596,16 +604,31 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
     } else if (auto *Store = dyn_cast<StoreInst>(U)) {
       // The only things that should be written to a tagged global variable are
       // functions that are going to be tagged
-      assert(isa<Function>(Store->getValueOperand()));
-      Function *F = cast<Function>(Store->getValueOperand());
-      assert(isTaggableFunction(F));
+      if (auto *F = dyn_cast<Function>(Store->getValueOperand())) {
+        assert(isTaggableFunction(F));
+        auto *NewStore =
+            new StoreInst(translateTaggedFunction(F), TaggedGV,
+                          Store->isVolatile(), Store->getAlignment(),
+                          Store->getOrdering(), Store->getSyncScopeID(), Store);
+        Store->replaceAllUsesWith(NewStore);
+        Store->eraseFromParent();
+      } else {
+        // We cannot determine anything about the value being stored - just
+        // replace it with the abort function and hope for the best
+        Store->replaceUsesOfWith(OrigGV, castAbort(OrigGV->getType()));
+      }
+    } else if (auto *BitCast = dyn_cast<BitCastOperator>(U)) {
+      // Cache users
+      SmallVector<User *, 16> BitCastUsers(BitCast->user_begin(),
+                                           BitCast->user_end());
 
-      auto *NewStore =
-          new StoreInst(translateTaggedFunction(F), TaggedGV,
-                        Store->isVolatile(), Store->getAlignment(),
-                        Store->getOrdering(), Store->getSyncScopeID(), Store);
-      Store->replaceAllUsesWith(NewStore);
-      Store->eraseFromParent();
+      for (auto *BCU : BitCastUsers) {
+        assert(isa<Instruction>(BCU));
+        auto *NewBitCast = CastInst::CreateBitOrPointerCast(
+            TaggedGV, BitCast->getDestTy(), "", cast<Instruction>(BCU));
+        BCU->replaceUsesOfWith(BitCast, NewBitCast);
+      }
+      BitCast->deleteValue();
     } else {
       // TODO handle other users
       assert(false && "Unsupported global variable user");
