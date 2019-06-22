@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow tag"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl coverage fsanitize_fuzzer hooks datAFLow tags"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -38,7 +38,7 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   if [ -z $FUZZALLOC_TAG_LOG ]; then
     echo "Error: FUZZALLOC_TAG_LOG environment variable not specified" && exit 1
   elif [ ! -f $FUZZALLOC_TAG_LOG ]; then
-    echo "Error: Invalid tag log file at $FUZZALLOC_TAG_LOG" && exit 1
+    echo "Error: Invalid tag log file in $FUZZALLOC_TAG_LOG" && exit 1
   fi
 
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
@@ -55,7 +55,7 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   fi
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
-elif [[ $FUZZING_ENGINE == "tag" ]]; then
+elif [[ $FUZZING_ENGINE == "tags" ]]; then
   export LIB_FUZZING_ENGINE=""
   export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
 
@@ -63,13 +63,13 @@ elif [[ $FUZZING_ENGINE == "tag" ]]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
   fi
 
-  export FUZZALLOC_TAG_LOG="$(basename $SCRIPT_DIR).tags"
+  export FUZZALLOC_TAG_LOG="$(basename $SCRIPT_DIR)-tag-sites.csv"
 
-  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags"
-  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags++"
+  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
+  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
 
-  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags}
-  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tags}
+  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites}
+  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites}
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
@@ -122,7 +122,7 @@ build_datAFLow() {
   rm *.o
 }
 
-build_tag() {
+build_tags() {
   true
 }
 

@@ -1,4 +1,4 @@
-//===-- CollectTags.cpp - Collects values to tag in later passes ----------===//
+//===-- CollectTagSites.cpp - Collects sites to tag in later passes -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -32,7 +32,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-collect-tags"
+#define DEBUG_TYPE "fuzzalloc-collect-tag-sites"
 
 static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
@@ -67,7 +67,7 @@ public:
 };
 
 /// Log values that require tagging later on
-class CollectTags : public ModulePass {
+class CollectTagSites : public ModulePass {
 private:
   FuzzallocWhitelist Whitelist;
 
@@ -77,11 +77,11 @@ private:
   std::map<StructOffset, const Function *> StructOffsetsToTag;
 
   void tagUser(const User *, const Function *, const TargetLibraryInfo *);
-  void saveTaggedValues(const Module &) const;
+  void saveTagSites(const Module &) const;
 
 public:
   static char ID;
-  CollectTags() : ModulePass(ID) {}
+  CollectTagSites() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
   bool doInitialization(Module &) override;
@@ -90,7 +90,7 @@ public:
 
 } // anonymous namespace
 
-char CollectTags::ID = 0;
+char CollectTagSites::ID = 0;
 
 static FuzzallocWhitelist getWhitelist() {
   if (ClWhitelist.empty()) {
@@ -107,8 +107,8 @@ static FuzzallocWhitelist getWhitelist() {
   return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
 }
 
-void CollectTags::tagUser(const User *U, const Function *F,
-                          const TargetLibraryInfo *TLI) {
+void CollectTagSites::tagUser(const User *U, const Function *F,
+                              const TargetLibraryInfo *TLI) {
   if (auto *Call = dyn_cast<CallInst>(U)) {
     // Ignore calls for now - we can just tag them directly
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
@@ -145,7 +145,7 @@ void CollectTags::tagUser(const User *U, const Function *F,
   }
 }
 
-void CollectTags::saveTaggedValues(const Module &M) const {
+void CollectTagSites::saveTagSites(const Module &M) const {
   std::error_code EC;
   raw_fd_ostream Output(ClLogPath, EC,
                         sys::fs::OpenFlags::OF_Text |
@@ -191,17 +191,17 @@ void CollectTags::saveTaggedValues(const Module &M) const {
   }
 }
 
-void CollectTags::getAnalysisUsage(AnalysisUsage &AU) const {
+void CollectTagSites::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool CollectTags::doInitialization(Module &M) {
+bool CollectTagSites::doInitialization(Module &M) {
   this->Whitelist = getWhitelist();
 
   return false;
 }
 
-bool CollectTags::runOnModule(Module &M) {
+bool CollectTagSites::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
@@ -235,7 +235,7 @@ bool CollectTags::runOnModule(Module &M) {
   }
 
   // Save the collected values
-  saveTaggedValues(M);
+  saveTagSites(M);
 
   if (NumOfFunctions > 0) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfFunctions.getValue(),
@@ -260,19 +260,19 @@ bool CollectTags::runOnModule(Module &M) {
   return false;
 }
 
-static RegisterPass<CollectTags> X("fuzzalloc-collect-tags",
-                                   "Collect values that will require tagging",
-                                   false, false);
+static RegisterPass<CollectTagSites>
+    X("fuzzalloc-collect-tag-sites", "Collect values that will require tagging",
+      false, false);
 
-static void registerCollectTagsPass(const PassManagerBuilder &,
-                                    legacy::PassManagerBase &PM) {
-  PM.add(new CollectTags());
+static void registerCollectTagSitesPass(const PassManagerBuilder &,
+                                        legacy::PassManagerBase &PM) {
+  PM.add(new CollectTagSites());
 }
 
 static RegisterStandardPasses
-    RegisterCollectTagsPass(PassManagerBuilder::EP_OptimizerLast,
-                            registerCollectTagsPass);
+    RegisterCollectTagSitesPass(PassManagerBuilder::EP_OptimizerLast,
+                                registerCollectTagSitesPass);
 
 static RegisterStandardPasses
-    RegisterCollectTagsPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                             registerCollectTagsPass);
+    RegisterCollectTagSitesPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                 registerCollectTagSitesPass);

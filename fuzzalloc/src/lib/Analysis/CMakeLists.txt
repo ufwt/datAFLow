@@ -1,2 +1,2 @@
-add_subdirectory(CollectTags)
+add_subdirectory(CollectTagSites)
 add_subdirectory(SVFAnalysis)
