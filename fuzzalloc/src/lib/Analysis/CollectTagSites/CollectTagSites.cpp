@@ -69,6 +69,7 @@ public:
 /// Log values that require tagging later on
 class CollectTagSites : public ModulePass {
 private:
+  Module *M;
   FuzzallocWhitelist Whitelist;
 
   SmallPtrSet<const Function *, 8> FunctionsToTag;
@@ -77,7 +78,7 @@ private:
   std::map<StructOffset, const Function *> StructOffsetsToTag;
 
   void tagUser(const User *, const Function *, const TargetLibraryInfo *);
-  void saveTagSites(const Module &) const;
+  void saveTagSites() const;
 
 public:
   static char ID;
@@ -141,11 +142,17 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
     this->GlobalAliasesToTag.insert(GA);
     NumOfGlobalAliases++;
   } else {
-    assert(false && "Unsupported user");
+    // Warn on unsupported users
+    std::string UserStr;
+    raw_string_ostream OS(UserStr);
+    OS << *U;
+
+    WARNF("[%s] Unsupported user %s", this->M->getName().str().c_str(),
+          UserStr.c_str());
   }
 }
 
-void CollectTagSites::saveTagSites(const Module &M) const {
+void CollectTagSites::saveTagSites() const {
   std::error_code EC;
   raw_fd_ostream Output(ClLogPath, EC,
                         sys::fs::OpenFlags::OF_Text |
@@ -159,7 +166,7 @@ void CollectTagSites::saveTagSites(const Module &M) const {
   }
 
   // Add a comment
-  Output << CommentStart << M.getName() << '\n';
+  Output << CommentStart << this->M->getName() << '\n';
 
   // Save functions
   for (auto *F : this->FunctionsToTag) {
@@ -196,6 +203,7 @@ void CollectTagSites::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool CollectTagSites::doInitialization(Module &M) {
+  this->M = &M;
   this->Whitelist = getWhitelist();
 
   return false;
@@ -235,7 +243,7 @@ bool CollectTagSites::runOnModule(Module &M) {
   }
 
   // Save the collected values
-  saveTagSites(M);
+  saveTagSites();
 
   if (NumOfFunctions > 0) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfFunctions.getValue(),
