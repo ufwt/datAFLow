@@ -66,6 +66,9 @@ elif [[ $FUZZING_ENGINE == "tags" ]]; then
     echo "Error: FUZZALLOC_TAG_LOG environment variable not specified. This must be an absolute path" && exit 1
   fi
 
+  # Disable parallel build so the tag log doesn't get clobbered
+  JOBS="1"
+
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
   export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
 
