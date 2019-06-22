@@ -30,6 +30,7 @@ const char *const FunctionLogPrefix = "fun";
 const char *const GlobalVariableLogPrefix = "gv";
 const char *const GlobalAliasLogPrefix = "ga";
 const char *const StructOffsetLogPrefix = "struct";
+const char *const FunctionArgLogPrefix = "arg_fun";
 
 /// A struct type and the offset of an element in that struct
 using StructOffset = std::pair<const llvm::StructType *, unsigned>;

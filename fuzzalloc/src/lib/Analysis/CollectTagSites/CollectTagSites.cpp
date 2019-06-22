@@ -47,6 +47,7 @@ STATISTIC(NumOfFunctions, "Number of functions to tag.");
 STATISTIC(NumOfGlobalVariables, "Number of global variables to tag.");
 STATISTIC(NumOfGlobalAliases, "Number of global aliases to tag.");
 STATISTIC(NumOfStructOffsets, "Number of struct offsets to tag.");
+STATISTIC(NumOfFunctionArgs, "Number of function arguments to tag.");
 
 namespace {
 
@@ -76,6 +77,7 @@ private:
   SmallPtrSet<const GlobalVariable *, 8> GlobalVariablesToTag;
   SmallPtrSet<const GlobalAlias *, 8> GlobalAliasesToTag;
   std::map<StructOffset, const Function *> StructOffsetsToTag;
+  SmallPtrSet<const Argument *, 8> FunctionArgsToTag;
 
   void tagUser(const User *, const Function *, const TargetLibraryInfo *);
   void saveTagSites() const;
@@ -111,7 +113,24 @@ static FuzzallocWhitelist getWhitelist() {
 void CollectTagSites::tagUser(const User *U, const Function *F,
                               const TargetLibraryInfo *TLI) {
   if (auto *Call = dyn_cast<CallInst>(U)) {
-    // Ignore calls for now - we can just tag them directly
+    // The result of a dynamic memory allocation function call is typically
+    // cast. Strip this cast to determine the actual function being called
+    auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
+
+    // Ignore calls to dynamic memory allocation functions - we can just tag
+    // them directly later
+    if (CalledValue == F) {
+      return;
+    }
+
+    // Otherwise the user must be a function argument
+    for (unsigned I = 0; I < Call->getNumArgOperands(); ++I) {
+      if (Call->getArgOperand(I) == F) {
+        this->FunctionArgsToTag.insert(
+            cast<Function>(CalledValue)->arg_begin() + I);
+        NumOfFunctionArgs++;
+      }
+    }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     const Module *M = F->getParent();
     const DataLayout &DL = M->getDataLayout();
@@ -196,6 +215,13 @@ void CollectTagSites::saveTagSites() const {
     Output << StructOffsetLogPrefix << LogSeparator << StructTy->getName()
            << LogSeparator << Offset << LogSeparator << F->getName() << '\n';
   }
+
+  // Save function arguments
+  for (auto *Arg : this->FunctionArgsToTag) {
+    Output << FunctionArgLogPrefix << LogSeparator
+           << Arg->getParent()->getName() << LogSeparator << Arg->getArgNo()
+           << '\n';
+  }
 }
 
 void CollectTagSites::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -248,6 +274,11 @@ bool CollectTagSites::runOnModule(Module &M) {
   if (NumOfFunctions > 0) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfFunctions.getValue(),
         NumOfFunctions.getName(), NumOfFunctions.getDesc());
+  }
+  if (NumOfFunctionArgs > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfFunctionArgs.getValue(), NumOfFunctionArgs.getName(),
+        NumOfFunctionArgs.getDesc());
   }
   if (NumOfGlobalVariables > 0) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(),

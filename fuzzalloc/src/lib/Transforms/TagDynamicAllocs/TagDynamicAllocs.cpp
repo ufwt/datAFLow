@@ -76,6 +76,7 @@ private:
   SmallPtrSet<GlobalVariable *, 8> GlobalVariablesToTag;
   SmallPtrSet<GlobalAlias *, 8> GlobalAliasesToTag;
   std::map<StructOffset, const Function *> StructOffsetsToTag;
+  SmallPtrSet<Argument *, 8> FunctionArgsToTag;
 
   Constant *castAbort(Type *) const;
 
@@ -213,6 +214,22 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       }
 
       this->StructOffsetsToTag.emplace(std::make_pair(StructTy, Offset), F);
+    } else if (Line.startswith(FunctionArgLogPrefix)) {
+      // Parse function argument
+      SmallVector<StringRef, 3> FAString;
+      Line.split(FAString, LogSeparator);
+
+      auto *F = M.getFunction(FAString[1]);
+      if (!F) {
+        continue;
+      }
+
+      unsigned ArgIdx;
+      if (FAString[2].getAsInteger(10, ArgIdx)) {
+        continue;
+      }
+
+      this->FunctionArgsToTag.insert(F->arg_begin() + ArgIdx);
     }
   }
 }
@@ -347,7 +364,7 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     tagGlobalAlias(GA);
   } else {
     // TODO handle other users
-    assert(false && "Unsupported user");
+    assert(false && "Unsupported dynamic allocation function user");
   }
 }
 
@@ -595,7 +612,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
           }
         } else {
           // TODO handle other users
-          assert(false && "Unsupported user");
+          assert(false && "Unsupported global variable load user");
         }
       }
 
