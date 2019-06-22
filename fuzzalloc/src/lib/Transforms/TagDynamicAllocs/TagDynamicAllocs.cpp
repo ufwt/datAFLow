@@ -64,6 +64,7 @@ namespace {
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
 private:
+  Module *Mod;
   Function *AbortF;
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
@@ -81,7 +82,7 @@ private:
   Constant *castAbort(Type *) const;
 
   ConstantInt *generateTag() const;
-  void getTaggedValues(const Module &);
+  void getTagSites();
 
   bool isTaggableFunction(const Function *) const;
   bool isCustomAllocationFunction(const Function *) const;
@@ -144,7 +145,7 @@ ConstantInt *TagDynamicAllocs::generateTag() const {
   return ConstantInt::get(this->TagTy, RAND(INST_TAG_START, TAG_MAX));
 }
 
-void TagDynamicAllocs::getTaggedValues(const Module &M) {
+void TagDynamicAllocs::getTagSites() {
   auto InputOrErr = MemoryBuffer::getFile(ClLogPath);
   std::error_code EC = InputOrErr.getError();
   if (EC) {
@@ -165,7 +166,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       SmallVector<StringRef, 2> FString;
       Line.split(FString, LogSeparator);
 
-      auto *F = M.getFunction(FString[1]);
+      auto *F = this->Mod->getFunction(FString[1]);
       if (!F) {
         continue;
       }
@@ -176,7 +177,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       SmallVector<StringRef, 2> GVString;
       Line.split(GVString, LogSeparator);
 
-      auto *GV = M.getGlobalVariable(GVString[1]);
+      auto *GV = this->Mod->getGlobalVariable(GVString[1]);
       if (!GV) {
         continue;
       }
@@ -187,7 +188,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       SmallVector<StringRef, 2> GAString;
       Line.split(GAString, LogSeparator);
 
-      auto *GA = M.getNamedAlias(GAString[1]);
+      auto *GA = this->Mod->getNamedAlias(GAString[1]);
       if (!GA) {
         continue;
       }
@@ -198,7 +199,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       SmallVector<StringRef, 4> SOString;
       Line.split(SOString, LogSeparator);
 
-      auto *StructTy = M.getTypeByName(SOString[1]);
+      auto *StructTy = this->Mod->getTypeByName(SOString[1]);
       if (!StructTy) {
         continue;
       }
@@ -208,7 +209,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
         continue;
       }
 
-      auto *F = M.getFunction(SOString[3]);
+      auto *F = this->Mod->getFunction(SOString[3]);
       if (!F) {
         continue;
       }
@@ -219,7 +220,7 @@ void TagDynamicAllocs::getTaggedValues(const Module &M) {
       SmallVector<StringRef, 3> FAString;
       Line.split(FAString, LogSeparator);
 
-      auto *F = M.getFunction(FAString[1]);
+      auto *F = this->Mod->getFunction(FAString[1]);
       if (!F) {
         continue;
       }
@@ -336,6 +337,9 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
         // interprocedural analysis) except to replace the function pointer with
         // a pointer to the abort function and handle this at runtime
 
+        WARNF("[%s] Replacing %s function argument with an abort",
+              this->Mod->getName().str().c_str(),
+              CalledFunc->getName().str().c_str());
         U->replaceUsesOfWith(F, castAbort(F->getType()->getPointerTo()));
       }
     }
@@ -354,6 +358,12 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
       // TODO do something more sensible than forcing a runtime abort. This
       // *should* only kick in if the address of the struct element containing
       // the memory allocation function is taken
+      std::string PtrOpStr;
+      raw_string_ostream OS(PtrOpStr);
+      OS << *Store->getPointerOperand();
+
+      WARNF("[%s] Replacing store to %s with an abort",
+            this->Mod->getName().str().c_str(), PtrOpStr.c_str());
       Store->replaceUsesOfWith(F, castAbort(F->getType()));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
@@ -363,8 +373,14 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     // Tag global aliases
     tagGlobalAlias(GA);
   } else {
-    // TODO handle other users
-    assert(false && "Unsupported dynamic allocation function user");
+    // Warn on unsupported user and replace with an undef value
+    std::string UserStr;
+    raw_string_ostream OS(UserStr);
+    OS << *U;
+
+    WARNF("[%s] Replacing unsupported user %s with an abort",
+          this->Mod->getName().str().c_str(), UserStr.c_str());
+    U->replaceUsesOfWith(F, castAbort(F->getType()->getPointerTo()));
   }
 }
 
@@ -422,9 +438,8 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   auto TaggedCall = IRB.CreateCall(
       CastNewCallee, FuzzallocArgs,
       OrigCall->hasName() ? "__tagged_" + OrigCall->getName() : "");
-  TaggedCall->setMetadata(
-      TaggedCall->getModule()->getMDKindID("fuzzalloc.tagged_alloc"),
-      MDNode::get(IRB.getContext(), None));
+  TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
+                          MDNode::get(IRB.getContext(), None));
   NumOfTaggedCalls++;
 
   // Replace the users of the original call
@@ -447,8 +462,7 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
                     << " (in function " << OrigCall->getFunction()->getName()
                     << ")\n");
 
-  const Module *M = OrigCall->getModule();
-  const DataLayout &DL = M->getDataLayout();
+  const DataLayout &DL = this->Mod->getDataLayout();
   auto *CalledValue = OrigCall->getCalledValue();
 
   // Get the source of the indirect call. If the called value didn't come from a
@@ -631,6 +645,9 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
       } else {
         // We cannot determine anything about the value being stored - just
         // replace it with the abort function and hope for the best
+        WARNF("[%s] Replacing store to %s with an abort",
+              this->Mod->getName().str().c_str(),
+              OrigGV->getName().str().c_str());
         Store->replaceUsesOfWith(OrigGV, castAbort(OrigGV->getType()));
       }
     } else if (auto *BitCast = dyn_cast<BitCastOperator>(U)) {
@@ -692,6 +709,7 @@ bool TagDynamicAllocs::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
+  this->Mod = &M;
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   this->SizeTTy = DL.getIntPtrType(C);
 
@@ -725,7 +743,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
                             Int8PtrTy, this->SizeTTy));
 
   // Figure out what we need to tag
-  getTaggedValues(M);
+  getTagSites();
 
   // Tag all the things
 

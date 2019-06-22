@@ -70,7 +70,7 @@ public:
 /// Log values that require tagging later on
 class CollectTagSites : public ModulePass {
 private:
-  Module *M;
+  Module *Mod;
   FuzzallocWhitelist Whitelist;
 
   SmallPtrSet<const Function *, 8> FunctionsToTag;
@@ -132,8 +132,7 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
       }
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
-    const Module *M = F->getParent();
-    const DataLayout &DL = M->getDataLayout();
+    const DataLayout &DL = this->Mod->getDataLayout();
 
     if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
       // Store to a global variable
@@ -166,7 +165,7 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
     raw_string_ostream OS(UserStr);
     OS << *U;
 
-    WARNF("[%s] Unsupported user %s", this->M->getName().str().c_str(),
+    WARNF("[%s] Unsupported user %s", this->Mod->getName().str().c_str(),
           UserStr.c_str());
   }
 }
@@ -185,7 +184,7 @@ void CollectTagSites::saveTagSites() const {
   }
 
   // Add a comment
-  Output << CommentStart << this->M->getName() << '\n';
+  Output << CommentStart << this->Mod->getName() << '\n';
 
   // Save functions
   for (auto *F : this->FunctionsToTag) {
@@ -229,7 +228,7 @@ void CollectTagSites::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool CollectTagSites::doInitialization(Module &M) {
-  this->M = &M;
+  this->Mod = &M;
   this->Whitelist = getWhitelist();
 
   return false;
