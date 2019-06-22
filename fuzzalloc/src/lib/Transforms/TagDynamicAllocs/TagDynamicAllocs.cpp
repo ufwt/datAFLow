@@ -313,14 +313,13 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
         NewF = translateTaggedFunction(CalledFunc);
       } else {
         // The user of a dynamic allocation function must be an argument to the
-        // function
+        // function call
         //
         // There isn't much we can do in this case (because we do not perform an
         // interprocedural analysis) except to replace the function pointer with
         // a pointer to the abort function and handle this at runtime
 
-        // TODO
-        assert(false);
+        U->replaceUsesOfWith(F, castAbort(F->getType()->getPointerTo()));
       }
     }
 
@@ -336,8 +335,8 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
       // TODO check that this store is to a struct in StructOffsetsToTag
 
       // TODO do something more sensible than forcing a runtime abort. This
-      // *should* only kick in if the address of the poisoned struct element is
-      // taken
+      // *should* only kick in if the address of the struct element containing
+      // the memory allocation function is taken
       Store->replaceUsesOfWith(F, castAbort(F->getType()));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
