@@ -56,14 +56,15 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "tags" ]]; then
-  export LIB_FUZZING_ENGINE=""
   export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
 
   if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
   fi
 
-  export FUZZALLOC_TAG_LOG="$(basename $SCRIPT_DIR)-tag-sites.csv"
+  if [ -z $FUZZALLOC_TAG_LOG ]; then
+    echo "Error: FUZZALLOC_TAG_LOG environment variable not specified. This must be an absolute path" && exit 1
+  fi
 
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
   export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
@@ -123,7 +124,8 @@ build_datAFLow() {
 }
 
 build_tags() {
-  true
+  $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
+  ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
 }
 
 build_afl() {
