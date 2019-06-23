@@ -144,10 +144,10 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
       // Determine the struct type and the index that we are storing the dynamic
       // allocation function to from TBAA metadata. Calculate the underlying
       // struct and offset so that we can tag it later
-      auto StructTyWithOffset = getStructOffsetFromTBAA(Store);
-      assert(StructTyWithOffset.hasValue());
-      auto StructOff = getStructOffset(StructTyWithOffset->first,
-                                       StructTyWithOffset->second, DL);
+      auto StructTyWithByteOffset = getStructByteOffsetFromTBAA(Store);
+      assert(StructTyWithByteOffset.hasValue());
+      auto StructOff = getStructOffset(StructTyWithByteOffset->first,
+                                       StructTyWithByteOffset->second, DL);
       this->StructOffsetsToTag.emplace(StructOff, F);
       NumOfStructOffsets++;
     }
@@ -192,7 +192,8 @@ void CollectTagSites::saveTagSites() const {
       continue;
     }
 
-    Output << FunctionLogPrefix << LogSeparator << F->getName() << '\n';
+    Output << FunctionLogPrefix << LogSeparator << F->getName() << LogSeparator
+           << *F->getFunctionType() << '\n';
   }
 
   // Save global variables
@@ -212,7 +213,8 @@ void CollectTagSites::saveTagSites() const {
     auto *F = StructWithFunc.second;
 
     Output << StructOffsetLogPrefix << LogSeparator << StructTy->getName()
-           << LogSeparator << Offset << LogSeparator << F->getName() << '\n';
+           << LogSeparator << Offset << LogSeparator << F->getName()
+           << LogSeparator << *F->getFunctionType() << '\n';
   }
 
   // Save function arguments

@@ -103,7 +103,7 @@ StructOffset getStructOffset(const StructType *StructTy, unsigned ByteOffset,
   return {StructTy, StructIdx};
 }
 
-Optional<StructOffset> getStructOffsetFromTBAA(const Instruction *I) {
+Optional<StructOffset> getStructByteOffsetFromTBAA(const Instruction *I) {
   // Retreive the TBAA metadata
   MemoryLocation ML = MemoryLocation::get(I);
   AAMDNodes AATags = ML.AATags;

@@ -161,7 +161,7 @@ void TagDynamicAllocs::getTagSites() {
   InputData.split(Lines, '\n', /* MaxSplit */ -1, /* KeepEmpty */ false);
 
   for (auto Line : Lines) {
-    if (Line.startswith(FunctionLogPrefix)) {
+    if (Line.startswith(FunctionLogPrefix + LogSeparator)) {
       // Parse function
       SmallVector<StringRef, 2> FString;
       Line.split(FString, LogSeparator);
@@ -172,7 +172,7 @@ void TagDynamicAllocs::getTagSites() {
       }
 
       this->FunctionsToTag.insert(F);
-    } else if (Line.startswith(GlobalVariableLogPrefix)) {
+    } else if (Line.startswith(GlobalVariableLogPrefix + LogSeparator)) {
       // Parse global variable
       SmallVector<StringRef, 2> GVString;
       Line.split(GVString, LogSeparator);
@@ -183,7 +183,7 @@ void TagDynamicAllocs::getTagSites() {
       }
 
       this->GlobalVariablesToTag.insert(GV);
-    } else if (Line.startswith(GlobalAliasLogPrefix)) {
+    } else if (Line.startswith(GlobalAliasLogPrefix + LogSeparator)) {
       // Parse global alias
       SmallVector<StringRef, 2> GAString;
       Line.split(GAString, LogSeparator);
@@ -194,9 +194,9 @@ void TagDynamicAllocs::getTagSites() {
       }
 
       this->GlobalAliasesToTag.insert(GA);
-    } else if (Line.startswith(StructOffsetLogPrefix)) {
+    } else if (Line.startswith(StructOffsetLogPrefix + LogSeparator)) {
       // Parse struct offset
-      SmallVector<StringRef, 4> SOString;
+      SmallVector<StringRef, 5> SOString;
       Line.split(SOString, LogSeparator);
 
       auto *StructTy = this->Mod->getTypeByName(SOString[1]);
@@ -209,13 +209,16 @@ void TagDynamicAllocs::getTagSites() {
         continue;
       }
 
+      // TODO replace with getOrInsertFunction, which requires us to provide the
+      // function type. This is stored in the tag log as a string, but needs to
+      // be parsed out somehow
       auto *F = this->Mod->getFunction(SOString[3]);
       if (!F) {
         continue;
       }
 
       this->StructOffsetsToTag.emplace(std::make_pair(StructTy, Offset), F);
-    } else if (Line.startswith(FunctionArgLogPrefix)) {
+    } else if (Line.startswith(FunctionArgLogPrefix + LogSeparator)) {
       // Parse function argument
       SmallVector<StringRef, 3> FAString;
       Line.split(FAString, LogSeparator);
@@ -378,9 +381,9 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     raw_string_ostream OS(UserStr);
     OS << *U;
 
-    WARNF("[%s] Replacing unsupported user %s with an abort",
+    WARNF("[%s] Replacing unsupported user %s with an undef value",
           this->Mod->getName().str().c_str(), UserStr.c_str());
-    U->replaceUsesOfWith(F, castAbort(F->getType()->getPointerTo()));
+    U->replaceUsesOfWith(F, UndefValue::get(F->getType()));
   }
 }
 
@@ -473,15 +476,15 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
   }
   auto *ObjLoad = cast<LoadInst>(Obj);
 
-  auto StructTyWithOffset = getStructOffsetFromTBAA(ObjLoad);
-  if (!StructTyWithOffset.hasValue()) {
+  auto StructTyWithByteOffset = getStructByteOffsetFromTBAA(ObjLoad);
+  if (!StructTyWithByteOffset.hasValue()) {
     return OrigCall;
   }
 
   // If the called value did originate from a struct, check if the struct
   // offset is one we have previously recorded (in the collect tags pass)
-  auto StructOffset = getStructOffset(StructTyWithOffset->first,
-                                      StructTyWithOffset->second, DL);
+  auto StructOffset = getStructOffset(StructTyWithByteOffset->first,
+                                      StructTyWithByteOffset->second, DL);
   auto StructOffsetIt = this->StructOffsetsToTag.find(StructOffset);
   if (StructOffsetIt == this->StructOffsetsToTag.end()) {
     return OrigCall;

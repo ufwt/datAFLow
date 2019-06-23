@@ -24,13 +24,13 @@ class Value;
 } // namespace llvm
 
 // Tag log strings
-const char *const CommentStart = "# ";
-const char *const LogSeparator = ",";
-const char *const FunctionLogPrefix = "fun";
-const char *const GlobalVariableLogPrefix = "gv";
-const char *const GlobalAliasLogPrefix = "ga";
-const char *const StructOffsetLogPrefix = "struct";
-const char *const FunctionArgLogPrefix = "arg_fun";
+const std::string CommentStart = "# ";
+const std::string LogSeparator = ";";
+const std::string FunctionLogPrefix = "fun";
+const std::string GlobalVariableLogPrefix = "gv";
+const std::string GlobalAliasLogPrefix = "ga";
+const std::string StructOffsetLogPrefix = "struct";
+const std::string FunctionArgLogPrefix = "fun_arg";
 
 /// A struct type and the offset of an element in that struct
 using StructOffset = std::pair<const llvm::StructType *, unsigned>;
@@ -48,8 +48,9 @@ llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
 StructOffset getStructOffset(const llvm::StructType *, unsigned,
                              const llvm::DataLayout &);
 
-/// Retrieve a struct and the offset of an element in that struct from TBAA
+/// Retrieve a struct and the byte offset of an element in that struct from TBAA
 /// metadata attached to the given instruction
-llvm::Optional<StructOffset> getStructOffsetFromTBAA(const llvm::Instruction *);
+llvm::Optional<StructOffset>
+getStructByteOffsetFromTBAA(const llvm::Instruction *);
 
 #endif // FUZZALLOC_COMMON_H
