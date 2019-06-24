@@ -478,8 +478,8 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   // before them
   SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
-  // llvm.memset intrinsics that may require fixing alignment
-  SmallVector<MemSetInst *, 4> Memsets;
+  // llvm.mem* intrinsics that may require realignment
+  SmallVector<MemIntrinsic *, 4> MemIntrinsics;
 
   // Return instructions that may require calls to free to be inserted before
   // them
@@ -489,7 +489,7 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     AllocasToPromote.clear();
     LifetimeStarts.clear();
     LifetimeEnds.clear();
-    Memsets.clear();
+    MemIntrinsics.clear();
     Returns.clear();
 
     // Collect all the things!
@@ -498,13 +498,13 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
         if (isPromotableType(Alloca->getAllocatedType())) {
           AllocasToPromote.push_back(Alloca);
         }
+      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
+        MemIntrinsics.push_back(MemI);
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
         if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_start) {
           LifetimeStarts.push_back(Intrinsic);
         } else if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
           LifetimeEnds.push_back(Intrinsic);
-        } else if (Intrinsic->getIntrinsicID() == Intrinsic::memset) {
-          Memsets.push_back(cast<MemSetInst>(Intrinsic));
         }
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
         Returns.push_back(Return);
@@ -541,14 +541,15 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
         }
       }
 
-      // Array allocas may be memset at initialization (e.g., when assigned the
-      // emptry string ""). The memset alignment may be suitable for the old
-      // static array, but may break the new dynamically allocated pointer. To
-      // be safe we remove any alignment and let LLVM decide what is appropriate
-      for (auto *Memset : Memsets) {
-        if (GetUnderlyingObjectThroughLoads(Memset->getDest(), *this->DL) ==
+      // Array allocas may be memset/memcpy'd at initialization (e.g., when
+      // assigned the empty string "", or a string with actual content). The
+      // alignment may be suitable for the old static array, but may break the
+      // new dynamically allocated pointer. To be safe we remove any alignment
+      // and let LLVM decide what is appropriate
+      for (auto *MemI : MemIntrinsics) {
+        if (GetUnderlyingObjectThroughLoads(MemI->getDest(), *this->DL) ==
             NewAlloca) {
-          Memset->setDestAlignment(0);
+          MemI->setDestAlignment(0);
         }
       }
 
