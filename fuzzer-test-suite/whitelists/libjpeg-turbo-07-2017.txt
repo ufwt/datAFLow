@@ -1,0 +1,5 @@
+[fuzzalloc]
+fun:alloc_small
+fun:alloc_large
+fun:alloc_sarray
+fun:alloc_barray

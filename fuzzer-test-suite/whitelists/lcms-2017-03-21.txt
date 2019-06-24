@@ -1,0 +1,5 @@
+[fuzzalloc]
+fun:_cmsMalloc
+fun:_cmsMallocZero
+fun:_cmsCalloc
+fun:_cmsRealloc
