@@ -64,6 +64,8 @@ namespace {
 /// their call site) and call the fuzzalloc function instead
 class TagDynamicAllocs : public ModulePass {
 private:
+  using FuncTypeString = std::pair<std::string, std::string>;
+
   Module *Mod;
   Function *AbortF;
   Function *FuzzallocMallocF;
@@ -76,7 +78,7 @@ private:
   SmallPtrSet<Function *, 8> FunctionsToTag;
   SmallPtrSet<GlobalVariable *, 8> GlobalVariablesToTag;
   SmallPtrSet<GlobalAlias *, 8> GlobalAliasesToTag;
-  std::map<StructOffset, const Function *> StructOffsetsToTag;
+  std::map<StructOffset, FuncTypeString> StructOffsetsToTag;
   SmallPtrSet<Argument *, 8> FunctionArgsToTag;
 
   Constant *castAbort(Type *) const;
@@ -93,7 +95,7 @@ private:
 
   void tagUser(User *, Function *, const TargetLibraryInfo *);
   CallInst *tagCall(CallInst *, Value *) const;
-  CallInst *tagPossibleIndirectCall(CallInst *) const;
+  CallInst *tagPossibleIndirectCall(CallInst *);
   Function *tagFunction(Function *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
   GlobalAlias *tagGlobalAlias(GlobalAlias *);
@@ -163,13 +165,15 @@ void TagDynamicAllocs::getTagSites() {
   for (auto Line : Lines) {
     if (Line.startswith(FunctionLogPrefix + LogSeparator)) {
       // Parse function
-      SmallVector<StringRef, 2> FString;
+      SmallVector<StringRef, 3> FString;
       Line.split(FString, LogSeparator);
 
       auto *F = this->Mod->getFunction(FString[1]);
       if (!F) {
         continue;
       }
+
+      // XXX Ignore the type (for now)
 
       this->FunctionsToTag.insert(F);
     } else if (Line.startswith(GlobalVariableLogPrefix + LogSeparator)) {
@@ -196,7 +200,7 @@ void TagDynamicAllocs::getTagSites() {
       this->GlobalAliasesToTag.insert(GA);
     } else if (Line.startswith(StructOffsetLogPrefix + LogSeparator)) {
       // Parse struct offset
-      SmallVector<StringRef, 5> SOString;
+      SmallVector<StringRef, 6> SOString;
       Line.split(SOString, LogSeparator);
 
       auto *StructTy = this->Mod->getTypeByName(SOString[1]);
@@ -209,15 +213,12 @@ void TagDynamicAllocs::getTagSites() {
         continue;
       }
 
-      // TODO replace with getOrInsertFunction, which requires us to provide the
-      // function type. This is stored in the tag log as a string, but needs to
-      // be parsed out somehow
-      auto *F = this->Mod->getFunction(SOString[3]);
-      if (!F) {
-        continue;
-      }
-
-      this->StructOffsetsToTag.emplace(std::make_pair(StructTy, Offset), F);
+      // Record the struct function (and type) as a string so that we can later
+      // use getOrInsertFunction when we encounter an indirect call
+      this->StructOffsetsToTag.emplace(
+          std::make_pair(StructTy, Offset),
+          std::make_pair(/* Function name */ SOString[3],
+                         /* Function type */ SOString[4]));
     } else if (Line.startswith(FunctionArgLogPrefix + LogSeparator)) {
       // Parse function argument
       SmallVector<StringRef, 3> FAString;
@@ -305,9 +306,7 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
 }
 
 /// Translate users of a dynamic memory allocation function so that they use the
-/// tagged version instead. Also poisons structs that are assigned dynamic
-/// memory allocation functions so that we can rewrite (indirect) calls to these
-/// struct elements later
+/// tagged version instead
 void TagDynamicAllocs::tagUser(User *U, Function *F,
                                const TargetLibraryInfo *TLI) {
   LLVM_DEBUG(dbgs() << "replacing user " << *U << " of tagged function "
@@ -456,17 +455,18 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 /// tagged version of the function.
 ///
 /// The function call will only be replaced if the function being called is
-/// stored within a poisoned struct. That is, a struct where a whitelisted
+/// stored within a recorded struct. That is, a struct where a whitelisted
 /// allocation function was stored into. This is determined via TBAA metadata.
 ///
 /// If the call is not replaced, the original function call is returned.
-CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
+CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
   LLVM_DEBUG(dbgs() << "(possibly) tagging indirect function call " << *OrigCall
                     << " (in function " << OrigCall->getFunction()->getName()
                     << ")\n");
 
   const DataLayout &DL = this->Mod->getDataLayout();
   auto *CalledValue = OrigCall->getCalledValue();
+  auto *CalledValueTy = OrigCall->getFunctionType();
 
   // Get the source of the indirect call. If the called value didn't come from a
   // load, we can't do anything about it
@@ -482,18 +482,40 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) const {
   }
 
   // If the called value did originate from a struct, check if the struct
-  // offset is one we have previously recorded (in the collect tags pass)
+  // offset is one we previously recorded (in the collect tags pass)
   auto StructOffset = getStructOffset(StructTyWithByteOffset->first,
                                       StructTyWithByteOffset->second, DL);
+
   auto StructOffsetIt = this->StructOffsetsToTag.find(StructOffset);
   if (StructOffsetIt == this->StructOffsetsToTag.end()) {
     return OrigCall;
   }
 
-  // If the struct type is poisoned, retrieve the function that was assigned
-  // to this struct element and tag it
-  Function *TaggedF = translateTaggedFunction(StructOffsetIt->second);
-  return tagCall(OrigCall, TaggedF);
+  // The struct type was recorded. Retrieve the function that was assigned to
+  // this struct element and tag it
+  StringRef OrigFStr = StructOffsetIt->second.first;
+  StringRef OrigFTyStr = StructOffsetIt->second.second;
+
+  // Sanity check the function type
+  //
+  // XXX Comparing strings seems hella dirty...
+  std::string OrigCallTyStr;
+  raw_string_ostream OS(OrigCallTyStr);
+  OS << *CalledValueTy;
+  OS.flush();
+  assert(OrigCallTyStr == OrigFTyStr);
+
+  // get-or-insert the function, rather than just getting it. Since the original
+  // funtion is being called indirectly (via a struct), it is highly-likely that
+  // the original function is not actually defined in this module (otherwise
+  // we'd just call it directly)
+  //
+  // Save the function so that we can delete it later
+  Function *OrigF = checkFuzzallocFunc(
+      this->Mod->getOrInsertFunction(OrigFStr, CalledValueTy));
+  this->FunctionsToTag.insert(OrigF);
+
+  return tagCall(OrigCall, translateTaggedFunction(OrigF));
 }
 
 /// Sometimes a program does not call a dynamic memory allocation function
