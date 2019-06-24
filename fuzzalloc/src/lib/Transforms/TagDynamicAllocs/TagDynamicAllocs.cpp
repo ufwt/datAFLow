@@ -51,8 +51,7 @@ using namespace llvm;
 
 static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
-              cl::desc("Path to log file containing values to tag"),
-              cl::Required);
+              cl::desc("Path to log file containing values to tag"));
 
 STATISTIC(NumOfTaggedCalls,
           "Number of tagged dynamic memory allocation function calls.");
@@ -149,6 +148,10 @@ ConstantInt *TagDynamicAllocs::generateTag() const {
 }
 
 void TagDynamicAllocs::getTagSites() {
+  if (ClLogPath.empty()) {
+    return;
+  }
+
   auto InputOrErr = MemoryBuffer::getFile(ClLogPath);
   std::error_code EC = InputOrErr.getError();
   if (EC) {
