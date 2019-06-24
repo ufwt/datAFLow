@@ -499,7 +499,6 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
   // The struct type was recorded. Retrieve the function that was assigned to
   // this struct element and tag it
   StringRef OrigFStr = StructOffsetIt->second.first;
-  StringRef OrigFTyStr = StructOffsetIt->second.second;
 
   // Sanity check the function type
   //
@@ -508,7 +507,7 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
   raw_string_ostream OS(OrigCallTyStr);
   OS << *CalledValueTy;
   OS.flush();
-  assert(OrigCallTyStr == OrigFTyStr);
+  assert(OrigCallTyStr == StructOffsetIt->second.second);
 
   // get-or-insert the function, rather than just getting it. Since the original
   // funtion is being called indirectly (via a struct), it is highly-likely that
