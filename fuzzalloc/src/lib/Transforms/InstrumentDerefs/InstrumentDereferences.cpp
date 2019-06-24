@@ -83,8 +83,9 @@ static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
   FuncOrBitcast->print(errs());
   errs() << '\n';
   std::string Err;
-  raw_string_ostream Stream(Err);
-  Stream << "Instrumentation function redefined: " << *FuncOrBitcast;
+  raw_string_ostream OS(Err);
+  OS << "Instrumentation function redefined: " << *FuncOrBitcast;
+  OS.flush();
   report_fatal_error(Err);
 }
 

@@ -127,8 +127,9 @@ static Function *checkFuzzallocFunc(Constant *FuncOrBitcast) {
   FuncOrBitcast->print(errs());
   errs() << '\n';
   std::string Err;
-  raw_string_ostream Stream(Err);
-  Stream << "fuzzalloc function redefined: " << *FuncOrBitcast;
+  raw_string_ostream OS(Err);
+  OS << "fuzzalloc function redefined: " << *FuncOrBitcast;
+  OS.flush();
   report_fatal_error(Err);
 }
 
@@ -152,9 +153,10 @@ void TagDynamicAllocs::getTagSites() {
   std::error_code EC = InputOrErr.getError();
   if (EC) {
     std::string Err;
-    raw_string_ostream Stream(Err);
-    Stream << "Unable to open fuzzalloc tag log at " << ClLogPath << ": "
-           << EC.message();
+    raw_string_ostream OS(Err);
+    OS << "Unable to open fuzzalloc tag log at " << ClLogPath << ": "
+       << EC.message();
+    OS.flush();
     report_fatal_error(Err);
   }
 

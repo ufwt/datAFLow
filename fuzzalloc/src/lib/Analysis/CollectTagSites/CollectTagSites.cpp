@@ -31,6 +31,7 @@
 #include "debug.h" // from afl
 
 using namespace llvm;
+using namespace llvm::sys::fs;
 
 #define DEBUG_TYPE "fuzzalloc-collect-tag-sites"
 
@@ -102,8 +103,9 @@ static FuzzallocWhitelist getWhitelist() {
 
   if (!sys::fs::exists(ClWhitelist)) {
     std::string Err;
-    raw_string_ostream Stream(Err);
-    Stream << "fuzzalloc whitelist does not exist at " << ClWhitelist;
+    raw_string_ostream OS(Err);
+    OS << "fuzzalloc whitelist does not exist at " << ClWhitelist;
+    OS.flush();
     report_fatal_error(Err);
   }
 
@@ -173,13 +175,13 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
 void CollectTagSites::saveTagSites() const {
   std::error_code EC;
   raw_fd_ostream Output(ClLogPath, EC,
-                        sys::fs::OpenFlags::OF_Text |
-                            sys::fs::OpenFlags::OF_Append);
+                        OpenFlags::OF_Text | OpenFlags::OF_Append);
   if (EC) {
     std::string Err;
-    raw_string_ostream Stream(Err);
-    Stream << "unable to open fuzzalloc tag log at " << ClLogPath << ": "
-           << EC.message();
+    raw_string_ostream OS(Err);
+    OS << "unable to open fuzzalloc tag log at " << ClLogPath << ": "
+       << EC.message();
+    OS.flush();
     report_fatal_error(Err);
   }
 
