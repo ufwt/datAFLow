@@ -13,18 +13,35 @@ variables if you already have AFL and LLVM's compiler-rt 7.0 respectively. Set
 the `DEBUG` environment variable (e.g., to 1) to build a debug version of
 libfuzzalloc.
 
-Run the following to build a target:
-
 ```bash
-FUZZING_ENGINE="datAFLow" /path/to/fuzzer-test-suite/build.sh TARGET
+mkdir dataflow-test-suite
+cd dataflow-test-suite
+# Specify AFL_PATH + COMPILER_RT_PATH if appropriate
+/path/to/datAFLow/fuzzer-test-suite/setup.sh
+export DATAFLOW_TEST_DIR=$(pwd)
 ```
 
-Where `TARGET` is one of the directories inside the fuzzer-test-suite directory
-(e.g., libpng-1.2.56).
+Do the following to build a target, where `TARGET` is the name of a
+fuzzer-test-suite directory (e.g., freetype2-2017, libxml2-v2.9.2, etc.).
+
+```bash
+# Collect tag sites
+FUZZALLOC_TAG_LOG=$DATAFLOW_TEST_DIR/TARGET-tag-sites.csv FUZZING_ENGINE=tags  \
+    $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh TARGET
+
+# Cleanup the log file
+/path/to/datAFLow/scripts/remove_duplicate_lines.py                            \
+    $DATAFLOW_TEST_DIR/TARGET-tag-sites.csv > deduped-tag-sites.csv
+mv deduped-tag-sites.csv $DATAFLOW_TEST_DIR/TARGET-tag-sites.csv
+
+# Build the target for datAFLow fuzzing, using the tag sites recorded in the
+# CSV file
+FUZZALLOC_TAG_LOG=$DATAFLOW_TEST_DIR/TARGET-tag-sites.csv                      \
+    FUZZING_ENGINE=datAFLow $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh TARGET
+```
 
 Note that in addition to the `datAFLow` `FUZZING_ENGINE`, you can also use
-vanilla AFL by setting `FUZZING_ENGINE=afl` or with no fuzzer instrumentation
-(i.e., just a regular build) by setting `FUZZING_ENGINE=none`.
+vanilla AFL by setting `FUZZING_ENGINE=afl`.
 
 ## With AddressSanitizer (ASan)
 
@@ -38,13 +55,20 @@ This will:
 
 # Fuzzing example (libxml)
 
-To fuzz libxml from the fuzzer test suite, assuming that the fuzzer test suite
-has been setup at `$FUZZER_TEST_SUITE`:
+To fuzz libxml from the fuzzer test suite:
 
 1. Build libxml2
 
 ```bash
-FUZZING_ENGINE="datAFLow" $FUZZER_TEST_SUITE/build.sh libxml2-v2.9.2
+FUZZALLOC_TAG_LOG=$DATAFLOW_TEST_DIR/libxml2-v2.9.2-tag-sites.csv              \
+    FUZZING_ENGINE=tags $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh          \
+    libxml2-v2.9.2
+/path/to/datAFLow/scripts/remove_duplicate_lines.py                            \
+    $DATAFLOW_TEST_DIR/libxml2-v2.9.2-tag-sites.csv > deduped-tag-sites.csv
+mv deduped-tag-sites.csv $DATAFLOW_TEST_DIR/libxml2-v2.9.2-tag-sites.csv
+FUZZALLOC_TAG_LOG=$DATAFLOW_TEST_DIR/libxml2-v2.9.2-tag-sites.csv              \
+    FUZZING_ENGINE=datAFLow $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh      \
+    libxml2-v2.9.2
 ```
 
 2. Get some seeds
@@ -61,6 +85,7 @@ export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/fuzzalloc-build/src/runtime/malloc:$LD
 export LD_LIBRARY_PATH=$FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/:$LD_LIBRARY_PATH
 
 $FUZZER_TEST_SUITE/AFL/afl-fuzz -i $FUZZDATA/samples/xml -o ./libxml2-fuzz-out \
-    -m none -t 1000+ -- \
-    $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint -o /dev/null @@
+    -m none -t 1000+ --                                                        \
+    $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint      \
+    -o /dev/null @@
 ```
