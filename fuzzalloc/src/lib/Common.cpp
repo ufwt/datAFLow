@@ -103,6 +103,14 @@ StructOffset getStructOffset(const StructType *StructTy, unsigned ByteOffset,
   return {StructTy, StructIdx};
 }
 
+/// TBAA struct type descriptors are represented as MDNodes with an odd number
+/// of operands
+///
+/// XXX This is a very coarse check
+static inline bool isTBAAStructTypeDescriptor(const MDNode *N) {
+  return N->getNumOperands() > 1 && (N->getNumOperands() % 2 == 1);
+}
+
 Optional<StructOffset> getStructByteOffsetFromTBAA(const Instruction *I) {
   // Retreive the TBAA metadata
   MemoryLocation ML = MemoryLocation::get(I);
@@ -113,16 +121,28 @@ Optional<StructOffset> getStructByteOffsetFromTBAA(const Instruction *I) {
   }
 
   // Pull apart the access tag
-  const MDNode *BaseNode = dyn_cast<MDNode>(TBAA->getOperand(0));
-  const ConstantInt *Offset =
-      mdconst::dyn_extract<ConstantInt>(TBAA->getOperand(2));
+  MDNode *BaseNode = dyn_cast<MDNode>(TBAA->getOperand(0));
+  ConstantInt *Offset = mdconst::dyn_extract<ConstantInt>(TBAA->getOperand(2));
 
-  // TBAA struct type descriptors are represented as MDNodes with an odd number
-  // of operands. Retrieve the struct based on the string in the struct type
-  // descriptor (the first operand)
-  assert(BaseNode->getNumOperands() % 2 == 1 && "Non-struct access tag");
+  // Check the struct type descriptor
+  assert(isTBAAStructTypeDescriptor(BaseNode) && "Non-struct access tag");
+  (void)isTBAAStructTypeDescriptor;
 
-  const MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+  // Retrieve the struct based on the string in the struct type descriptor (in
+  // the first operand)
+  //
+  // Note that the string may be empty. If it is, keep searching through the
+  // nested structs (located at offset zero: i.e., that sit "on top" of the
+  // "parent" struct) until we hit a non-empty struct name
+  MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+  while (StructTyName->getLength() == 0) {
+    assert(mdconst::extract<ConstantInt>(BaseNode->getOperand(2))->isZero());
+
+    BaseNode = dyn_cast<MDNode>(BaseNode->getOperand(1));
+    assert(isTBAAStructTypeDescriptor(BaseNode) && "Non-struct access tag");
+    StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
+  }
+
   StructType *StructTy = I->getModule()->getTypeByName(
       "struct." + StructTyName->getString().str());
   if (!StructTy) {
