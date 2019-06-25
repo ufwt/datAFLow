@@ -587,8 +587,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
     if (auto *InitializerF = dyn_cast<Function>(OrigInitializer)) {
       // Tag the initializer function
       TaggedGV->setInitializer(translateTaggedFunction(InitializerF));
-    } else if (auto *NullPointer =
-                   dyn_cast<ConstantPointerNull>(OrigInitializer)) {
+    } else if (isa<ConstantPointerNull>(OrigInitializer)) {
       // Retype the null pointer initializer
       TaggedGV->setInitializer(ConstantPointerNull::get(TaggedGVTy));
     } else {

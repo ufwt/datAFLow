@@ -114,6 +114,9 @@ static FuzzallocWhitelist getWhitelist() {
 
 void CollectTagSites::tagUser(const User *U, const Function *F,
                               const TargetLibraryInfo *TLI) {
+  LLVM_DEBUG(dbgs() << "recording user " << *U << " of tagged function "
+                    << F->getName() << '\n');
+
   if (auto *Call = dyn_cast<CallInst>(U)) {
     // The result of a dynamic memory allocation function call is typically
     // cast. Strip this cast to determine the actual function being called
@@ -312,7 +315,7 @@ static void registerCollectTagSitesPass(const PassManagerBuilder &,
 }
 
 static RegisterStandardPasses
-    RegisterCollectTagSitesPass(PassManagerBuilder::EP_OptimizerLast,
+    RegisterCollectTagSitesPass(PassManagerBuilder::EP_VectorizerStart,
                                 registerCollectTagSitesPass);
 
 static RegisterStandardPasses
