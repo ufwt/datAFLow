@@ -26,8 +26,9 @@ using namespace llvm;
 
 Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
                                        unsigned MaxLookup) {
-  if (!V->getType()->isPointerTy())
+  if (!V->getType()->isPointerTy()) {
     return V;
+  }
 
   for (unsigned Count = 0; MaxLookup == 0 || Count < MaxLookup; ++Count) {
     if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
@@ -91,14 +92,16 @@ StructOffset getStructOffset(const StructType *StructTy, unsigned ByteOffset,
   // point to some inner struct. If this is the case, then we want to record
   // the element in the inner struct so that we can tag calls to it later
   if (auto *ElemStructTy = dyn_cast<StructType>(ElemTy)) {
-    if (!ElemStructTy->isOpaque()) {
-      return getStructOffset(ElemStructTy,
-                             ByteOffset - SL->getElementOffset(StructIdx), DL);
-    }
+    assert(!ElemStructTy->isOpaque());
+    return getStructOffset(ElemStructTy,
+                           ByteOffset - SL->getElementOffset(StructIdx), DL);
   }
 
   // The recordedd struct element must be a function pointer
-  assert(StructTy->getElementType(StructIdx)->isPointerTy());
+  Type *StructElemTy = StructTy->getElementType(StructIdx);
+  assert(StructElemTy->isPointerTy());
+  //&& StructElemTy->getPointerElementType()->isFunctionTy());
+  (void)StructElemTy;
 
   return {StructTy, StructIdx};
 }
@@ -131,17 +134,8 @@ Optional<StructOffset> getStructByteOffsetFromTBAA(const Instruction *I) {
   // Retrieve the struct based on the string in the struct type descriptor (in
   // the first operand)
   //
-  // Note that the string may be empty. If it is, keep searching through the
-  // nested structs (located at offset zero: i.e., that sit "on top" of the
-  // "parent" struct) until we hit a non-empty struct name
+  // Note that the string may be empty. If it is, we're screwed
   MDString *StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
-  while (StructTyName->getLength() == 0) {
-    assert(mdconst::extract<ConstantInt>(BaseNode->getOperand(2))->isZero());
-
-    BaseNode = dyn_cast<MDNode>(BaseNode->getOperand(1));
-    assert(isTBAAStructTypeDescriptor(BaseNode) && "Non-struct access tag");
-    StructTyName = dyn_cast<MDString>(BaseNode->getOperand(0));
-  }
 
   StructType *StructTy = I->getModule()->getTypeByName(
       "struct." + StructTyName->getString().str());
