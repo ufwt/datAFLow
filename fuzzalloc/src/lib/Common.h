@@ -45,12 +45,7 @@ llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
 ///
 /// This function will recurse through sub-structs, so the returned struct type
 /// may be different from the given struct type.
-StructOffset getStructOffset(const llvm::StructType *, unsigned,
-                             const llvm::DataLayout &);
-
-/// Retrieve a struct and the byte offset of an element in that struct from TBAA
-/// metadata attached to the given instruction
-llvm::Optional<StructOffset>
-getStructByteOffsetFromTBAA(const llvm::Instruction *);
+llvm::Optional<StructOffset> getStructOffset(const llvm::StructType *, unsigned,
+                                             const llvm::DataLayout &);
 
 #endif // FUZZALLOC_COMMON_H

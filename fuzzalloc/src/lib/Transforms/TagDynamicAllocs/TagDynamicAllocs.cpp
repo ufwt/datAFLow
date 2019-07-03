@@ -461,7 +461,7 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 ///
 /// The function call will only be replaced if the function being called is
 /// stored within a recorded struct. That is, a struct where a whitelisted
-/// allocation function was stored into. This is determined via TBAA metadata.
+/// allocation function was stored into.
 ///
 /// If the call is not replaced, the original function call is returned.
 CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
@@ -481,17 +481,25 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
   }
   auto *ObjLoad = cast<LoadInst>(Obj);
 
-  auto StructTyWithByteOffset = getStructByteOffsetFromTBAA(ObjLoad);
-  if (!StructTyWithByteOffset.hasValue()) {
+  int64_t ByteOffset = 0;
+  auto *ObjBase =
+      GetPointerBaseWithConstantOffset(ObjLoad->getOperand(0), ByteOffset, DL);
+  Type *ObjBaseElemTy = ObjBase->getType()->getPointerElementType();
+
+  // TODO check that the load is actually from a struct
+  if (!isa<StructType>(ObjBaseElemTy)) {
     return OrigCall;
   }
 
   // If the called value did originate from a struct, check if the struct
   // offset is one we previously recorded (in the collect tags pass)
-  auto StructOffset = getStructOffset(StructTyWithByteOffset->first,
-                                      StructTyWithByteOffset->second, DL);
+  auto StructOffset =
+      getStructOffset(cast<StructType>(ObjBaseElemTy), ByteOffset, DL);
+  if (!StructOffset.hasValue()) {
+    return OrigCall;
+  }
 
-  auto StructOffsetIt = this->StructOffsetsToTag.find(StructOffset);
+  auto StructOffsetIt = this->StructOffsetsToTag.find(*StructOffset);
   if (StructOffsetIt == this->StructOffsetsToTag.end()) {
     return OrigCall;
   }

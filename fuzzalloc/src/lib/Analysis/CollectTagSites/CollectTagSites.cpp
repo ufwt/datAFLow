@@ -170,7 +170,8 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
 
       auto StructOffset =
           getStructOffset(StructTy, GEPOffset.getSExtValue(), DL);
-      this->StructOffsetsToTag.emplace(StructOffset, F);
+      assert(StructOffset.hasValue());
+      this->StructOffsetsToTag.emplace(*StructOffset, F);
       NumOfStructOffsets++;
     } else {
       assert(false && "Unsupported store pointer operand");
