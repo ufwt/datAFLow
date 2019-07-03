@@ -19,6 +19,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
@@ -137,24 +138,42 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
       }
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
-    const DataLayout &DL = this->Mod->getDataLayout();
+    auto *StorePtrOp = Store->getPointerOperand();
 
-    if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
+    if (auto *GV = dyn_cast<GlobalVariable>(StorePtrOp)) {
       // Store to a global variable
       this->GlobalVariablesToTag.insert(GV);
       NumOfGlobalVariables++;
-    } else {
-      //  TODO check that the store is to a struct
+    } else if (auto *GEP = dyn_cast<GEPOperator>(StorePtrOp)) {
+      // Store to an offset within some object. We only handle stores to structs
+      //
+      // If the store is storing to something pointed to by a GEP, first check
+      // that the store is to a struct (based on the GEP pointer type).
+      //
+      // If it is a struct, get the byte offset that we are storing to within
+      // that struct. Then walk the struct (and any nested struct) to get the
+      // actual index that the dynamic allocation function is actually being
+      // stored to.
 
-      // Determine the struct type and the index that we are storing the dynamic
-      // allocation function to from TBAA metadata. Calculate the underlying
-      // struct and offset so that we can tag it later
-      auto StructTyWithByteOffset = getStructByteOffsetFromTBAA(Store);
-      assert(StructTyWithByteOffset.hasValue());
-      auto StructOff = getStructOffset(StructTyWithByteOffset->first,
-                                       StructTyWithByteOffset->second, DL);
-      this->StructOffsetsToTag.emplace(StructOff, F);
+      //  TODO check that the store is actually to a struct
+      assert(isa<StructType>(
+          GEP->getPointerOperandType()->getPointerElementType()));
+      StructType *StructTy = cast<StructType>(
+          GEP->getPointerOperandType()->getPointerElementType());
+
+      const DataLayout &DL = this->Mod->getDataLayout();
+      APInt GEPOffset(DL.getIndexTypeSizeInBits(StorePtrOp->getType()), 0);
+      if (!GEP->accumulateConstantOffset(DL, GEPOffset)) {
+        // TODO handle this
+        assert(false);
+      }
+
+      auto StructOffset =
+          getStructOffset(StructTy, GEPOffset.getSExtValue(), DL);
+      this->StructOffsetsToTag.emplace(StructOffset, F);
       NumOfStructOffsets++;
+    } else {
+      assert(false && "Unsupported store pointer operand");
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Global variable user
@@ -315,7 +334,7 @@ static void registerCollectTagSitesPass(const PassManagerBuilder &,
 }
 
 static RegisterStandardPasses
-    RegisterCollectTagSitesPass(PassManagerBuilder::EP_VectorizerStart,
+    RegisterCollectTagSitesPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
                                 registerCollectTagSitesPass);
 
 static RegisterStandardPasses
