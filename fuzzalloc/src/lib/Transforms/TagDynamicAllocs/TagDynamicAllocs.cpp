@@ -279,8 +279,7 @@ FunctionType *TagDynamicAllocs::translateTaggedFunctionType(
 /// Translates a function to its tagged version.
 ///
 /// This inserts a tag (i.e., the call site identifier) as the first argument
-/// and prepends the function name with "__tagged_". The returned function also
-/// has metadata set denoting that it is a tagged function.
+/// and prepends the function name with "__tagged_".
 Function *
 TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
@@ -412,7 +411,7 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   // of the function
   auto *ParentF = OrigCall->getFunction();
   Value *Tag = this->FunctionsToTag.count(ParentF) > 0
-                   ? ParentF->arg_begin()
+                   ? translateTaggedFunction(ParentF)->arg_begin()
                    : static_cast<Value *>(generateTag());
 
   // Copy the original allocation function call's arguments so that the tag is
