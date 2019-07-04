@@ -53,8 +53,12 @@ static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
               cl::desc("Path to log file containing values to tag"));
 
-STATISTIC(NumOfTaggedCalls,
-          "Number of tagged dynamic memory allocation function calls.");
+STATISTIC(NumOfTaggedDirectCalls, "Number of tagged direct function calls.");
+STATISTIC(NumOfTaggedIndirectCalls,
+          "Number of tagged indirect function calls.");
+STATISTIC(NumOfTaggedFunctions, "Number of tagged functions.");
+STATISTIC(NumOfTaggedGlobalVariables, "Number of tagged global variables.");
+STATISTIC(NumOfTaggedGlobalAliases, "Number of tagged global aliases.");
 
 namespace {
 
@@ -447,7 +451,13 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
       OrigCall->hasName() ? "__tagged_" + OrigCall->getName() : "");
   TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
                           MDNode::get(IRB.getContext(), None));
-  NumOfTaggedCalls++;
+
+  CallSite CS(OrigCall);
+  if (CS.isIndirectCall()) {
+    NumOfTaggedIndirectCalls++;
+  } else {
+    NumOfTaggedDirectCalls++;
+  }
 
   // Replace the users of the original call
   OrigCall->replaceAllUsesWith(TaggedCall);
@@ -565,6 +575,8 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF) {
 
     // Update the contents of the function (i.e., the instructions) when we
     // update the users of the dynamic memory allocation function
+
+    NumOfTaggedFunctions++;
   }
 
   return TaggedF;
@@ -704,6 +716,8 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
     }
   }
 
+  NumOfTaggedGlobalVariables++;
+
   return TaggedGV;
 }
 
@@ -733,6 +747,8 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
 
   // TODO handle users
   assert(OrigGA->getNumUses() == 0 && "Not supported");
+
+  NumOfTaggedGlobalAliases++;
 
   return TaggedGA;
 }
@@ -834,8 +850,32 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   // Finished!
 
-  OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfTaggedCalls.getValue(),
-      NumOfTaggedCalls.getName(), NumOfTaggedCalls.getDesc());
+  if (NumOfTaggedDirectCalls > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTaggedDirectCalls.getValue(), NumOfTaggedDirectCalls.getName(),
+        NumOfTaggedDirectCalls.getDesc());
+  }
+  if (NumOfTaggedIndirectCalls > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTaggedIndirectCalls.getValue(), NumOfTaggedIndirectCalls.getName(),
+        NumOfTaggedIndirectCalls.getDesc());
+  }
+  if (NumOfTaggedFunctions > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTaggedFunctions.getValue(), NumOfTaggedFunctions.getName(),
+        NumOfTaggedFunctions.getDesc());
+  }
+  if (NumOfTaggedGlobalVariables > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTaggedGlobalVariables.getValue(),
+        NumOfTaggedGlobalVariables.getName(),
+        NumOfTaggedGlobalVariables.getDesc());
+  }
+  if (NumOfTaggedGlobalAliases > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTaggedGlobalAliases.getValue(), NumOfTaggedGlobalAliases.getName(),
+        NumOfTaggedGlobalAliases.getDesc());
+  }
 
   return true;
 }
