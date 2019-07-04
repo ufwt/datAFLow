@@ -32,6 +32,9 @@ All you have to do is link your target with `-lfuzzalloc`.
 To use with AFL, the `dataflow-clang-fast` (and `dataflow-clang-fast++`) tools
 can be used as dropin replacements for `clang` (and `clang++`).
 
+Note that this typically requires running `dataflow-collect-tag-sites` before
+running `dataflow-clang-fast` to collect the allocation sites to tag.
+
 ## With AddressSanitizer (ASan)
 
 Fuzzing is typically performed in conjunction with a
