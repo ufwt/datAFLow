@@ -177,6 +177,7 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
     } else {
       Instruction *NewInst = ConstExpr->getAsInstruction();
 
+      assert(isa<Instruction>(U));
       NewInst->insertBefore(cast<Instruction>(U));
       U->replaceUsesOfWith(ConstExpr, NewInst);
     }

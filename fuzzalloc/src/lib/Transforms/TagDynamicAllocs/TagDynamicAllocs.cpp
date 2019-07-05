@@ -350,7 +350,7 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
         WARNF("[%s] Replacing %s function argument with an abort",
               this->Mod->getName().str().c_str(),
               CalledFunc->getName().str().c_str());
-        U->replaceUsesOfWith(F, castAbort(F->getType()->getPointerTo()));
+        U->replaceUsesOfWith(F, castAbort(F->getType()));
       }
     }
 
@@ -382,6 +382,16 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
   } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
     // Tag global aliases
     tagGlobalAlias(GA);
+  } else if (auto *Const = dyn_cast<Constant>(U)) {
+    // Warn on unsupported constant user and replace with an abort. This is
+    // treated separately because we cannot call replaceUsesOfWith on a constant
+    std::string UserStr;
+    raw_string_ostream OS(UserStr);
+    OS << *U;
+
+    WARNF("[%s] Replacing unsupported constant user %s with an abort",
+          this->Mod->getName().str().c_str(), UserStr.c_str());
+    Const->handleOperandChange(F, castAbort(F->getType()));
   } else {
     // Warn on unsupported user and replace with an undef value
     std::string UserStr;
