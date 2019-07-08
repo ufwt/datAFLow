@@ -176,6 +176,17 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
     } else {
       assert(false && "Unsupported store pointer operand");
     }
+  } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(U)) {
+    // Constant struct user
+    unsigned Idx = 0;
+    for (auto &Op : ConstStruct->operands()) {
+      if (Op == F) {
+        this->StructOffsetsToTag.emplace(
+            std::make_pair(ConstStruct->getType(), Idx), F);
+        NumOfStructOffsets++;
+      }
+      Idx++;
+    }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Global variable user
     this->GlobalVariablesToTag.insert(GV);
