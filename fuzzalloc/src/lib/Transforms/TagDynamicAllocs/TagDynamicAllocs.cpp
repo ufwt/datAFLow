@@ -97,8 +97,8 @@ private:
   GlobalVariable *translateTaggedGlobalVariable(GlobalVariable *) const;
 
   void tagUser(User *, Function *, const TargetLibraryInfo *);
-  CallInst *tagCall(CallInst *, Value *) const;
-  CallInst *tagPossibleIndirectCall(CallInst *);
+  Instruction *tagCallSite(const CallSite &, Value *) const;
+  Instruction *tagPossibleIndirectCallSite(const CallSite &);
   Function *tagFunction(Function *);
   GlobalVariable *tagGlobalVariable(GlobalVariable *);
   GlobalAlias *tagGlobalAlias(GlobalAlias *);
@@ -320,20 +320,21 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
   LLVM_DEBUG(dbgs() << "replacing user " << *U << " of tagged function "
                     << F->getName() << '\n');
 
-  if (auto *Call = dyn_cast<CallInst>(U)) {
+  if (isa<CallInst>(U) || isa<InvokeInst>(U)) {
     // The result of a dynamic memory allocation function call is typically
     // cast. Strip this cast to determine the actual function being called
-    auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
+    CallSite CS(cast<Instruction>(U));
+    auto *CalledValue = CS.getCalledValue()->stripPointerCasts();
 
     // Work out which tagged function we need to replace the existing
     // function with
     Function *NewF = nullptr;
 
-    if (isMallocLikeFn(Call, TLI)) {
+    if (isMallocLikeFn(U, TLI)) {
       NewF = this->FuzzallocMallocF;
-    } else if (isCallocLikeFn(Call, TLI)) {
+    } else if (isCallocLikeFn(U, TLI)) {
       NewF = this->FuzzallocCallocF;
-    } else if (isReallocLikeFn(Call, TLI)) {
+    } else if (isReallocLikeFn(U, TLI)) {
       NewF = this->FuzzallocReallocF;
     } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
       if (this->FunctionsToTag.count(CalledFunc) > 0) {
@@ -356,7 +357,7 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
 
     // Replace the original dynamic memory allocation function call
     if (NewF) {
-      tagCall(Call, NewF);
+      tagCallSite(CS, NewF);
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
@@ -404,22 +405,23 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
   }
 }
 
-/// Replace a function call (`OrigCall`) with a call to `NewCallee` that is
+/// Replace a function call site (`CS`) with a call to `NewCallee` that is
 /// tagged with an allocation site identifier.
 ///
-/// The caller must update the users of the original function call to use the
-/// tagged version.
-CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
-                                    Value *NewCallee) const {
-  LLVM_DEBUG(dbgs() << "tagging function call " << *OrigCall << " (in function "
-                    << OrigCall->getFunction()->getName() << ")\n");
+/// The caller must update the users of the original function call site to use
+/// the tagged version.
+Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
+                                           Value *NewCallee) const {
+  LLVM_DEBUG(dbgs() << "tagging call site " << *CS.getInstruction()
+                    << " (in function " << CS->getFunction()->getName()
+                    << ")\n");
 
   // The tag value depends where the function call is occuring. If the tagged
   // function is being called from within another tagged function, just pass
   // the first argument (which is guaranteed to be the tag) straight through.
   // Otherwise, generate a new tag. This is determined by reading the metadata
   // of the function
-  auto *ParentF = OrigCall->getFunction();
+  auto *ParentF = CS->getFunction();
   Value *Tag = this->FunctionsToTag.count(ParentF) > 0
                    ? translateTaggedFunction(ParentF)->arg_begin()
                    : static_cast<Value *>(generateTag());
@@ -427,13 +429,12 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   // Copy the original allocation function call's arguments so that the tag is
   // the first argument passed to the tagged function
   SmallVector<Value *, 3> FuzzallocArgs = {Tag};
-  FuzzallocArgs.insert(FuzzallocArgs.end(), OrigCall->arg_begin(),
-                       OrigCall->arg_end());
+  FuzzallocArgs.insert(FuzzallocArgs.end(), CS.arg_begin(), CS.arg_end());
 
   Value *CastNewCallee;
-  IRBuilder<> IRB(OrigCall);
+  IRBuilder<> IRB(CS.getInstruction());
 
-  if (auto *BitCast = dyn_cast<BitCastOperator>(OrigCall->getCalledValue())) {
+  if (auto *BitCast = dyn_cast<BitCastOperator>(CS.getCalledValue())) {
     // Sometimes the result of the original dynamic memory allocation function
     // call is cast to some other pointer type. because this is a function
     // call, the underlying type should still be a function type
@@ -454,14 +455,20 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
     CastNewCallee = NewCallee;
   }
 
-  // Create the call to the callee
-  auto TaggedCall = IRB.CreateCall(
-      CastNewCallee, FuzzallocArgs,
-      OrigCall->hasName() ? "__tagged_" + OrigCall->getName() : "");
+  // Create the call/invoke to the callee/invokee
+  Instruction *TaggedCall;
+  if (CS.isCall()) {
+    TaggedCall = IRB.CreateCall(CastNewCallee, FuzzallocArgs);
+  } else if (CS.isInvoke()) {
+    auto *Invoke = cast<InvokeInst>(CS.getInstruction());
+    TaggedCall = IRB.CreateInvoke(CastNewCallee, Invoke->getNormalDest(),
+                                  Invoke->getUnwindDest(), FuzzallocArgs);
+  } else {
+    assert(false);
+  }
   TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
                           MDNode::get(IRB.getContext(), None));
 
-  CallSite CS(OrigCall);
   if (CS.isIndirectCall()) {
     NumOfTaggedIndirectCalls++;
   } else {
@@ -469,13 +476,13 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
   }
 
   // Replace the users of the original call
-  OrigCall->replaceAllUsesWith(TaggedCall);
-  OrigCall->eraseFromParent();
+  CS->replaceAllUsesWith(TaggedCall);
+  CS->eraseFromParent();
 
   return TaggedCall;
 }
 
-/// Possibly replace an indirect function call (`OrigCall`) with a call to a
+/// Possibly replace an indirect function call site (`CS`) with a call to a
 /// tagged version of the function.
 ///
 /// The function call will only be replaced if the function being called is
@@ -483,20 +490,21 @@ CallInst *TagDynamicAllocs::tagCall(CallInst *OrigCall,
 /// allocation function was stored into.
 ///
 /// If the call is not replaced, the original function call is returned.
-CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
-  LLVM_DEBUG(dbgs() << "(possibly) tagging indirect function call " << *OrigCall
-                    << " (in function " << OrigCall->getFunction()->getName()
-                    << ")\n");
+Instruction *TagDynamicAllocs::tagPossibleIndirectCallSite(const CallSite &CS) {
+  LLVM_DEBUG(dbgs() << "(possibly) tagging indirect function call "
+                    << *CS.getInstruction() << " (in function "
+                    << CS->getFunction()->getName() << ")\n");
 
+  auto *CSInst = CS.getInstruction();
   const DataLayout &DL = this->Mod->getDataLayout();
-  auto *CalledValue = OrigCall->getCalledValue();
-  auto *CalledValueTy = OrigCall->getFunctionType();
+  auto *CalledValue = CS.getCalledValue();
+  auto *CalledValueTy = CS.getFunctionType();
 
   // Get the source of the indirect call. If the called value didn't come from a
   // load, we can't do anything about it
   Value *Obj = GetUnderlyingObject(CalledValue, DL);
   if (!isa<LoadInst>(Obj)) {
-    return OrigCall;
+    return CSInst;
   }
   auto *ObjLoad = cast<LoadInst>(Obj);
 
@@ -507,7 +515,7 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
 
   // TODO check that the load is actually from a struct
   if (!isa<StructType>(ObjBaseElemTy)) {
-    return OrigCall;
+    return CSInst;
   }
 
   // If the called value did originate from a struct, check if the struct
@@ -515,12 +523,12 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
   auto StructOffset =
       getStructOffset(cast<StructType>(ObjBaseElemTy), ByteOffset, DL);
   if (!StructOffset.hasValue()) {
-    return OrigCall;
+    return CSInst;
   }
 
   auto StructOffsetIt = this->StructOffsetsToTag.find(*StructOffset);
   if (StructOffsetIt == this->StructOffsetsToTag.end()) {
-    return OrigCall;
+    return CSInst;
   }
 
   // The struct type was recorded. Retrieve the function that was assigned to
@@ -546,7 +554,7 @@ CallInst *TagDynamicAllocs::tagPossibleIndirectCall(CallInst *OrigCall) {
       this->Mod->getOrInsertFunction(OrigFStr, CalledValueTy));
   this->FunctionsToTag.insert(OrigF);
 
-  return tagCall(OrigCall, translateTaggedFunction(OrigF));
+  return tagCallSite(CS, translateTaggedFunction(OrigF));
 }
 
 /// Sometimes a program does not call a dynamic memory allocation function
@@ -637,10 +645,10 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
           Load->getSyncScopeID(), Load);
 
       for (auto *LU : LoadUsers) {
-        if (auto *Call = dyn_cast<CallInst>(LU)) {
+        if (isa<CallInst>(LU) || isa<InvokeInst>(LU)) {
           // Replace a call to the function stored in the original global
           // variable with a call to the tagged version
-          tagCall(Call, NewLoad);
+          tagCallSite(CallSite(LU), NewLoad);
         } else if (auto *PHI = dyn_cast<PHINode>(LU)) {
           // Replace the loaded global variable with the tagged version
           PHI->replaceUsesOfWith(Load, NewLoad);
@@ -673,12 +681,11 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 
             for (auto *PU : NewPHI->users()) {
               // TODO only deal with call instructions for now
-              assert(isa<CallInst>(PU));
-              auto *Call = cast<CallInst>(PU);
+              assert(isa<CallInst>(PU) || isa<InvokeInst>(PU));
 
               // Replace a call to the function stored in the original global
               // variable with a call to the tagged version
-              tagCall(Call, NewPHI);
+              tagCallSite(CallSite(PU), NewPHI);
             }
           }
         } else {
@@ -835,8 +842,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   for (auto &F : M.functions()) {
     for (auto *IndirectCall : findIndirectCallSites(F)) {
-      assert(isa<CallInst>(IndirectCall));
-      tagPossibleIndirectCall(cast<CallInst>(IndirectCall));
+      tagPossibleIndirectCallSite(CallSite(IndirectCall));
     }
   }
 

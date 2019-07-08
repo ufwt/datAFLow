@@ -118,10 +118,11 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
   LLVM_DEBUG(dbgs() << "recording user " << *U << " of tagged function "
                     << F->getName() << '\n');
 
-  if (auto *Call = dyn_cast<CallInst>(U)) {
+  if (isa<CallInst>(U) || isa<InvokeInst>(U)) {
     // The result of a dynamic memory allocation function call is typically
     // cast. Strip this cast to determine the actual function being called
-    auto *CalledValue = Call->getCalledValue()->stripPointerCasts();
+    ImmutableCallSite CS(cast<Instruction>(U));
+    auto *CalledValue = CS.getCalledValue()->stripPointerCasts();
 
     // Ignore calls to dynamic memory allocation functions - we can just tag
     // them directly later
@@ -130,8 +131,8 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
     }
 
     // Otherwise the user must be a function argument
-    for (unsigned I = 0; I < Call->getNumArgOperands(); ++I) {
-      if (Call->getArgOperand(I) == F) {
+    for (unsigned I = 0; I < CS.getNumArgOperands(); ++I) {
+      if (CS.getArgument(I) == F) {
         this->FunctionArgsToTag.insert(
             cast<Function>(CalledValue)->arg_begin() + I);
         NumOfFunctionArgs++;
