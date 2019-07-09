@@ -1,0 +1,3 @@
+[fuzzalloc]
+fun:pj_malloc
+fun:pj_calloc
