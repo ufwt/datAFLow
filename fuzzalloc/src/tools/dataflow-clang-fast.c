@@ -34,6 +34,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "common.h"
+
 static u8 *obj_path;       /* Path to runtime libraries         */
 static u8 **cc_params;     /* Parameters passed to the real CC  */
 static u32 cc_par_cnt = 1; /* Param count, including argv0      */
@@ -83,7 +85,8 @@ static void find_obj(u8 *argv0) {
 /* Copy argv to cc_params, making the necessary edits. */
 
 static void edit_params(u32 argc, char **argv) {
-  u8 fortify_set = 0, asan_set = 0, x_set = 0, maybe_linking = 1, bit_mode = 0;
+  u8 fortify_set = 0, asan_set = 0, x_set = 0, maybe_linking = 1, bit_mode = 0,
+     maybe_assembler = 0;
   u8 *name;
 
   cc_params = ck_alloc((argc + 512) * sizeof(u8 *));
@@ -103,6 +106,10 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[0] = alt_cc ? alt_cc : (u8 *)"clang";
   }
 
+  /* Cannot analyze bitcode if we are running the assembler */
+
+  maybe_assembler = check_if_assembler(argc, argv);
+
   /* Promote stack arrays to dynamically allocated arrays */
 
   cc_params[cc_par_cnt++] =
@@ -117,7 +124,7 @@ static void edit_params(u32 argc, char **argv) {
       "/Transforms/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
 
   char *fuzzalloc_tag_log = getenv("FUZZALLOC_TAG_LOG");
-  if (fuzzalloc_tag_log) {
+  if (fuzzalloc_tag_log && !maybe_assembler) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
         alloc_printf("-fuzzalloc-tag-log=%s", fuzzalloc_tag_log);

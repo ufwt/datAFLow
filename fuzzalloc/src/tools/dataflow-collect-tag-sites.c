@@ -9,10 +9,13 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "common.h"
+
 static u8 **cc_params;     /* Parameters passed to the opt */
 static u32 cc_par_cnt = 1; /* Param count, including argv0 */
 
 static void edit_params(u32 argc, char **argv) {
+  u8 maybe_assembler = 0;
   u8 *name;
 
   cc_params = ck_alloc((argc + 512) * sizeof(u8 *));
@@ -32,6 +35,10 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[0] = alt_cc ? alt_cc : (u8 *)"clang";
   }
 
+  /* Cannot analyze bitcode if we are running the assembler */
+
+  maybe_assembler = check_if_assembler(argc, argv);
+
   /* Collect values to tag */
 
   cc_params[cc_par_cnt++] =
@@ -39,14 +46,14 @@ static void edit_params(u32 argc, char **argv) {
       "/Analysis/CollectTagSites/fuzzalloc-collect-tag-sites.so";
 
   char *fuzzalloc_tag_log = getenv("FUZZALLOC_TAG_LOG");
-  if (fuzzalloc_tag_log) {
+  if (fuzzalloc_tag_log && !maybe_assembler) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
         alloc_printf("-fuzzalloc-tag-log=%s", fuzzalloc_tag_log);
   }
 
   char *fuzzalloc_whitelist = getenv("FUZZALLOC_WHITELIST");
-  if (fuzzalloc_whitelist) {
+  if (fuzzalloc_whitelist && !maybe_assembler) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
         alloc_printf("-fuzzalloc-whitelist=%s", fuzzalloc_whitelist);
@@ -92,7 +99,7 @@ int main(int argc, char **argv) {
          "required to be tagged by dataflow-clang-fast. A typical usage would "
          "be:\n\n"
 
-         "  dataflow-collect-tag-sites /path/to/bc/file\n\n");
+         "  dataflow-collect-tag-sites /path/to/file\n\n");
 
     exit(1);
   }
