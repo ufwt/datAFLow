@@ -1,0 +1,7 @@
+[fuzzalloc]
+fun:CRYPTO_malloc
+fun:CRYPTO_zalloc
+fun:CRYPTO_realloc
+fun:CRYPTO_clear_realloc
+
+# Secure heap (i.e., CRYPTO_secure_malloc, etc.) is not yet supported
