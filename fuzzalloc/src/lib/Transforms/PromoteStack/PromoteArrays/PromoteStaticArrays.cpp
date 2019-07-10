@@ -384,27 +384,42 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   // memory contains the same data when it is first used. How we do this depends
   // on the initializer
   if (OrigGV->hasInitializer()) {
-    if (auto *Initializer =
-            dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
-      // If the initializer is a constant data array, we store the data into the
-      // dynamically allocated array element-by-element. Hopefully the backend
-      // is smart enough to generate efficient code for this...
-      unsigned NumElems = Initializer->getNumElements();
-
-      for (unsigned i = 0; i < NumElems; ++i) {
-        auto *StoreToNewGV = IRB.CreateStore(
-            Initializer->getElementAsConstant(i),
-            IRB.CreateInBoundsGEP(
-                MallocCall, ConstantInt::get(Type::getInt32Ty(C), i, false)));
-        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
-                                  MDNode::get(C, None));
-      }
-    } else if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
+    if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitialier, just memset the dynamically
       // allocated memory to zero
       uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;
       IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
                        Size, OrigGV->getAlignment());
+    } else if (auto *Initializer =
+                   dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
+      // If the initializer is a constant data array, we store the data into the
+      // dynamically allocated array element-by-element. Hopefully the optimizer
+      // can improve this code
+      unsigned NumElems = Initializer->getNumElements();
+
+      for (unsigned i = 0; i < NumElems; ++i) {
+        auto *StoreToNewGV = IRB.CreateStore(
+            Initializer->getElementAsConstant(i),
+            IRB.CreateInBoundsGEP(MallocCall,
+                                  ConstantInt::get(Type::getInt32Ty(C), i,
+                                                   /* isSigned */ false)));
+        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+                                  MDNode::get(C, None));
+      }
+    } else if (auto *Initializer =
+                   dyn_cast<ConstantArray>(OrigGV->getInitializer())) {
+      // Similarly for constant arrays
+      unsigned NumElems = Initializer->getNumOperands();
+
+      for (unsigned i = 0; i < NumElems; ++i) {
+        auto *StoreToNewGV = IRB.CreateStore(
+            Initializer->getOperand(i),
+            IRB.CreateInBoundsGEP(MallocCall,
+                                  ConstantInt::get(Type::getInt32Ty(C), i,
+                                                   /* isSigned */ false)));
+        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+                                  MDNode::get(C, None));
+      }
     } else {
       assert(false && "Unsupported initializer type");
     }
@@ -565,11 +580,6 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
 
   for (auto &GV : M.globals()) {
     if (isPromotableType(GV.getValueType()) && !GV.isConstant()) {
-      // For some reason this doesn't mark the global variable as constant
-      if (GV.hasInitializer() && isa<ConstantArray>(GV.getInitializer())) {
-        continue;
-      }
-
       GlobalVariablesToPromote.push_back(&GV);
     }
   }
