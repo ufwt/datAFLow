@@ -85,6 +85,7 @@ private:
   SmallPtrSet<Argument *, 8> FunctionArgsToTag;
 
   Constant *castAbort(Type *) const;
+  Function *createTrampoline(Function *);
 
   ConstantInt *generateTag() const;
   void getTagSites();
@@ -144,6 +145,41 @@ static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
 
 Constant *TagDynamicAllocs::castAbort(Type *Ty) const {
   return ConstantExpr::getBitCast(this->AbortF, Ty);
+}
+
+Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
+  const Twine TrampolineFName = "__trampoline_" + OrigF->getName();
+  Function *TrampolineF = this->Mod->getFunction(TrampolineFName.str());
+  if (TrampolineF) {
+    return TrampolineF;
+  }
+
+  // Create the trampoline function
+  LLVMContext &C = this->Mod->getContext();
+  TrampolineF =
+      Function::Create(OrigF->getFunctionType(), Function::ExternalLinkage,
+                       TrampolineFName, this->Mod);
+  BasicBlock *TrampolineBB = BasicBlock::Create(C, "", TrampolineF);
+
+  IRBuilder<> IRB(TrampolineBB);
+
+  // Use the trampoline's return address as the allocation site tag
+  Function *ReturnAddrF =
+      Intrinsic::getDeclaration(this->Mod, Intrinsic::returnaddress);
+  auto *RetAddr = IRB.CreateCall(ReturnAddrF,
+                                 {Constant::getNullValue(Type::getInt32Ty(C))});
+  Value *Tag = IRB.CreatePtrToInt(RetAddr, this->TagTy);
+
+  // Call a tagged version of the dynamic memory allocation function and return
+  // its result
+  Function *TaggedF = translateTaggedFunction(OrigF);
+  SmallVector<Value *, 4> TaggedCallArgs = {Tag};
+  for (auto &Arg : TrampolineF->args()) {
+    TaggedCallArgs.push_back(&Arg);
+  }
+  IRB.CreateRet(IRB.CreateCall(TaggedF, TaggedCallArgs));
+
+  return TrampolineF;
 }
 
 /// Generate a random tag
@@ -269,8 +305,7 @@ bool TagDynamicAllocs::isCustomAllocationFunction(const Function *F) const {
 FunctionType *TagDynamicAllocs::translateTaggedFunctionType(
     const FunctionType *OrigFTy) const {
   SmallVector<Type *, 4> TaggedFParams = {this->TagTy};
-  TaggedFParams.insert(TaggedFParams.end(), OrigFTy->param_begin(),
-                       OrigFTy->param_end());
+  TaggedFParams.append(OrigFTy->param_begin(), OrigFTy->param_end());
 
   return FunctionType::get(OrigFTy->getReturnType(), TaggedFParams,
                            OrigFTy->isVarArg());
@@ -285,8 +320,7 @@ TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
-  Module *M = const_cast<Module *>(OrigF->getParent());
-  auto *NewC = M->getOrInsertFunction(NewFName.str(), NewFTy);
+  auto *NewC = this->Mod->getOrInsertFunction(NewFName.str(), NewFTy);
 
   assert(isa<Function>(NewC) && "Translated tagged function not a function");
   auto *NewF = cast<Function>(NewC);
@@ -305,8 +339,8 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
       cast<FunctionType>(OrigGV->getValueType()->getPointerElementType()));
   Twine NewGVName = "__tagged_" + OrigGV->getName();
 
-  auto *NewGV = OrigGV->getParent()->getOrInsertGlobal(NewGVName.str(),
-                                                       NewGVTy->getPointerTo());
+  auto *NewGV =
+      this->Mod->getOrInsertGlobal(NewGVName.str(), NewGVTy->getPointerTo());
   assert(isa<GlobalVariable>(NewGV) &&
          "Translated tagged global variable not a global variable");
 
@@ -346,12 +380,10 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
         //
         // There isn't much we can do in this case (because we do not perform an
         // interprocedural analysis) except to replace the function pointer with
-        // a pointer to the abort function and handle this at runtime
-
-        WARNF("[%s] Replacing %s function argument with an abort",
-              this->Mod->getName().str().c_str(),
-              CalledFunc->getName().str().c_str());
-        U->replaceUsesOfWith(F, castAbort(F->getType()));
+        // a pointer to a trampoline function. The trampoline will calculate a
+        // tag dynamically (based on the runtime return address) and pass this
+        // tag to a tagged version of the dynamic allocation function
+        U->replaceUsesOfWith(F, createTrampoline(F));
       }
     }
 
@@ -366,16 +398,10 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     } else {
       // TODO check that this store is to a struct in StructOffsetsToTag
 
-      // TODO do something more sensible than forcing a runtime abort. This
-      // *should* only kick in if the address of the struct element containing
-      // the memory allocation function is taken
-      std::string PtrOpStr;
-      raw_string_ostream OS(PtrOpStr);
-      OS << *Store->getPointerOperand();
-
-      WARNF("[%s] Replacing store to %s with an abort",
-            this->Mod->getName().str().c_str(), PtrOpStr.c_str());
-      Store->replaceUsesOfWith(F, castAbort(F->getType()));
+      // Replace the stored function with a trampoline. The trampoline will
+      // calculate a tag dynamically (based on the runtime return address) and
+      // pass this tag to a tagged version of the dynamic allocation function
+      Store->replaceUsesOfWith(F, createTrampoline(F));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
     // Tag global variables
@@ -384,24 +410,14 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     // Tag global aliases
     tagGlobalAlias(GA);
   } else if (auto *Const = dyn_cast<Constant>(U)) {
-    // Warn on unsupported constant user and replace with an abort. This is
-    // treated separately because we cannot call replaceUsesOfWith on a constant
-    std::string UserStr;
-    raw_string_ostream OS(UserStr);
-    OS << *U;
-
-    WARNF("[%s] Replacing unsupported constant user %s with an abort",
-          this->Mod->getName().str().c_str(), UserStr.c_str());
-    Const->handleOperandChange(F, castAbort(F->getType()));
+    // Replace unsupported constant with a trampoline.
+    //
+    // This is treated separately because we cannot call replaceUsesOfWith on a
+    // constant
+    Const->handleOperandChange(F, createTrampoline(F));
   } else {
-    // Warn on unsupported user and replace with an undef value
-    std::string UserStr;
-    raw_string_ostream OS(UserStr);
-    OS << *U;
-
-    WARNF("[%s] Replacing unsupported user %s with an undef value",
-          this->Mod->getName().str().c_str(), UserStr.c_str());
-    U->replaceUsesOfWith(F, UndefValue::get(F->getType()));
+    // Replace unsupported user with a trampoline
+    U->replaceUsesOfWith(F, createTrampoline(F));
   }
 }
 
@@ -428,8 +444,8 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
 
   // Copy the original allocation function call's arguments so that the tag is
   // the first argument passed to the tagged function
-  SmallVector<Value *, 3> FuzzallocArgs = {Tag};
-  FuzzallocArgs.insert(FuzzallocArgs.end(), CS.arg_begin(), CS.arg_end());
+  SmallVector<Value *, 4> TaggedCallArgs = {Tag};
+  TaggedCallArgs.append(CS.arg_begin(), CS.arg_end());
 
   Value *CastNewCallee;
   IRBuilder<> IRB(CS.getInstruction());
@@ -458,11 +474,11 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
   // Create the call/invoke to the callee/invokee
   Instruction *TaggedCall = nullptr;
   if (CS.isCall()) {
-    TaggedCall = IRB.CreateCall(CastNewCallee, FuzzallocArgs);
+    TaggedCall = IRB.CreateCall(CastNewCallee, TaggedCallArgs);
   } else if (CS.isInvoke()) {
     auto *Invoke = cast<InvokeInst>(CS.getInstruction());
     TaggedCall = IRB.CreateInvoke(CastNewCallee, Invoke->getNormalDest(),
-                                  Invoke->getUnwindDest(), FuzzallocArgs);
+                                  Invoke->getUnwindDest(), TaggedCallArgs);
   }
   TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
                           MDNode::get(IRB.getContext(), None));
