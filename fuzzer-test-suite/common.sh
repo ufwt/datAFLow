@@ -44,8 +44,8 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
   export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
 
-  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast}
-  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++}
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   if [ ! -z $ASAN_ENABLE ]; then
@@ -72,8 +72,8 @@ elif [[ $FUZZING_ENGINE == "tags" ]]; then
   export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
   export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
 
-  export CC=${CC:-${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites}
-  export CXX=${CXX:=${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites}
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
