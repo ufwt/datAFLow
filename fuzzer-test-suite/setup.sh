@@ -16,6 +16,7 @@ FUZZER_TEST_SUITE="fuzzer-test-suite"
 FUZZER_TEST_SUITE_URL="https://github.com/google/${FUZZER_TEST_SUITE}.git"
 FUZZER_TEST_SUITE_REV="a47305004cfa75181926a3804207d55b8778814f"
 
+AFL="AFL"
 AFL_TAR="afl-latest.tgz"
 AFL_URL="http://lcamtuf.coredump.cx/afl/releases/${AFL_TAR}"
 
@@ -32,18 +33,18 @@ fi
 
 # Get AFL
 if [ -z "${AFL_PATH}" ]; then
-  if [ ! -d "AFL" ]; then
+  if [ ! -d "${AFL}" ]; then
     echo "AFL_PATH not set. Downloading and building AFL"
-    mkdir -p AFL
+    mkdir -p ${AFL}
     wget ${AFL_URL}
     tar xf ${AFL_TAR} -C AFL --strip-components=1
     rm ${AFL_TAR}
 
-    make -C AFL
-    make -C AFL/llvm_mode
+    make -C ${AFL}
+    make -C ${AFL}/llvm_mode
   fi
 
-  export AFL_PATH=${PWD}/AFL
+  export AFL_PATH=${PWD}/${AFL}
 else
   echo "Using AFL at ${AFL_PATH}"
   ln -sf ${AFL_PATH} AFL
@@ -51,15 +52,15 @@ fi
 
 # Get compiler-rt
 if [ -z "${COMPILER_RT_PATH}" ]; then
-    if [ ! -d "${COMPILER_RT}" ]; then
-      echo "${COMPILER_RT} not set. Downloading LLVM's compiler-rt"
-      mkdir -p ${COMPILER_RT}
-      wget ${COMPILER_RT_URL}
-      tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
-      rm ${COMPILER_RT_TAR}
-    fi
+  if [ ! -d "${COMPILER_RT}" ]; then
+    echo "COMPILER_RT not set. Downloading LLVM's compiler-rt"
+    mkdir -p ${COMPILER_RT}
+    wget ${COMPILER_RT_URL}
+    tar xJf ${COMPILER_RT_TAR} -C ${COMPILER_RT} --strip-components=1
+    rm ${COMPILER_RT_TAR}
+  fi
 
-    export COMPILER_RT_PATH=${PWD}/${COMPILER_RT}
+  export COMPILER_RT_PATH=${PWD}/${COMPILER_RT}
 else
     echo "Using LLVM compiler-rt at ${COMPILER_RT_PATH}"
 fi
