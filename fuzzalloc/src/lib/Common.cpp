@@ -82,6 +82,10 @@ Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
 Optional<StructOffset> getStructOffset(const StructType *StructTy,
                                        unsigned ByteOffset,
                                        const DataLayout &DL) {
+  if (StructTy->isOpaque()) {
+    return None;
+  }
+
   const StructLayout *SL =
       DL.getStructLayout(const_cast<StructType *>(StructTy));
 
