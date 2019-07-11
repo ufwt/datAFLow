@@ -579,6 +579,11 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
   SmallVector<GlobalVariable *, 8> GlobalVariablesToPromote;
 
   for (auto &GV : M.globals()) {
+    StringRef GVName = GV.getName();
+    if (GVName == "llvm.global_ctors" || GVName == "llvm.global_dtors") {
+      continue;
+    }
+
     if (isPromotableType(GV.getValueType()) && !GV.isConstant()) {
       GlobalVariablesToPromote.push_back(&GV);
     }
