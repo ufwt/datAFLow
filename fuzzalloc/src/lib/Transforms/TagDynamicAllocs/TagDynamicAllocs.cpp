@@ -456,15 +456,13 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
   }
 
   // Create the call/invoke to the callee/invokee
-  Instruction *TaggedCall;
+  Instruction *TaggedCall = nullptr;
   if (CS.isCall()) {
     TaggedCall = IRB.CreateCall(CastNewCallee, FuzzallocArgs);
   } else if (CS.isInvoke()) {
     auto *Invoke = cast<InvokeInst>(CS.getInstruction());
     TaggedCall = IRB.CreateInvoke(CastNewCallee, Invoke->getNormalDest(),
                                   Invoke->getUnwindDest(), FuzzallocArgs);
-  } else {
-    assert(false);
   }
   TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
                           MDNode::get(IRB.getContext(), None));
