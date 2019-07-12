@@ -79,6 +79,7 @@ private:
   IntegerType *SizeTTy;
 
   SmallPtrSet<Function *, 8> FunctionsToTag;
+  SmallPtrSet<Function *, 8> TaggedFunctions;
   SmallPtrSet<GlobalVariable *, 8> GlobalVariablesToTag;
   SmallPtrSet<GlobalAlias *, 8> GlobalAliasesToTag;
   std::map<StructOffset, FuncTypeString> StructOffsetsToTag;
@@ -430,7 +431,7 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
                                            Value *NewCallee) const {
   LLVM_DEBUG(dbgs() << "tagging call site " << *CS.getInstruction()
                     << " (in function " << CS->getFunction()->getName()
-                    << ")\n");
+                    << ") with call to " << NewCallee->getName() << '\n');
 
   // The tag value depends where the function call is occuring. If the tagged
   // function is being called from within another tagged function, just pass
@@ -438,8 +439,8 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
   // Otherwise, generate a new tag. This is determined by reading the metadata
   // of the function
   auto *ParentF = CS->getFunction();
-  Value *Tag = this->FunctionsToTag.count(ParentF) > 0
-                   ? translateTaggedFunction(ParentF)->arg_begin()
+  Value *Tag = this->TaggedFunctions.count(ParentF) > 0
+                   ? ParentF->arg_begin()
                    : static_cast<Value *>(generateTag());
 
   // Copy the original allocation function call's arguments so that the tag is
@@ -607,6 +608,7 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF) {
     // Update the contents of the function (i.e., the instructions) when we
     // update the users of the dynamic memory allocation function
 
+    TaggedFunctions.insert(TaggedF);
     NumOfTaggedFunctions++;
   }
 
