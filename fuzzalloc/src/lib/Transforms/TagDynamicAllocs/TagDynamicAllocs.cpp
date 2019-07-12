@@ -53,6 +53,11 @@ static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
               cl::desc("Path to log file containing values to tag"));
 
+static cl::opt<bool> ClEnableIndirectCallTag(
+    "enable-indirect-call-tagging",
+    cl::desc("Enable static tagging of indirect call sites when possible"),
+    cl::init(true));
+
 STATISTIC(NumOfTaggedDirectCalls, "Number of tagged direct function calls.");
 STATISTIC(NumOfTaggedIndirectCalls,
           "Number of tagged indirect function calls.");
@@ -856,9 +861,11 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     tagGlobalAlias(GA);
   }
 
-  for (auto &F : M.functions()) {
-    for (auto *IndirectCall : findIndirectCallSites(F)) {
-      tagPossibleIndirectCallSite(CallSite(IndirectCall));
+  if (ClEnableIndirectCallTag) {
+    for (auto &F : M.functions()) {
+      for (auto *IndirectCall : findIndirectCallSites(F)) {
+        tagPossibleIndirectCallSite(CallSite(IndirectCall));
+      }
     }
   }
 
