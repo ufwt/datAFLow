@@ -64,6 +64,7 @@ STATISTIC(NumOfTaggedIndirectCalls,
 STATISTIC(NumOfTaggedFunctions, "Number of tagged functions.");
 STATISTIC(NumOfTaggedGlobalVariables, "Number of tagged global variables.");
 STATISTIC(NumOfTaggedGlobalAliases, "Number of tagged global aliases.");
+STATISTIC(NumOfTrampolines, "Number of trampoline functions inserted.");
 
 namespace {
 
@@ -184,6 +185,8 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
     TaggedCallArgs.push_back(&Arg);
   }
   IRB.CreateRet(IRB.CreateCall(TaggedF, TaggedCallArgs));
+
+  NumOfTrampolines++;
 
   return TrampolineF;
 }
@@ -913,6 +916,11 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(),
         NumOfTaggedGlobalAliases.getValue(), NumOfTaggedGlobalAliases.getName(),
         NumOfTaggedGlobalAliases.getDesc());
+  }
+  if (NumOfTrampolines > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
+        NumOfTrampolines.getValue(), NumOfTrampolines.getName(),
+        NumOfTrampolines.getDesc());
   }
 
   return true;
