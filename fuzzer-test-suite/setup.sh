@@ -46,7 +46,15 @@ if [ -z "${AFL_PATH}" ]; then
 
   export AFL_PATH=${PWD}/${AFL}
 else
-  echo "Using AFL at ${AFL_PATH}"
+  echo "Using existing AFL at ${AFL_PATH}"
+  if [ ! -f "${AFL_PATH}/afl-fuzz.c" ]; then
+    echo "Invalid AFL path"
+    exit 1
+  fi
+
+  make -C ${AFL_PATH}
+  make -C ${AFL_PATH}/llvm_mode
+
   ln -sf ${AFL_PATH} AFL
 fi
 
@@ -62,7 +70,11 @@ if [ -z "${COMPILER_RT_PATH}" ]; then
 
   export COMPILER_RT_PATH=${PWD}/${COMPILER_RT}
 else
-    echo "Using LLVM compiler-rt at ${COMPILER_RT_PATH}"
+  echo "Using existing LLVM compiler-rt at ${COMPILER_RT_PATH}"
+  if [ ! -f "${COMPILER_RT_PATH}/lib/fuzzer/afl/afl_driver.cpp" ]; then
+    echo "Invalid LLVM compiler-rt path"
+    exit 1
+  fi
 fi
 ln -sf ${COMPILER_RT_PATH}/lib/fuzzer Fuzzer
 

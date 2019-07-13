@@ -71,3 +71,6 @@ make install
 # Add the install directory to your path so that you use the correct clang
 export PATH=$(realpath ../install):$PATH
 ```
+
+Note that after building LLVM with the custom ASan, you will have to rebuild
+fuzzalloc with the new clang/clang++ (found under `install/bin`).
