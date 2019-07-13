@@ -12,6 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -21,8 +22,16 @@
 #include "llvm/IR/Operator.h"
 
 #include "Common.h"
+#include "debug.h" // from afl
 
 using namespace llvm;
+
+void printStatistic(const Module &M, const Statistic &Stat) {
+  if (Stat > 0) {
+    OKF("[%s] %u %s - %s", M.getName().str().c_str(), Stat.getValue(),
+        Stat.getName(), Stat.getDesc());
+  }
+}
 
 Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
                                        unsigned MaxLookup) {

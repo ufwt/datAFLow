@@ -606,18 +606,8 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  if (NumOfAllocaArrayPromotion > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfAllocaArrayPromotion.getValue(),
-        NumOfAllocaArrayPromotion.getName(),
-        NumOfAllocaArrayPromotion.getDesc());
-  }
-  if (NumOfGlobalVariableArrayPromotion > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfGlobalVariableArrayPromotion.getValue(),
-        NumOfGlobalVariableArrayPromotion.getName(),
-        NumOfGlobalVariableArrayPromotion.getDesc());
-  }
+  printStatistic(M, NumOfAllocaArrayPromotion);
+  printStatistic(M, NumOfGlobalVariableArrayPromotion);
 
   return (NumOfAllocaArrayPromotion > 0) ||
          (NumOfGlobalVariableArrayPromotion > 0);

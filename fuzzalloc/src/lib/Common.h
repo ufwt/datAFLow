@@ -19,6 +19,8 @@
 
 namespace llvm {
 class DataLayout;
+class Module;
+class Statistic;
 class StructType;
 class Value;
 } // namespace llvm
@@ -34,6 +36,9 @@ const std::string FunctionArgLogPrefix = "fun_arg";
 
 /// A struct type and the offset of an element in that struct
 using StructOffset = std::pair<const llvm::StructType *, unsigned>;
+
+/// Print the statistic using AFL's `OKF`
+void printStatistic(const llvm::Module &, const llvm::Statistic &);
 
 /// Like `GetUnderlyingObject` in ValueTracking analysis, except that it looks
 /// through load instructions

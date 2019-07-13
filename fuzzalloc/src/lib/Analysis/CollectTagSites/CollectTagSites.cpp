@@ -309,30 +309,11 @@ bool CollectTagSites::runOnModule(Module &M) {
   // Save the collected values
   saveTagSites();
 
-  if (NumOfFunctions > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(), NumOfFunctions.getValue(),
-        NumOfFunctions.getName(), NumOfFunctions.getDesc());
-  }
-  if (NumOfFunctionArgs > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfFunctionArgs.getValue(), NumOfFunctionArgs.getName(),
-        NumOfFunctionArgs.getDesc());
-  }
-  if (NumOfGlobalVariables > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfGlobalVariables.getValue(), NumOfGlobalVariables.getName(),
-        NumOfGlobalVariables.getDesc());
-  }
-  if (NumOfGlobalAliases > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfGlobalAliases.getValue(), NumOfGlobalAliases.getName(),
-        NumOfGlobalAliases.getDesc());
-  }
-  if (NumOfStructOffsets > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfStructOffsets.getValue(), NumOfStructOffsets.getName(),
-        NumOfStructOffsets.getDesc());
-  }
+  printStatistic(M, NumOfFunctions);
+  printStatistic(M, NumOfFunctionArgs);
+  printStatistic(M, NumOfGlobalVariables);
+  printStatistic(M, NumOfGlobalAliases);
+  printStatistic(M, NumOfStructOffsets);
 
   return false;
 }

@@ -39,7 +39,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #include "Common.h"
-#include "debug.h"     // from AFL
+#include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
 
 using namespace llvm;
@@ -891,37 +891,12 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   // Finished!
 
-  if (NumOfTaggedDirectCalls > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTaggedDirectCalls.getValue(), NumOfTaggedDirectCalls.getName(),
-        NumOfTaggedDirectCalls.getDesc());
-  }
-  if (NumOfTaggedIndirectCalls > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTaggedIndirectCalls.getValue(), NumOfTaggedIndirectCalls.getName(),
-        NumOfTaggedIndirectCalls.getDesc());
-  }
-  if (NumOfTaggedFunctions > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTaggedFunctions.getValue(), NumOfTaggedFunctions.getName(),
-        NumOfTaggedFunctions.getDesc());
-  }
-  if (NumOfTaggedGlobalVariables > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTaggedGlobalVariables.getValue(),
-        NumOfTaggedGlobalVariables.getName(),
-        NumOfTaggedGlobalVariables.getDesc());
-  }
-  if (NumOfTaggedGlobalAliases > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTaggedGlobalAliases.getValue(), NumOfTaggedGlobalAliases.getName(),
-        NumOfTaggedGlobalAliases.getDesc());
-  }
-  if (NumOfTrampolines > 0) {
-    OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-        NumOfTrampolines.getValue(), NumOfTrampolines.getName(),
-        NumOfTrampolines.getDesc());
-  }
+  printStatistic(M, NumOfTaggedDirectCalls);
+  printStatistic(M, NumOfTaggedIndirectCalls);
+  printStatistic(M, NumOfTaggedFunctions);
+  printStatistic(M, NumOfTaggedGlobalVariables);
+  printStatistic(M, NumOfTaggedGlobalAliases);
+  printStatistic(M, NumOfTrampolines);
 
   return true;
 }

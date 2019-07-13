@@ -27,6 +27,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
+#include "Common.h"
 #include "debug.h" // from afl
 #include "fuzzalloc.h"
 
@@ -377,12 +378,9 @@ bool InstrumentDereferences::runOnModule(Module &M) {
     }
   }
 
-  OKF("[%s] %u %s - %s", M.getName().str().c_str(),
-      NumOfInstrumentedDereferences.getValue(),
-      NumOfInstrumentedDereferences.getName(),
-      NumOfInstrumentedDereferences.getDesc());
+  printStatistic(M, NumOfInstrumentedDereferences);
 
-  return true;
+  return NumOfInstrumentedDereferences > 0;
 }
 
 static RegisterPass<InstrumentDereferences>
