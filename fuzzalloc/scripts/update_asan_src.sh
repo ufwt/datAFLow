@@ -1,4 +1,6 @@
 #!/bin/bash
+#
+# This script will update the LLVM structure in the current working directory
 
 set -ex
 
@@ -7,9 +9,9 @@ SRC=${THIS_DIR}/../src
 RT_SRC=${SRC}/runtime
 INC=${SRC}/include
 
-LLVM=$(pwd)/llvm
-CLANG=$(pwd)/llvm/tools/clang
-COMPILER_RT=$(pwd)/llvm/projects/compiler-rt
+LLVM=$(pwd)
+CLANG=$(pwd)/tools/clang
+COMPILER_RT=$(pwd)/projects/compiler-rt
 COMPILER_RT_LIB=${COMPILER_RT}/lib
 COMPILER_RT_TEST=${COMPILER_RT}/test
 
