@@ -733,8 +733,12 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
       } else {
         // We cannot determine anything about the value being stored - just
         // replace it with the abort function and hope for the best
-        WARNF("[%s] Replacing store to %s with an abort",
-              this->Mod->getName().str().c_str(),
+        std::string ValOpStr;
+        raw_string_ostream OS(ValOpStr);
+        OS << *Store->getValueOperand();
+
+        WARNF("[%s] Replacing store of %s to %s with an abort",
+              this->Mod->getName().str().c_str(), ValOpStr.c_str(),
               OrigGV->getName().str().c_str());
         Store->replaceUsesOfWith(OrigGV, castAbort(OrigGV->getType()));
       }
