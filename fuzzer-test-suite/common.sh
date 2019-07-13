@@ -35,7 +35,7 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
-  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
+  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
   export AFL_PATH=${AFL_SRC}
   export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
 
@@ -60,7 +60,7 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "tags" ]]; then
-  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-build}
+  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
 
   if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"

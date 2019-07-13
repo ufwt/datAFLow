@@ -2,12 +2,6 @@
 
 set -ex
 
-if [ -z ${DEBUG} ]; then
-  BUILD_TYPE="Release"
-else
-  BUILD_TYPE="Debug"
-fi
-
 ROOT_DIR=${PWD}
 SRC_DIR=$(dirname "$(readlink -f "${0}")")
 WHITELIST_DIR="${SRC_DIR}/whitelists"
@@ -79,8 +73,11 @@ fi
 ln -sf ${COMPILER_RT_PATH}/lib/fuzzer Fuzzer
 
 # Build the fuzzalloc libraries and tools
-mkdir -p fuzzalloc-build && \
-  (cd fuzzalloc-build && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=${BUILD_TYPE} ${SRC_DIR}/../fuzzalloc &&
+mkdir -p fuzzalloc-release && \
+  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
+  make -j)
+mkdir -p fuzzalloc-debug && \
+  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
 # Replace common.sh with ours (because it supports datAFLow)
