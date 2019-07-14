@@ -386,10 +386,13 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   if (OrigGV->hasInitializer()) {
     if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitialier, just memset the dynamically
-      // allocated memory to zero
+      // allocated memory to zero. Likewise with promoted allocas that are
+      // memset, reset the destination alignment
       uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;
-      IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
-                       Size, OrigGV->getAlignment());
+      auto MemSetCall =
+          IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
+                           Size, OrigGV->getAlignment());
+      cast<MemIntrinsic>(MemSetCall)->setDestAlignment(0);
     } else if (auto *Initializer =
                    dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
       // If the initializer is a constant data array, we store the data into the
