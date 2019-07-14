@@ -227,7 +227,7 @@ void TagDynamicAllocs::getTagSites() {
         continue;
       }
 
-      // XXX Ignore the type (for now)
+      // XXX ignore the type (for now)
 
       this->FunctionsToTag.insert(F);
     } else if (Line.startswith(GlobalVariableLogPrefix + LogSeparator)) {
@@ -405,11 +405,10 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
       // Tag stores to global variables
       tagGlobalVariable(GV);
     } else {
-      // TODO check that this store is to a struct in StructOffsetsToTag
-
-      // Replace the stored function with a trampoline. The trampoline will
-      // calculate a tag dynamically (based on the runtime return address) and
-      // pass this tag to a tagged version of the dynamic allocation function
+      // Replace the stored function with a trampoline, because we have no idea
+      // how it will be used. The trampoline will calculate a tag dynamically
+      // (based on the runtime return address) and pass this tag to a tagged
+      // version of the dynamic allocation function
       Store->replaceUsesOfWith(F, createTrampoline(F));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
@@ -498,7 +497,7 @@ Instruction *TagDynamicAllocs::tagCallSite(const CallSite &CS,
     NumOfTaggedDirectCalls++;
   }
 
-  // Replace the users of the original call
+  // Replace the users of the original call site
   CS->replaceAllUsesWith(TaggedCall);
   CS->eraseFromParent();
 
@@ -536,7 +535,7 @@ Instruction *TagDynamicAllocs::tagPossibleIndirectCallSite(const CallSite &CS) {
       GetPointerBaseWithConstantOffset(ObjLoad->getOperand(0), ByteOffset, DL);
   Type *ObjBaseElemTy = ObjBase->getType()->getPointerElementType();
 
-  // TODO check that the load is actually from a struct
+  // Check that the load is actually from a struct
   if (!isa<StructType>(ObjBaseElemTy)) {
     return CSInst;
   }
@@ -560,7 +559,7 @@ Instruction *TagDynamicAllocs::tagPossibleIndirectCallSite(const CallSite &CS) {
 
   // Sanity check the function type
   //
-  // XXX Comparing strings seems hella dirty...
+  // XXX comparing strings seems hella dirty...
   std::string OrigCallTyStr;
   raw_string_ostream OS(OrigCallTyStr);
   OS << *CalledValueTy;
@@ -614,7 +613,8 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF) {
     CloneFunctionInto(TaggedF, OrigF, VMap, true, Returns);
 
     // Update the contents of the function (i.e., the instructions) when we
-    // update the users of the dynamic memory allocation function
+    // update the users of the dynamic memory allocation function (i.e., in
+    // tagUser)
 
     TaggedFunctions.insert(TaggedF);
     NumOfTaggedFunctions++;
@@ -689,9 +689,9 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
             auto *NewPHI = PHINode::Create(
                 TaggedGVTy, PHI->getNumIncomingValues(),
                 PHI->hasName() ? "__tagged_" + PHI->getName() : "", PHI);
-            for (unsigned i = 0; i < PHI->getNumIncomingValues(); ++i) {
-              NewPHI->addIncoming(PHI->getIncomingValue(i),
-                                  PHI->getIncomingBlock(i));
+            for (unsigned I = 0; I < PHI->getNumIncomingValues(); ++I) {
+              NewPHI->addIncoming(PHI->getIncomingValue(I),
+                                  PHI->getIncomingBlock(I));
             }
 
             // Cannot use `replaceAllUsesWith` because the PHI nodes have
@@ -723,7 +723,10 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
       // The only things that should be written to a tagged global variable are
       // functions that are going to be tagged
       if (auto *F = dyn_cast<Function>(Store->getValueOperand())) {
-        assert(isTaggableFunction(F));
+        if (!isTaggableFunction(F)) {
+          assert(false && "Must store taggable function");
+        }
+
         auto *NewStore =
             new StoreInst(translateTaggedFunction(F), TaggedGV,
                           Store->isVolatile(), Store->getAlignment(),
@@ -790,7 +793,7 @@ GlobalAlias *TagDynamicAllocs::tagGlobalAlias(GlobalAlias *OrigGA) {
       OrigGA->getParent());
 
   // TODO handle users
-  assert(OrigGA->getNumUses() == 0 && "Not supported");
+  assert(OrigGA->hasNUses(0) && "Not supported");
 
   NumOfTaggedGlobalAliases++;
 
