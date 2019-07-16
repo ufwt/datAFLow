@@ -1,4 +1,4 @@
-//===-- PromoteStaticArrays.cpp - Promote static arrays to mallocs --------===//
+//===-- PromoteGlobalVariables.cpp - Promote global var. arrays to mallocs ===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,15 +8,14 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass promotes static arrays (both global and stack-based) to
-/// dynamically allocated arrays via \p malloc.
+/// This pass promotes static global variable arrays to dynamically-allocated
+/// arrays via \p malloc.
 ///
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/ValueTracking.h"
-#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -29,72 +28,40 @@
 
 #include "Common.h"
 #include "PromoteCommon.h"
-#include "debug.h" // from afl
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-prom-static-arrays"
+#define DEBUG_TYPE "fuzzalloc-prom-global-vars"
 
-static cl::opt<int> ClMinArraySize(
-    "fuzzalloc-min-array-size",
-    cl::desc("The minimum size of a static array to promote to malloc"),
-    cl::init(1));
+static cl::opt<int>
+    ClMinArraySize("fuzzalloc-min-global-array-size",
+                   cl::desc("The minimum size of a static global variable "
+                            "array to promote to malloc"),
+                   cl::init(1));
 
-STATISTIC(NumOfAllocaArrayPromotion, "Number of alloca array promotions.");
 STATISTIC(NumOfGlobalVariableArrayPromotion,
           "Number of global variable array promotions.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
 
-/// PromoteStaticArrays: instrument the code in a module to promote static,
-/// fixed-size arrays (both global and stack-based) to dynamically allocated
-/// arrays via \p malloc.
-class PromoteStaticArrays : public ModulePass {
+/// PromoteGlobalVariables: instrument the code in a module to promote static,
+/// fixed-size global variable arrays to dynamically-allocated arrays via
+/// \p malloc.
+class PromoteGlobalVariables : public ModulePass {
 private:
-  DataLayout *DL;
-  DIBuilder *DBuilder;
-  IntegerType *IntPtrTy;
-
-  Instruction *createArrayMalloc(IRBuilder<> &, Type *, uint64_t) const;
-  Instruction *insertMalloc(const AllocaInst *, AllocaInst *,
-                            Instruction *) const;
-
-  void copyDebugInfo(const AllocaInst *, AllocaInst *) const;
-
-  AllocaInst *promoteAlloca(AllocaInst *,
-                            const ArrayRef<IntrinsicInst *> &) const;
   GlobalVariable *promoteGlobalVariable(GlobalVariable *, Function *) const;
 
 public:
   static char ID;
-  PromoteStaticArrays() : ModulePass(ID) {}
+  PromoteGlobalVariables() : ModulePass(ID) {}
 
-  bool doInitialization(Module &M) override;
-  bool doFinalization(Module &) override;
   bool runOnModule(Module &M) override;
 };
 
 } // end anonymous namespace
 
-char PromoteStaticArrays::ID = 0;
-
-static bool isPromotableType(Type *Ty) {
-  if (!Ty->isArrayTy()) {
-    return false;
-  }
-
-  // Don't promote va_list (i.e., variable arguments): it's too hard and for
-  // some reason everything breaks :(
-  if (auto *StructTy = dyn_cast<StructType>(Ty->getArrayElementType())) {
-    if (!StructTy->isLiteral() &&
-        StructTy->getName().equals("struct.__va_list_tag")) {
-      return false;
-    }
-  }
-
-  return true;
-}
+char PromoteGlobalVariables::ID = 0;
 
 /// Create a constructor function that will be used to `malloc` all of the
 /// promoted global variables in the module.
@@ -285,191 +252,14 @@ static Function *expandGlobalVariableInitializer(GlobalVariable *GV) {
   return GlobalCtorF;
 }
 
-static Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
-  IRBuilder<> IRB(GEP);
-
-  // Load the pointer to the dynamically allocated array and create a new GEP
-  // instruction. It seems that the simplest way is to cast the loaded pointer
-  // to the original array type
-  auto *Load = IRB.CreateLoad(MallocPtr);
-  auto *Bitcast = IRB.CreateBitCast(Load, GEP->getOperand(0)->getType());
-  auto *NewGEP = IRB.CreateInBoundsGEP(
-      Bitcast, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
-      GEP->hasName() ? GEP->getName() + "_prom" : "");
-
-  // Update all the users of the original GEP instruction to use the updated
-  // GEP. The updated GEP is correctly typed for the malloc pointer
-  GEP->replaceAllUsesWith(NewGEP);
-
-  return NewGEP;
-}
-
-Instruction *
-PromoteStaticArrays::createArrayMalloc(IRBuilder<> &IRB, Type *AllocTy,
-                                       uint64_t ArrayNumElems) const {
-  uint64_t TypeSize = this->DL->getTypeAllocSize(AllocTy);
-
-  return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), this->IntPtrTy, AllocTy,
-                                ConstantInt::get(this->IntPtrTy, TypeSize),
-                                ConstantInt::get(this->IntPtrTy, ArrayNumElems),
-                                nullptr);
-}
-
-/// Insert a call to `malloc` before the `InsertPt` instruction. The result of
-/// the `malloc` call is stored in `NewAlloca`.
-Instruction *PromoteStaticArrays::insertMalloc(const AllocaInst *OrigAlloca,
-                                               AllocaInst *NewAlloca,
-                                               Instruction *InsertPt) const {
-  const Module *M = OrigAlloca->getModule();
-  LLVMContext &C = M->getContext();
-
-  ArrayType *ArrayTy = cast<ArrayType>(OrigAlloca->getAllocatedType());
-  Type *ElemTy = ArrayTy->getArrayElementType();
-
-  uint64_t ArrayNumElems = ArrayTy->getNumElements();
-
-  IRBuilder<> IRB(InsertPt);
-
-  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
-  auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
-  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                           MDNode::get(C, None));
-
-  return MallocCall;
-}
-
-void PromoteStaticArrays::copyDebugInfo(const AllocaInst *OrigAlloca,
-                                        AllocaInst *NewAlloca) const {
-  auto *F = OrigAlloca->getFunction();
-
-  for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-    if (auto *DbgDeclare = dyn_cast<DbgDeclareInst>(&*I)) {
-      if (DbgDeclare->getAddress() == OrigAlloca) {
-        this->DBuilder->insertDeclare(NewAlloca, DbgDeclare->getVariable(),
-                                      DbgDeclare->getExpression(),
-                                      DbgDeclare->getDebugLoc(),
-                                      const_cast<DbgDeclareInst *>(DbgDeclare));
-      }
-    }
-  }
-}
-
-AllocaInst *PromoteStaticArrays::promoteAlloca(
-    AllocaInst *Alloca, const ArrayRef<IntrinsicInst *> &LifetimeStarts) const {
-  LLVM_DEBUG(dbgs() << "promoting" << *Alloca << " in function "
-                    << Alloca->getFunction()->getName() << ")\n");
-
-  // Cache uses
-  SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
-
-  ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
-  Type *ElemTy = ArrayTy->getArrayElementType();
-
-  // This will transform something like this:
-  //
-  // %1 = alloca [NumElements x Ty]
-  //
-  // into something like this:
-  //
-  // %1 = alloca Ty*
-  // %2 = call i8* @malloc(PtrTy Size)
-  // %3 = bitcast i8* %2 to Ty*
-  // store Ty* %3, Ty** %1
-  //
-  // Where:
-  //
-  //  - `Ty` is the array element type
-  //  - `NumElements` is the array number of elements
-  //  - `PtrTy` is the target's pointer type
-  //  - `Size` is the size of the allocated buffer (equivalent to
-  //    `NumElements * sizeof(Ty)`)
-
-  PointerType *NewAllocaTy = ElemTy->getPointerTo();
-  auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
-                                   Alloca->getName() + "_prom", Alloca);
-  copyDebugInfo(Alloca, NewAlloca);
-
-  // Decide where to insert the call to malloc.
-  //
-  // If there are lifetime.start intrinsics, then we must allocate memory at
-  // these intrinsics. Otherwise, we can just perform the allocation after the
-  // alloca instruction.
-  if (LifetimeStarts.empty()) {
-    insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
-  } else {
-    for (auto *LifetimeStart : LifetimeStarts) {
-      if (GetUnderlyingObjectThroughLoads(LifetimeStart->getOperand(1),
-                                          *this->DL) == Alloca) {
-        auto *Ptr = LifetimeStart->getOperand(1);
-        assert(isa<Instruction>(Ptr));
-
-        insertMalloc(Alloca, NewAlloca, cast<Instruction>(Ptr));
-      }
-    }
-  }
-
-  // Update all the users of the original array to use the dynamically
-  // allocated array
-  for (auto *U : Users) {
-    if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
-      // Ensure GEPs are correctly typed
-      updateGEP(GEP, NewAlloca);
-      GEP->eraseFromParent();
-    } else if (auto *Store = dyn_cast<StoreInst>(U)) {
-      // Sometimes the original array may be stored to some temporary variable
-      // generated by LLVM (e.g., from a GEP instruction).
-      //
-      // In this case, we can just cast the new dynamically allocated alloca
-      // (which is a pointer) to the original static array's type
-
-      // The original array must be the store's value operand (I think...)
-      assert(Store->getValueOperand() == Alloca);
-
-      auto *StorePtrElemTy =
-          Store->getPointerOperandType()->getPointerElementType();
-
-      // Only cast the new alloca if the types don't match
-      auto *AllocaReplace = (StorePtrElemTy == NewAllocaTy)
-                                ? static_cast<Instruction *>(NewAlloca)
-                                : CastInst::CreatePointerCast(
-                                      NewAlloca, StorePtrElemTy, "", Store);
-
-      U->replaceUsesOfWith(Alloca, AllocaReplace);
-    } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // Similarly, a temporary variable may be used in a select instruction,
-      // which also requires casting.
-
-      // The original array must be one of the select values
-      assert(Select->getTrueValue() == Alloca ||
-             Select->getFalseValue() == Alloca);
-
-      auto *SelectTy = Select->getType();
-
-      // Only cast the new alloca if the types don't match
-      auto *AllocaReplace =
-          (SelectTy == NewAllocaTy)
-              ? static_cast<Instruction *>(NewAlloca)
-              : CastInst::CreatePointerCast(NewAlloca, SelectTy, "", Select);
-
-      U->replaceUsesOfWith(Alloca, AllocaReplace);
-    } else {
-      // We must load the array from the heap before we do anything with it
-
-      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", cast<Instruction>(U));
-      U->replaceUsesOfWith(Alloca, LoadNewAlloca);
-    }
-  }
-
-  return NewAlloca;
-}
-
 GlobalVariable *
-PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
-                                           Function *ArrayPromCtor) const {
+PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
+                                              Function *ArrayPromCtor) const {
   LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
   LLVMContext &C = M->getContext();
+  const DataLayout &DL = M->getDataLayout();
 
   // Insert a new global variable into the module and initialize it with a call
   // to malloc in the module's constructor
@@ -496,7 +286,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
     NewGV->addDebugInfo(GV);
   }
 
-  auto *MallocCall = createArrayMalloc(IRB, ElemTy, ArrayNumElems);
+  auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems);
 
   // If the array had an initializer, we must replicate it so that the malloc'd
   // memory contains the same data when it is first used. How we do this depends
@@ -506,7 +296,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
       // If the initializer is the zeroinitializer, just memset the dynamically
       // allocated memory to zero. Likewise with promoted allocas that are
       // memset, reset the destination alignment
-      uint64_t Size = this->DL->getTypeAllocSize(ElemTy) * ArrayNumElems;
+      uint64_t Size = DL.getTypeAllocSize(ElemTy) * ArrayNumElems;
       auto MemSetCall =
           IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
                            Size, OrigGV->getAlignment());
@@ -576,117 +366,7 @@ PromoteStaticArrays::promoteGlobalVariable(GlobalVariable *OrigGV,
   return NewGV;
 }
 
-bool PromoteStaticArrays::doInitialization(Module &M) {
-  LLVMContext &C = M.getContext();
-
-  this->DL = new DataLayout(M.getDataLayout());
-  this->DBuilder = new DIBuilder(M, false);
-  this->IntPtrTy = this->DL->getIntPtrType(C);
-
-  return false;
-}
-
-bool PromoteStaticArrays::doFinalization(Module &) {
-  delete this->DL;
-
-  this->DBuilder->finalize();
-  delete this->DBuilder;
-
-  return false;
-}
-
-bool PromoteStaticArrays::runOnModule(Module &M) {
-  // Static array allocations to promote
-  SmallVector<AllocaInst *, 8> AllocasToPromote;
-
-  // lifetime.start intrinsics that will require calls to mallic to be inserted
-  // before them
-  SmallVector<IntrinsicInst *, 4> LifetimeStarts;
-
-  // lifetime.end intrinsics that will require calls to free to be inserted
-  // before them
-  SmallVector<IntrinsicInst *, 4> LifetimeEnds;
-
-  // llvm.mem* intrinsics that may require realignment
-  SmallVector<MemIntrinsic *, 4> MemIntrinsics;
-
-  // Return instructions that may require calls to free to be inserted before
-  // them
-  SmallVector<ReturnInst *, 4> Returns;
-
-  for (auto &F : M.functions()) {
-    AllocasToPromote.clear();
-    LifetimeStarts.clear();
-    LifetimeEnds.clear();
-    MemIntrinsics.clear();
-    Returns.clear();
-
-    // Collect all the things!
-    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-        if (isPromotableType(Alloca->getAllocatedType())) {
-          AllocasToPromote.push_back(Alloca);
-        }
-      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
-        MemIntrinsics.push_back(MemI);
-      } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
-        if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_start) {
-          LifetimeStarts.push_back(Intrinsic);
-        } else if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
-          LifetimeEnds.push_back(Intrinsic);
-        }
-      } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
-        Returns.push_back(Return);
-      }
-    }
-
-    // Promote static arrays to dynamically allocated arrays and insert calls
-    // to free at the appropriate locations (either at lifetime.end intrinsics
-    // or at return instructions)
-    for (auto *Alloca : AllocasToPromote) {
-      // Promote the alloca. After this function call all users of the original
-      // alloca are invalid
-      auto *NewAlloca = promoteAlloca(Alloca, LifetimeStarts);
-
-      // Check if any of the original allocas (which have now been replaced by
-      // the new alloca) are used in any lifetime.end intrinsics. If they are,
-      // insert the free before the lifetime.end intrinsic and NOT at function
-      // return, otherwise we may end up with a double free :(
-      if (LifetimeEnds.empty()) {
-        // If no lifetime.end intrinsics were found, just free the allocation
-        // when the function returns
-        for (auto *Return : Returns) {
-          insertFree(NewAlloca, Return);
-          NumOfFreeInsert++;
-        }
-      } else {
-        // Otherwise insert the free before each lifetime.end
-        for (auto *LifetimeEnd : LifetimeEnds) {
-          if (GetUnderlyingObjectThroughLoads(LifetimeEnd->getOperand(1),
-                                              *this->DL) == NewAlloca) {
-            insertFree(NewAlloca, LifetimeEnd);
-            NumOfFreeInsert++;
-          }
-        }
-      }
-
-      // Array allocas may be memset/memcpy'd at initialization (e.g., when
-      // assigned the empty string "", or a string with actual content). The
-      // alignment may be suitable for the old static array, but may break the
-      // new dynamically allocated pointer. To be safe we remove any alignment
-      // and let LLVM decide what is appropriate
-      for (auto *MemI : MemIntrinsics) {
-        if (GetUnderlyingObjectThroughLoads(MemI->getDest(), *this->DL) ==
-            NewAlloca) {
-          MemI->setDestAlignment(0);
-        }
-      }
-
-      Alloca->eraseFromParent();
-      NumOfAllocaArrayPromotion++;
-    }
-  }
-
+bool PromoteGlobalVariables::runOnModule(Module &M) {
   // Collect global variables to promote
   SetVector<GlobalVariable *> GVsToPromote;
 
@@ -730,26 +410,24 @@ bool PromoteStaticArrays::runOnModule(Module &M) {
     }
   }
 
-  printStatistic(M, NumOfAllocaArrayPromotion);
   printStatistic(M, NumOfGlobalVariableArrayPromotion);
 
-  return (NumOfAllocaArrayPromotion > 0) ||
-         (NumOfGlobalVariableArrayPromotion > 0);
+  return NumOfGlobalVariableArrayPromotion > 0;
 }
 
-static RegisterPass<PromoteStaticArrays>
-    X("fuzzalloc-prom-static-arrays", "Promote static arrays to malloc calls",
-      false, false);
+static RegisterPass<PromoteGlobalVariables>
+    X("fuzzalloc-prom-global-vars",
+      "Promote static global variable arrays to malloc calls", false, false);
 
-static void registerPromoteStaticArraysPass(const PassManagerBuilder &,
-                                            legacy::PassManagerBase &PM) {
-  PM.add(new PromoteStaticArrays());
+static void registerPromoteGlobalVariablesPass(const PassManagerBuilder &,
+                                               legacy::PassManagerBase &PM) {
+  PM.add(new PromoteGlobalVariables());
 }
 
 static RegisterStandardPasses
-    RegisterPromoteStaticArraysPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
-                                    registerPromoteStaticArraysPass);
+    RegisterPromoteGlobalVariablesPass(PassManagerBuilder::EP_OptimizerLast,
+                                       registerPromoteGlobalVariablesPass);
 
-static RegisterStandardPasses
-    RegisterPromoteStaticArraysPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                                     registerPromoteStaticArraysPass);
+static RegisterStandardPasses RegisterPromoteGlobalVariablesPass0(
+    PassManagerBuilder::EP_EnabledOnOptLevel0,
+    registerPromoteGlobalVariablesPass);

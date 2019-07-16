@@ -1,3 +1,3 @@
 add_subdirectory(InstrumentDerefs)
-add_subdirectory(PromoteStack)
+add_subdirectory(PromoteObjects)
 add_subdirectory(TagDynamicAllocs)

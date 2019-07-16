@@ -110,11 +110,14 @@ static void edit_params(u32 argc, char **argv) {
 
   maybe_assembler = check_if_assembler(argc, argv);
 
-  /* Promote stack arrays to dynamically allocated arrays */
+  /* Promote static arrays to dynamically allocated arrays */
 
   cc_params[cc_par_cnt++] =
       "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/PromoteStack/PromoteArrays/fuzzalloc-prom-arrays.so";
+      "/Transforms/PromoteObjects/PromoteAllocas/fuzzalloc-prom-allocas.so";
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Transforms/PromoteObjects/PromoteGlobalVariables/fuzzalloc-prom-global-vars.so";
 
   /* Tag dynamically allocated arrays and redirect them to the fuzzalloc
    * allocator library */
