@@ -72,7 +72,7 @@ static Function *createArrayPromCtor(Module &M) {
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
                        "__init_prom_global_arrays_" + M.getName(), &M);
-  appendToGlobalCtors(M, GlobalCtorF, 0);
+  appendToGlobalCtors(M, GlobalCtorF, kPromotedGVCtorAndDtorPriority);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
   ReturnInst::Create(C, GlobalCtorBB);
@@ -89,45 +89,12 @@ static Function *createArrayPromDtor(Module &M) {
   Function *GlobalDtorF =
       Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
                        "__fin_prom_global_arrays_" + M.getName(), &M);
-  appendToGlobalDtors(M, GlobalDtorF, 0);
+  appendToGlobalDtors(M, GlobalDtorF, kPromotedGVCtorAndDtorPriority);
 
   BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
   ReturnInst::Create(C, GlobalDtorBB);
 
   return GlobalDtorF;
-}
-
-/// Returns `true` if the given global variable uses one of the global variables
-/// that is going to be promoted in its initializer.
-static bool
-usesPromotableGlobalVariable(const GlobalVariable *GV,
-                             const SetVector<GlobalVariable *> &GVsToPromote) {
-  if (!GV->hasInitializer()) {
-    return false;
-  }
-
-  // TODO only support ConstantAggregate initializers for now
-  const Constant *Initializer = GV->getInitializer();
-  if (!isa<ConstantAggregate>(Initializer)) {
-    return false;
-  }
-
-  SmallVector<Value *, 8> Worklist(Initializer->operands());
-
-  while (!Worklist.empty()) {
-    // Global variable initializers can only use constants
-    Constant *C = cast<Constant>(Worklist.pop_back_val());
-
-    if (auto *GVC = dyn_cast<GlobalVariable>(C)) {
-      if (GVsToPromote.count(GVC) > 0) {
-        return true;
-      }
-    }
-
-    Worklist.append(C->op_begin(), C->op_end());
-  }
-
-  return false;
 }
 
 static void expandConstantExpression(ConstantExpr *ConstExpr) {
@@ -166,90 +133,6 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
   }
 
   ConstExpr->destroyConstant();
-}
-
-/// Recursively expand `ConstantAggregate`s by generating equivalent
-/// instructions.
-static void expandConstantAggregate(IRBuilder<> &IRB, GlobalVariable *GV,
-                                    ConstantAggregate *ConstantAgg,
-                                    std::vector<unsigned> &Idxs) {
-  Module *M = GV->getParent();
-  LLVMContext &C = M->getContext();
-  IntegerType *Int32Ty = Type::getInt32Ty(C);
-  auto UnsignedToInt32 = [Int32Ty](const unsigned &N) {
-    return ConstantInt::get(Int32Ty, N);
-  };
-
-  // TODO handle ConstantAggregates with multiple users
-  assert(ConstantAgg->hasOneUse());
-
-  for (unsigned I = 0; I < ConstantAgg->getNumOperands(); ++I) {
-    auto *Op = ConstantAgg->getOperand(I);
-
-    if (auto *AggregateOp = dyn_cast<ConstantAggregate>(Op)) {
-      // Expand the nested ConstantAggregate
-      Idxs.push_back(I);
-      expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
-      Idxs.pop_back();
-    } else {
-      std::vector<Value *> IdxValues(Idxs.size());
-      std::transform(Idxs.begin(), Idxs.end(), IdxValues.begin(),
-                     UnsignedToInt32);
-      IdxValues.push_back(UnsignedToInt32(I));
-
-      auto *Store = IRB.CreateStore(Op, IRB.CreateInBoundsGEP(GV, IdxValues));
-      Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                         MDNode::get(C, None));
-    }
-  }
-
-  // XXX I don't understand why the num. uses doesn't automatically go to zero
-  ConstantAgg->dropAllReferences();
-}
-
-/// Move global variable's who have a `ConstantAggregate` initializer into a
-/// constructor function.
-static Function *expandGlobalVariableInitializer(GlobalVariable *GV) {
-  LLVM_DEBUG(dbgs() << "rewriting initializer for global variable " << *GV
-                    << '\n');
-
-  Module *M = GV->getParent();
-  LLVMContext &C = M->getContext();
-  Constant *Initializer = GV->getInitializer();
-
-  assert(isa<ConstantAggregate>(Initializer));
-
-  FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
-  Function *GlobalCtorF =
-      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__init_non_constant_globals_" + M->getName(), M);
-  appendToGlobalCtors(*M, GlobalCtorF, 1);
-
-  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
-
-  IRBuilder<> IRB(GlobalCtorBB);
-  for (unsigned I = 0; I < Initializer->getNumOperands(); ++I) {
-    auto *Op = Initializer->getOperand(I);
-
-    if (auto *AggregateOp = dyn_cast<ConstantAggregate>(Op)) {
-      std::vector<unsigned> Idxs = {0, I};
-      expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
-    } else {
-      auto *Store = IRB.CreateStore(
-          Op, IRB.CreateConstInBoundsGEP2_32(nullptr, GV, 0, I));
-      Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                         MDNode::get(C, None));
-    }
-  }
-  IRB.CreateRetVoid();
-
-  GV->setInitializer(ConstantAggregateZero::get(GV->getValueType()));
-
-  assert(!Initializer->isConstantUsed() &&
-         "Initializer should no longer be used");
-  Initializer->destroyConstant();
-
-  return GlobalCtorF;
 }
 
 GlobalVariable *
@@ -371,23 +254,12 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
   SetVector<GlobalVariable *> GVsToPromote;
 
   for (auto &GV : M.globals()) {
-    StringRef GVName = GV.getName();
-    if (GVName == "llvm.global_ctors" || GVName == "llvm.global_dtors") {
+    if (GV.getName().startswith("llvm.")) {
       continue;
     }
 
     if (isPromotableType(GV.getValueType()) && !GV.isConstant()) {
       GVsToPromote.insert(&GV);
-    }
-  }
-
-  // Rewrite global variables that use promotable global variables in their
-  // initializer (otherwise this would break expandConstantExpressions because
-  // the initializers are not instructions and therefore cannot be rewritten as
-  // such)
-  for (auto &GV : M.globals()) {
-    if (usesPromotableGlobalVariable(&GV, GVsToPromote)) {
-      expandGlobalVariableInitializer(&GV);
     }
   }
 

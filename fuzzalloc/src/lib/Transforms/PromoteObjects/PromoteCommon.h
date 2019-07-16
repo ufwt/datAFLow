@@ -27,6 +27,9 @@ class Twine;
 class Value;
 } // namespace llvm
 
+/// Priority for promoted global variable constructor
+const unsigned kPromotedGVCtorAndDtorPriority = 0;
+
 /// Update a GEP to use the given value
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
 
