@@ -111,7 +111,7 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
   // new instruction representing the constant expression before each user
   for (auto *U : Users) {
     if (auto *PHI = dyn_cast<PHINode>(U)) {
-      // PHI nodes are handled differently because they must always be the first
+      // PHI nodes are a special case because they must always be the first
       // instruction in a basic block. To ensure this property is true we must
       // insert the new instruction at the end of the appropriate predecessor
       // block(s)
@@ -238,11 +238,28 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
       // Ensure GEPs are correctly typed
       updateGEP(GEP, NewGV);
       GEP->eraseFromParent();
+    } else if (auto *PHI = dyn_cast<PHINode>(U)) {
+      // PHI nodes are a special case because they must always be the first
+      // instruction in a basic block. To ensure this property is true we insert
+      // the load instruction at the end of the appropriate predecessor block(s)
+      for (unsigned I = 0; I < PHI->getNumIncomingValues(); ++I) {
+        Value *IncomingValue = PHI->getIncomingValue(I);
+        BasicBlock *IncomingBlock = PHI->getIncomingBlock(I);
+
+        if (IncomingValue == OrigGV) {
+          auto *LoadNewGV =
+              new LoadInst(NewGV, "", IncomingBlock->getTerminator());
+          auto *BitCastNewGV =
+              new BitCastInst(LoadNewGV, IncomingValue->getType(), "",
+                              IncomingBlock->getTerminator());
+          PHI->setIncomingValue(I, BitCastNewGV);
+        }
+      }
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
       U->replaceUsesOfWith(OrigGV, LoadNewGV);
     } else {
-      assert(false && "Unsupported user");
+      assert(false && "Unsupported global variable user");
     }
   }
 
