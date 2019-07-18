@@ -186,12 +186,12 @@ AllocaInst *PromoteAllocas::promoteAlloca(
           Store->getPointerOperandType()->getPointerElementType();
 
       // Only cast the new alloca if the types don't match
-      auto *AllocaReplace = (StorePtrElemTy == NewAllocaTy)
+      auto *ReplacementAlloca = (StorePtrElemTy == NewAllocaTy)
                                 ? static_cast<Instruction *>(NewAlloca)
                                 : CastInst::CreatePointerCast(
                                       NewAlloca, StorePtrElemTy, "", Store);
 
-      U->replaceUsesOfWith(Alloca, AllocaReplace);
+      U->replaceUsesOfWith(Alloca, ReplacementAlloca);
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
       // Similarly, a temporary variable may be used in a select instruction,
       // which also requires casting.
@@ -203,17 +203,18 @@ AllocaInst *PromoteAllocas::promoteAlloca(
       auto *SelectTy = Select->getType();
 
       // Only cast the new alloca if the types don't match
-      auto *AllocaReplace =
+      auto *ReplacementAlloca =
           (SelectTy == NewAllocaTy)
               ? static_cast<Instruction *>(NewAlloca)
               : CastInst::CreatePointerCast(NewAlloca, SelectTy, "", Select);
 
-      U->replaceUsesOfWith(Alloca, AllocaReplace);
-    } else {
+      U->replaceUsesOfWith(Alloca, ReplacementAlloca);
+    } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we do anything with it
-
-      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", cast<Instruction>(U));
+      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);
       U->replaceUsesOfWith(Alloca, LoadNewAlloca);
+    } else {
+      assert(false && "Unsupported alloca user");
     }
   }
 
