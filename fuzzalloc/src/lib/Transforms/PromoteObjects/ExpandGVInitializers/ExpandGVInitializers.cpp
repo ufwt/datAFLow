@@ -38,7 +38,7 @@ namespace {
 /// dynamic initializers in the module's constructor.
 class ExpandGVInitializers : public ModulePass {
 private:
-  SmallPtrSet<Constant *, 8> ConstantsToDestroy;
+  SmallPtrSet<Constant *, 8> DeadConstants;
 
   void expandConstantAggregate(IRBuilder<> &, GlobalVariable *,
                                ConstantAggregate *, std::vector<unsigned> &);
@@ -99,7 +99,7 @@ void ExpandGVInitializers::expandConstantAggregate(
     }
   }
 
-  this->ConstantsToDestroy.insert(ConstantAgg);
+  this->DeadConstants.insert(ConstantAgg);
 }
 
 /// Move global variable's who have a `ConstantAggregate` initializer into a
@@ -175,9 +175,8 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
     }
   }
 
-  for (auto *C : this->ConstantsToDestroy) {
+  for (auto *C : this->DeadConstants) {
     C->removeDeadConstantUsers();
-    C->destroyConstant();
   }
 
   printStatistic(M, NumOfExpandedGlobalVariables);
