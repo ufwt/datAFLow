@@ -157,13 +157,17 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
       continue;
     }
 
+    if (GV.isConstant()) {
+      continue;
+    }
+
     const Constant *Initializer = GV.getInitializer();
     if (!isa<ConstantAggregate>(Initializer)) {
       continue;
     }
 
     if (auto *ConstArray = dyn_cast<ConstantArray>(Initializer)) {
-      if (isPromotableType(ConstArray->getType()) && !GV.isConstant()) {
+      if (isPromotableType(ConstArray->getType())) {
         expandInitializer(&GV);
       }
     } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(Initializer)) {
