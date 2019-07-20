@@ -82,11 +82,19 @@
 /* Maximum multiplier for the above (should be a power of two, beware
    of 32-bit int overflows): */
 
+#ifdef DATAFLOW_COLLECT_INPUTS
+#define HAVOC_MAX_MULT      0
+#else
 #define HAVOC_MAX_MULT      16
+#endif
 
 /* Absolute minimum number of havoc cycles (after all adjustments): */
 
+#ifdef DATAFLOW_COLLECT_INPUTS
+#define HAVOC_MIN           0
+#else
 #define HAVOC_MIN           16
+#endif
 
 /* Maximum stacking for havoc-stage tweaks. The actual value is calculated
    like this: 

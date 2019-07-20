@@ -283,6 +283,12 @@ static s32 interesting_32[] = { INTERESTING_8, INTERESTING_16, INTERESTING_32 };
 /* fuzzalloc: environment variables */
 extern char **environ;
 
+#ifdef DATAFLOW_COLLECT_INPUTS
+static u8 *dataflow_input_dir = NULL;
+static u64 dataflow_input_count = 0;
+static u64 dataflow_max_input_count = 0;
+#endif
+
 /* Fuzzing stages */
 
 enum {
@@ -363,8 +369,11 @@ static inline u32 UR(u32 limit) {
     u32 seed[2];
 
     ck_read(dev_urandom_fd, &seed, sizeof(seed), "/dev/urandom");
-
+#ifdef DATAFLOW_COLLECT_INPUTS
+    srandom(0);
+#else
     srandom(seed[0]);
+#endif
     rand_cnt = (RESEED_RNG / 2) + (seed[1] % RESEED_RNG);
 
   }
@@ -2481,6 +2490,19 @@ static void write_to_testcase(void* mem, u32 len) {
     if (fd < 0) PFATAL("Unable to create '%s'", out_file);
 
   } else lseek(fd, 0, SEEK_SET);
+
+#ifdef DATAFLOW_COLLECT_INPUTS
+  u8 *input_path = alloc_printf("%s/input_%08llu", dataflow_input_dir,
+                                dataflow_input_count);
+  s32 input_fd = open(input_path, O_WRONLY | O_CREAT, 0600);
+  ck_write(input_fd, mem, len, input_path);
+  close(input_fd);
+  ck_free(input_path);
+  dataflow_input_count++;
+  if (dataflow_input_count == dataflow_max_input_count) {
+    exit(0);
+  }
+#endif
 
   ck_write(fd, mem, len, out_file);
 
@@ -7727,12 +7749,38 @@ int main(int argc, char** argv) {
   struct timeval tv;
   struct timezone tz;
 
+#ifdef DATAFLOW_COLLECT_INPUTS
+  struct stat st;
+  u8 *input_dir = getenv("DATAFLOW_INPUT_PATH");
+  dataflow_input_dir = input_dir ? input_dir : getcwd(NULL, 0);
+  if (stat(dataflow_input_dir, &st) || !S_ISDIR(st.st_mode)) {
+    FATAL("Input directory %s is not valid", dataflow_input_dir);
+  }
+
+  u8 *max_input_str = getenv("DATAFLOW_MAX_INPUTS");
+  if (!max_input_str) {
+    FATAL("Max num. inputs not specified in DATAFLOW_MAX_INPUTS");
+  }
+
+  dataflow_max_input_count = atoi(max_input_str);
+  if (!dataflow_max_input_count) {
+    FATAL("Invalid value of DATAFLOW_MAX_INPUTS");
+  }
+
+  SAYF(cCYA "dataflow-collect " cBRI VERSION cRST
+            " by <lcamtuf@google.com, adrian.herrera@anu.edu.au>\n");
+#else
   SAYF(cCYA "afl-fuzz " cBRI VERSION cRST " by <lcamtuf@google.com>\n");
+#endif
 
   doc_path = access(DOC_PATH, F_OK) ? "docs" : DOC_PATH;
 
   gettimeofday(&tv, &tz);
+#ifdef DATAFLOW_COLLECT_INPUTS
+  srandom(0);
+#else
   srandom(tv.tv_sec ^ tv.tv_usec ^ getpid());
+#endif
 
   while ((opt = getopt(argc, argv, "+i:o:f:m:t:T:dnCB:S:M:x:Q")) > 0)
 
