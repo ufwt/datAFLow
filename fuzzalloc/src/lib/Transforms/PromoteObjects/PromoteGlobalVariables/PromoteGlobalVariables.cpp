@@ -127,6 +127,9 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
       Instruction *NewInst = ConstExpr->getAsInstruction();
       NewInst->insertBefore(Inst);
       Inst->replaceUsesOfWith(ConstExpr, NewInst);
+    } else if (auto *Const = dyn_cast<Constant>(U)) {
+      assert(Const->user_empty() && "Constant user must have no users");
+      Const->destroyConstant();
     } else {
       assert(false && "Unsupported constant expression user");
     }
@@ -227,7 +230,9 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
     }
   }
 
-  std::for_each(CEUsers.begin(), CEUsers.end(), expandConstantExpression);
+  for (auto *U : CEUsers) {
+    expandConstantExpression(U);
+  }
 
   // Update all the users of the original global variable (including the
   // newly-expanded constant expressions) to use the dynamically allocated array

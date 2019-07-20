@@ -40,8 +40,6 @@ class ExpandGVInitializers : public ModulePass {
 private:
   SmallPtrSet<Constant *, 8> DeadConstants;
 
-  void expandConstantAggregate(IRBuilder<> &, GlobalVariable *,
-                               ConstantAggregate *, std::vector<unsigned> &);
   Function *expandInitializer(GlobalVariable *);
 
 public:
@@ -55,12 +53,16 @@ public:
 
 char ExpandGVInitializers::ID = 0;
 
-static bool structContainsArray(const StructType *StructTy) {
-  for (auto *Elem : StructTy->elements()) {
-    if (isa<ArrayType>(Elem)) {
+static bool constantStructContainsArray(const ConstantStruct *ConstStruct) {
+  for (auto &Op : ConstStruct->operands()) {
+    if (isa<ArrayType>(Op->getType())) {
       return true;
-    } else if (auto *StructElem = dyn_cast<StructType>(Elem)) {
-      return structContainsArray(StructElem);
+    } else if (auto *GEP = dyn_cast<GEPOperator>(Op)) {
+      if (isa<ArrayType>(GEP->getSourceElementType())) {
+        return true;
+      }
+    } else if (auto *StructOp = dyn_cast<ConstantStruct>(Op)) {
+      return constantStructContainsArray(StructOp);
     }
   }
 
@@ -69,23 +71,25 @@ static bool structContainsArray(const StructType *StructTy) {
 
 /// Recursively expand `ConstantAggregate`s by generating equivalent
 /// instructions in a module constructor.
-void ExpandGVInitializers::expandConstantAggregate(
-    IRBuilder<> &IRB, GlobalVariable *GV, ConstantAggregate *ConstantAgg,
-    std::vector<unsigned> &Idxs) {
+static void expandConstantAggregate(IRBuilder<> &IRB, GlobalVariable *GV,
+                                    ConstantAggregate *CA,
+                                    std::vector<unsigned> &Idxs) {
   Module *M = GV->getParent();
   LLVMContext &C = M->getContext();
   IntegerType *Int32Ty = Type::getInt32Ty(C);
+
+  // Converts an unsigned integer to something IRBuilder understands
   auto UnsignedToInt32 = [Int32Ty](const unsigned &N) {
     return ConstantInt::get(Int32Ty, N);
   };
 
-  for (unsigned I = 0; I < ConstantAgg->getNumOperands(); ++I) {
-    auto *Op = ConstantAgg->getOperand(I);
+  for (unsigned I = 0; I < CA->getNumOperands(); ++I) {
+    auto *Op = CA->getOperand(I);
 
-    if (auto *AggregateOp = dyn_cast<ConstantAggregate>(Op)) {
+    if (auto *AggOp = dyn_cast<ConstantAggregate>(Op)) {
       // Expand the nested ConstantAggregate
       Idxs.push_back(I);
-      expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
+      expandConstantAggregate(IRB, GV, AggOp, Idxs);
       Idxs.pop_back();
     } else {
       std::vector<Value *> IdxValues(Idxs.size());
@@ -98,8 +102,6 @@ void ExpandGVInitializers::expandConstantAggregate(
                          MDNode::get(C, None));
     }
   }
-
-  this->DeadConstants.insert(ConstantAgg);
 }
 
 /// Move global variable's who have a `ConstantAggregate` initializer into a
@@ -140,6 +142,7 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
   }
   IRB.CreateRetVoid();
 
+  this->DeadConstants.insert(Initializer);
   GV->setInitializer(ConstantAggregateZero::get(GV->getValueType()));
 
   NumOfExpandedGlobalVariables++;
@@ -171,7 +174,7 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
         expandInitializer(&GV);
       }
     } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(Initializer)) {
-      if (structContainsArray(ConstStruct->getType())) {
+      if (constantStructContainsArray(ConstStruct)) {
         expandInitializer(&GV);
       }
     } else if (isa<ConstantVector>(Initializer)) {
@@ -180,7 +183,7 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
   }
 
   for (auto *C : this->DeadConstants) {
-    C->removeDeadConstantUsers();
+    C->destroyConstant();
   }
 
   printStatistic(M, NumOfExpandedGlobalVariables);
