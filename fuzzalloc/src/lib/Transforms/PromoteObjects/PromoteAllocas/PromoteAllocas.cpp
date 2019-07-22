@@ -312,11 +312,10 @@ bool PromoteAllocas::runOnModule(Module &M) {
         }
       }
 
-      // Array allocas may be memset/memcpy'd at initialization (e.g., when
-      // assigned the empty string "", or a string with actual content). The
-      // alignment may be suitable for the old static array, but may break the
-      // new dynamically allocated pointer. To be safe we remove any alignment
-      // and let LLVM decide what is appropriate
+      // Array allocas may be memset/memcpy'd to (e.g., when assigned the empty
+      // string, etc.). The alignment may be suitable for the old static array,
+      // but may break the new dynamically allocated pointer. To be safe we
+      // remove any alignment and let LLVM decide what is appropriate
       for (auto *MemI : MemIntrinsics) {
         if (GetUnderlyingObjectThroughLoads(MemI->getDest(), *this->DL) ==
             NewAlloca) {

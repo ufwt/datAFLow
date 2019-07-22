@@ -307,8 +307,13 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
 }
 
 bool PromoteGlobalVariables::runOnModule(Module &M) {
-  // Collect global variables to promote
+  const DataLayout &DL = M.getDataLayout();
+
+  // Global variables to promote
   SmallPtrSet<GlobalVariable *, 8> GVsToPromote;
+
+  // Promoted global variables
+  SmallPtrSet<Value *, 8> PromotedGVs;
 
   for (auto &GV : M.globals()) {
     if (GV.getName().startswith("llvm.")) {
@@ -335,7 +340,23 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
         NumOfFreeInsert++;
       }
 
+      PromotedGVs.insert(PromotedGV);
       GV->eraseFromParent();
+    }
+  }
+
+  // Global arrays may be memset/memcpy'd to (e.g., when assigned the empty
+  // string, etc.). The alignment may be suitable for the old static array, but
+  // may break the new dynamically allocated pointer. To be safe we remove any
+  // alignment and let LLVM decide what is appropriate
+  for (auto &F : M.functions()) {
+    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+      if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
+        auto *Obj = GetUnderlyingObjectThroughLoads(MemI->getDest(), DL);
+        if (PromotedGVs.count(Obj) > 0) {
+          MemI->setDestAlignment(0);
+        }
+      }
     }
   }
 
