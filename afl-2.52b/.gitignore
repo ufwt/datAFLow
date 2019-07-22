@@ -15,3 +15,4 @@ afl-llvm-rt.o
 afl-showmap
 afl-tmin
 as
+dataflow-collect
