@@ -34,8 +34,8 @@ if [ -z "${AFL_PATH}" ]; then
     tar xf ${AFL_TAR} -C AFL --strip-components=1
     rm ${AFL_TAR}
 
-    make -C ${AFL}
-    make -C ${AFL}/llvm_mode
+    make -C ${AFL} clean all
+    make -C ${AFL}/llvm_mode clean all
   fi
 
   export AFL_PATH=${PWD}/${AFL}
