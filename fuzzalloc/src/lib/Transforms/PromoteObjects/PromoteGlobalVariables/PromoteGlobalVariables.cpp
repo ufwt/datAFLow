@@ -71,7 +71,7 @@ static Function *createArrayPromCtor(Module &M) {
   FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__init_prom_global_arrays_" + M.getName(), &M);
+                       "fuzzalloc.init_prom_global_arrays_" + M.getName(), &M);
   appendToGlobalCtors(M, GlobalCtorF, kPromotedGVCtorAndDtorPriority);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
@@ -172,7 +172,8 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
     NewGV->addDebugInfo(GV);
   }
 
-  auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems);
+  auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
+                                       OrigGV->getName() + "_malloccall");
 
   // If the array had an initializer, we must replicate it so that the malloc'd
   // memory contains the same data when it is first used. How we do this depends

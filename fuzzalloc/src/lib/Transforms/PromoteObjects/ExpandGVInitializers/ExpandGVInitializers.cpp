@@ -121,7 +121,7 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
   FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__init_" + GV->getName(), M);
+                       "fuzzalloc.init_" + GV->getName(), M);
   appendToGlobalCtors(*M, GlobalCtorF, kPromotedGVCtorAndDtorPriority + 1);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
