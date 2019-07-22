@@ -116,10 +116,10 @@ Optional<StructOffset> getStructOffset(const StructType *StructTy,
     return getStructOffset(ElemStructTy,
                            ByteOffset - SL->getElementOffset(StructIdx), DL);
   } else {
-    // XXX the recorded struct element should be a function pointer. However,
-    // sometimes it isn't - it's a `{}*`. I have no idea why this happens, so
-    // let's just ignore it when it does occur
-    assert(ElemTy->isPointerTy());
+    // Only care about function pointers
+    if (!ElemTy->isPointerTy()) {
+      return None;
+    }
     if (!ElemTy->getPointerElementType()->isFunctionTy()) {
       return None;
     }
