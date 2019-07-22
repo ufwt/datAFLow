@@ -22,6 +22,7 @@ class DataLayout;
 class GetElementPtrInst;
 class Instruction;
 class LLVMContext;
+class SelectInst;
 class Type;
 class Twine;
 class Value;
@@ -30,8 +31,11 @@ class Value;
 /// Priority for promoted global variable constructor
 const unsigned kPromotedGVCtorAndDtorPriority = 0;
 
-/// Update a GEP to use the given value
+/// Update a GEP instruction to use the given value
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
+
+/// Update a select instruction to use the given value
+llvm::Value *updateSelect(llvm::SelectInst *, llvm::Value *, llvm::Value *);
 
 /// Returns \c true if the given type is promotable to dynamic allocation.
 bool isPromotableType(llvm::Type *);

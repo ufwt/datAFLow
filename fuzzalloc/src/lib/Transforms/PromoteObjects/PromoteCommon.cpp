@@ -37,6 +37,21 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   return NewGEP;
 }
 
+Value *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
+  // The use of a promoted value in a select instruction may need to be cast (to
+  // ensure that the select instruction type checks)
+
+  // The original value must be one of the select values
+  assert(Select->getTrueValue() == OrigV || Select->getFalseValue() == OrigV);
+
+  auto *LoadNewV = new LoadInst(NewV, "", Select);
+  auto *BitCastNewV =
+      CastInst::CreatePointerCast(LoadNewV, Select->getType(), "", Select);
+  Select->replaceUsesOfWith(OrigV, BitCastNewV);
+
+  return Select;
+}
+
 bool isPromotableType(Type *Ty) {
   if (!Ty->isArrayTy()) {
     return false;

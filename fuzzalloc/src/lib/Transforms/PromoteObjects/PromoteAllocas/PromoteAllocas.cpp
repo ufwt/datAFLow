@@ -193,17 +193,8 @@ AllocaInst *PromoteAllocas::promoteAlloca(
 
       Store->replaceUsesOfWith(Alloca, ReplacementAlloca);
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // The use of a promoted alloca in a select instruction may need to be
-      // casted (to ensure the select type checks)
-
-      // The original array must be one of the select values
-      assert(Select->getTrueValue() == Alloca ||
-             Select->getFalseValue() == Alloca);
-
-      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Select);
-      auto *BitCastNewAlloca = CastInst::CreatePointerCast(
-          LoadNewAlloca, Select->getType(), "", Select);
-      Select->replaceUsesOfWith(Alloca, BitCastNewAlloca);
+      // Ensure selects are correcty typed
+      updateSelect(Select, Alloca, NewAlloca);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we do anything with it
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);

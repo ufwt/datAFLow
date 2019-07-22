@@ -280,17 +280,8 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
         }
       }
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // The use of a promoted global variable in a select instruction may need
-      // to be casted (to ensure the select type checks)
-
-      // The original array must be one of the select values
-      assert(Select->getTrueValue() == OrigGV ||
-             Select->getFalseValue() == OrigGV);
-
-      auto *LoadNewGV = new LoadInst(NewGV, "", Select);
-      auto *BitCastNewGV =
-          CastInst::CreatePointerCast(LoadNewGV, Select->getType(), "", Select);
-      Select->replaceUsesOfWith(OrigGV, BitCastNewGV);
+      // Ensure selects are correctly typed
+      updateSelect(Select, OrigGV, NewGV);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
