@@ -187,32 +187,27 @@ AllocaInst *PromoteAllocas::promoteAlloca(
 
       // Only cast the new alloca if the types don't match
       auto *ReplacementAlloca = (StorePtrElemTy == NewAllocaTy)
-                                ? static_cast<Instruction *>(NewAlloca)
-                                : CastInst::CreatePointerCast(
-                                      NewAlloca, StorePtrElemTy, "", Store);
+                                    ? static_cast<Instruction *>(NewAlloca)
+                                    : CastInst::CreatePointerCast(
+                                          NewAlloca, StorePtrElemTy, "", Store);
 
-      U->replaceUsesOfWith(Alloca, ReplacementAlloca);
+      Store->replaceUsesOfWith(Alloca, ReplacementAlloca);
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // Similarly, a temporary variable may be used in a select instruction,
-      // which also requires casting.
+      // The use of a promoted alloca in a select instruction may need to be
+      // casted (to ensure the select type checks)
 
       // The original array must be one of the select values
       assert(Select->getTrueValue() == Alloca ||
              Select->getFalseValue() == Alloca);
 
-      auto *SelectTy = Select->getType();
-
-      // Only cast the new alloca if the types don't match
-      auto *ReplacementAlloca =
-          (SelectTy == NewAllocaTy)
-              ? static_cast<Instruction *>(NewAlloca)
-              : CastInst::CreatePointerCast(NewAlloca, SelectTy, "", Select);
-
-      U->replaceUsesOfWith(Alloca, ReplacementAlloca);
+      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Select);
+      auto *BitCastNewAlloca = CastInst::CreatePointerCast(
+          LoadNewAlloca, Select->getType(), "", Select);
+      Select->replaceUsesOfWith(Alloca, BitCastNewAlloca);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we do anything with it
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);
-      U->replaceUsesOfWith(Alloca, LoadNewAlloca);
+      Inst->replaceUsesOfWith(Alloca, LoadNewAlloca);
     } else {
       assert(false && "Unsupported alloca user");
     }

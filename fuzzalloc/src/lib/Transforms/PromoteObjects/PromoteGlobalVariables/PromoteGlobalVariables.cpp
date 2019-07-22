@@ -274,30 +274,27 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
           auto *LoadNewGV =
               new LoadInst(NewGV, "", IncomingBlock->getTerminator());
           auto *BitCastNewGV =
-              new BitCastInst(LoadNewGV, IncomingValue->getType(), "",
-                              IncomingBlock->getTerminator());
+              CastInst::CreatePointerCast(LoadNewGV, IncomingValue->getType(),
+                                          "", IncomingBlock->getTerminator());
           PHI->setIncomingValue(I, BitCastNewGV);
         }
       }
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // The result of a select instruction may need to be casted
+      // The use of a promoted global variable in a select instruction may need
+      // to be casted (to ensure the select type checks)
 
       // The original array must be one of the select values
       assert(Select->getTrueValue() == OrigGV ||
              Select->getFalseValue() == OrigGV);
 
-      auto *SelectTy = Select->getType();
-
-      // Only cast the new global variable if the types don't match
-      auto *ReplacementGV = (SelectTy == NewGVTy)
-                                ? NewGV
-                                : ConstantExpr::getPointerCast(NewGV, SelectTy);
-
-      U->replaceUsesOfWith(OrigGV, ReplacementGV);
+      auto *LoadNewGV = new LoadInst(NewGV, "", Select);
+      auto *BitCastNewGV =
+          CastInst::CreatePointerCast(LoadNewGV, Select->getType(), "", Select);
+      Select->replaceUsesOfWith(OrigGV, BitCastNewGV);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
-      U->replaceUsesOfWith(OrigGV, LoadNewGV);
+      Inst->replaceUsesOfWith(OrigGV, LoadNewGV);
     } else {
       assert(false && "Unsupported global variable user");
     }
