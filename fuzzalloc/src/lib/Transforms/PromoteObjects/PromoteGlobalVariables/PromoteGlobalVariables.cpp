@@ -13,7 +13,6 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/IR/IRBuilder.h"
@@ -97,80 +96,27 @@ static Function *createArrayPromDtor(Module &M) {
   return GlobalDtorF;
 }
 
-static void expandConstantExpression(ConstantExpr *ConstExpr) {
-  for (auto *U : ConstExpr->users()) {
-    if (auto *CE = dyn_cast<ConstantExpr>(U)) {
-      expandConstantExpression(CE);
-    }
-  }
+/// Initialize the promoted global variable in the given constructor function.
+///
+/// The initialization is based off the original global variable's static
+/// initializer.
+static void initializePromotedGlobalVariable(const GlobalVariable *OrigGV,
+                                             GlobalVariable *NewGV,
+                                             Function *Ctor) {
+  LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << " in "
+                    << Ctor->getName() << '\n');
 
-  // Cache users
-  SmallVector<User *, 4> Users(ConstExpr->user_begin(), ConstExpr->user_end());
-
-  // At this point, all of the users must be instructions. We can just insert a
-  // new instruction representing the constant expression before each user
-  for (auto *U : Users) {
-    if (auto *PHI = dyn_cast<PHINode>(U)) {
-      // PHI nodes are a special case because they must always be the first
-      // instruction in a basic block. To ensure this property is true we must
-      // insert the new instruction at the end of the appropriate predecessor
-      // block(s)
-      for (unsigned I = 0; I < PHI->getNumIncomingValues(); ++I) {
-        if (PHI->getIncomingValue(I) == ConstExpr) {
-          Instruction *NewInst = ConstExpr->getAsInstruction();
-
-          NewInst->insertBefore(PHI->getIncomingBlock(I)->getTerminator());
-          PHI->setIncomingValue(I, NewInst);
-        }
-      }
-    } else if (auto *Inst = dyn_cast<Instruction>(U)) {
-      Instruction *NewInst = ConstExpr->getAsInstruction();
-      NewInst->insertBefore(Inst);
-      Inst->replaceUsesOfWith(ConstExpr, NewInst);
-    } else if (auto *Const = dyn_cast<Constant>(U)) {
-      assert(Const->user_empty() && "Constant user must have no users");
-      Const->destroyConstant();
-    } else {
-      assert(false && "Unsupported constant expression user");
-    }
-  }
-
-  ConstExpr->destroyConstant();
-}
-
-GlobalVariable *
-PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
-                                              Function *ArrayPromCtor) const {
-  LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
-
-  Module *M = OrigGV->getParent();
+  Module *M = NewGV->getParent();
   LLVMContext &C = M->getContext();
   const DataLayout &DL = M->getDataLayout();
-
-  // Insert a new global variable into the module and initialize it with a call
-  // to malloc in the module's constructor
-  IRBuilder<> IRB(ArrayPromCtor->getEntryBlock().getTerminator());
 
   ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
   Type *ElemTy = ArrayTy->getArrayElementType();
   uint64_t ArrayNumElems = ArrayTy->getNumElements();
-  PointerType *NewGVTy = ElemTy->getPointerTo();
 
-  GlobalVariable *NewGV = new GlobalVariable(
-      *M, NewGVTy, false, OrigGV->getLinkage(),
-      // If the original global variable had an initializer, replace it with the
-      // null pointer initializer
-      !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
-      OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
-      OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
-  NewGV->copyAttributesFrom(OrigGV);
-
-  // Copy debug info
-  SmallVector<DIGlobalVariableExpression *, 1> GVs;
-  OrigGV->getDebugInfo(GVs);
-  for (auto *GV : GVs) {
-    NewGV->addDebugInfo(GV);
-  }
+  // Insert a new global variable into the module and initialize it with a call
+  // to malloc in the module's constructor
+  IRBuilder<> IRB(Ctor->getEntryBlock().getTerminator());
 
   auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
                                        OrigGV->getName() + "_malloccall");
@@ -218,6 +164,78 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                            MDNode::get(C, None));
+}
+
+static void expandConstantExpression(ConstantExpr *ConstExpr) {
+  for (auto *U : ConstExpr->users()) {
+    if (auto *CE = dyn_cast<ConstantExpr>(U)) {
+      expandConstantExpression(CE);
+    }
+  }
+
+  // Cache users
+  SmallVector<User *, 4> Users(ConstExpr->user_begin(), ConstExpr->user_end());
+
+  // At this point, all of the users must be instructions. We can just insert a
+  // new instruction representing the constant expression before each user
+  for (auto *U : Users) {
+    if (auto *PHI = dyn_cast<PHINode>(U)) {
+      // PHI nodes are a special case because they must always be the first
+      // instruction in a basic block. To ensure this property is true we must
+      // insert the new instruction at the end of the appropriate predecessor
+      // block(s)
+      for (unsigned I = 0; I < PHI->getNumIncomingValues(); ++I) {
+        if (PHI->getIncomingValue(I) == ConstExpr) {
+          Instruction *NewInst = ConstExpr->getAsInstruction();
+
+          NewInst->insertBefore(PHI->getIncomingBlock(I)->getTerminator());
+          PHI->setIncomingValue(I, NewInst);
+        }
+      }
+    } else if (auto *Inst = dyn_cast<Instruction>(U)) {
+      Instruction *NewInst = ConstExpr->getAsInstruction();
+      NewInst->insertBefore(Inst);
+      Inst->replaceUsesOfWith(ConstExpr, NewInst);
+    } else if (auto *Const = dyn_cast<Constant>(U)) {
+      assert(Const->user_empty() && "Constant user must have no users");
+      Const->destroyConstant();
+    } else {
+      assert(false && "Unsupported constant expression user");
+    }
+  }
+
+  ConstExpr->destroyConstant();
+}
+
+GlobalVariable *
+PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
+                                              Function *ArrayPromCtor) const {
+  LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
+
+  Module *M = OrigGV->getParent();
+
+  ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
+  PointerType *NewGVTy = ArrayTy->getArrayElementType()->getPointerTo();
+
+  GlobalVariable *NewGV = new GlobalVariable(
+      *M, NewGVTy, false, OrigGV->getLinkage(),
+      // If the original global variable had an initializer, replace it with the
+      // null pointer initializer
+      !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
+      OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
+      OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
+  NewGV->copyAttributesFrom(OrigGV);
+
+  // Copy debug info
+  SmallVector<DIGlobalVariableExpression *, 1> GVs;
+  OrigGV->getDebugInfo(GVs);
+  for (auto *GV : GVs) {
+    NewGV->addDebugInfo(GV);
+  }
+
+  if (!OrigGV->isDeclaration()) {
+    initializePromotedGlobalVariable(OrigGV, NewGV, ArrayPromCtor);
+  }
 
   // Now that the global variable has been promoted to the heap, it must be
   // loaded before we can do anything else to it. This means that any constant
@@ -290,7 +308,7 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
 
 bool PromoteGlobalVariables::runOnModule(Module &M) {
   // Collect global variables to promote
-  SetVector<GlobalVariable *> GVsToPromote;
+  SmallPtrSet<GlobalVariable *, 8> GVsToPromote;
 
   for (auto &GV : M.globals()) {
     if (GV.getName().startswith("llvm.")) {
