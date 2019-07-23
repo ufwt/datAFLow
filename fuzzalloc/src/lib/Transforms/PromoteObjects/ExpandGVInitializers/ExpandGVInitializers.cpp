@@ -160,6 +160,7 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
       continue;
     }
 
+    // XXX Check for private or internal linkage
     if (GV.isConstant()) {
       continue;
     }

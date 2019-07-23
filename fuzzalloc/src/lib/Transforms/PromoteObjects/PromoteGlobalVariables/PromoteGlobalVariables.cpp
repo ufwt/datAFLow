@@ -213,7 +213,6 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
   LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
-
   ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
   PointerType *NewGVTy = ArrayTy->getArrayElementType()->getPointerTo();
 
@@ -225,6 +224,7 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
       OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
       OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
   NewGV->copyAttributesFrom(OrigGV);
+  NewGV->setAlignment(0);
 
   // Copy debug info
   SmallVector<DIGlobalVariableExpression *, 1> GVs;
@@ -261,7 +261,6 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // Ensure GEPs are correctly typed
       updateGEP(GEP, NewGV);
-      GEP->eraseFromParent();
     } else if (auto *PHI = dyn_cast<PHINode>(U)) {
       // PHI nodes are a special case because they must always be the first
       // instruction in a basic block. To ensure this property is true we insert
@@ -308,7 +307,12 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
       continue;
     }
 
-    if (isPromotableType(GV.getValueType()) && !GV.isConstant()) {
+    // XXX Check for private or internal linkage
+    if (GV.isConstant()) {
+      continue;
+    }
+
+    if (isPromotableType(GV.getValueType())) {
       GVsToPromote.insert(&GV);
     }
   }

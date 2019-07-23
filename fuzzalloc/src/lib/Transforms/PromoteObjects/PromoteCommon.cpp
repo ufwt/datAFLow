@@ -33,6 +33,7 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
   GEP->replaceAllUsesWith(NewGEP);
+  GEP->eraseFromParent();
 
   return NewGEP;
 }
