@@ -198,13 +198,10 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
       Inst->replaceUsesOfWith(ConstExpr, NewInst);
     } else if (auto *Const = dyn_cast<Constant>(U)) {
       assert(Const->user_empty() && "Constant user must have no users");
-      Const->destroyConstant();
     } else {
       assert(false && "Unsupported constant expression user");
     }
   }
-
-  ConstExpr->destroyConstant();
 }
 
 GlobalVariable *
@@ -251,6 +248,7 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
 
   for (auto *U : CEUsers) {
     expandConstantExpression(U);
+    U->destroyConstant();
   }
 
   // Update all the users of the original global variable (including the
