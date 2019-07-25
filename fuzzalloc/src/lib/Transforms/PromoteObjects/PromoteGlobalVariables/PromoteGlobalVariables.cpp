@@ -279,6 +279,9 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
       // Ensure selects are correctly typed
       updateSelect(Select, OrigGV, NewGV);
+    } else if (auto *Return = dyn_cast<ReturnInst>(U)) {
+      // Ensure returns are correctly typed to the funtion type
+      updateReturn(Return, OrigGV, NewGV);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);

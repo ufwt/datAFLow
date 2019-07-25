@@ -114,7 +114,7 @@ void PromoteAllocas::copyDebugInfo(const AllocaInst *OrigAlloca,
 AllocaInst *PromoteAllocas::promoteAlloca(
     AllocaInst *Alloca, const ArrayRef<IntrinsicInst *> &LifetimeStarts) const {
   LLVM_DEBUG(dbgs() << "promoting" << *Alloca << " in function "
-                    << Alloca->getFunction()->getName() << ")\n");
+                    << Alloca->getFunction()->getName() << "\n");
 
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
@@ -194,6 +194,9 @@ AllocaInst *PromoteAllocas::promoteAlloca(
     } else if (auto *Select = dyn_cast<SelectInst>(U)) {
       // Ensure selects are correcty typed
       updateSelect(Select, Alloca, NewAlloca);
+    } else if (auto *Return = dyn_cast<ReturnInst>(U)) {
+      // Ensure returns are correctly typed to the funtion type
+      updateReturn(Return, Alloca, NewAlloca);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we do anything with it
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);

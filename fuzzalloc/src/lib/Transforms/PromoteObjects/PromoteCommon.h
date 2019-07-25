@@ -22,6 +22,7 @@ class DataLayout;
 class GetElementPtrInst;
 class Instruction;
 class LLVMContext;
+class ReturnInst;
 class SelectInst;
 class Type;
 class Twine;
@@ -35,7 +36,12 @@ const unsigned kPromotedGVCtorAndDtorPriority = 0;
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
 
 /// Update a select instruction to use the given value
-llvm::Value *updateSelect(llvm::SelectInst *, llvm::Value *, llvm::Value *);
+llvm::SelectInst *updateSelect(llvm::SelectInst *, llvm::Value *,
+                               llvm::Value *);
+
+/// Update a return instruction to use the given value
+llvm::ReturnInst *updateReturn(llvm::ReturnInst *, llvm::Value *,
+                               llvm::Value *);
 
 /// Returns \c true if the given type is promotable to dynamic allocation.
 bool isPromotableType(llvm::Type *);

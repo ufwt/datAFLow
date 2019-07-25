@@ -19,26 +19,26 @@
 using namespace llvm;
 
 Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
-  IRBuilder<> IRB(GEP);
-
   // Load the pointer to the dynamically allocated array and create a new GEP
   // instruction. It seems that the simplest way is to cast the loaded pointer
   // to the original array type
-  auto *Load = IRB.CreateLoad(MallocPtr);
-  auto *Bitcast = IRB.CreateBitCast(Load, GEP->getOperand(0)->getType());
-  auto *NewGEP = IRB.CreateInBoundsGEP(
-      Bitcast, SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
-      GEP->hasName() ? GEP->getName() + "_prom" : "");
+  auto *LoadMallocPtr = new LoadInst(MallocPtr, "", GEP);
+  auto *BitCastMallocPtr = CastInst::CreatePointerCast(
+      LoadMallocPtr, GEP->getOperand(0)->getType(), "", GEP);
+  auto *MallocPtrGEP = GetElementPtrInst::CreateInBounds(
+      BitCastMallocPtr,
+      SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
+      GEP->hasName() ? GEP->getName() + "_prom" : "", GEP);
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
-  GEP->replaceAllUsesWith(NewGEP);
+  GEP->replaceAllUsesWith(MallocPtrGEP);
   GEP->eraseFromParent();
 
-  return NewGEP;
+  return MallocPtrGEP;
 }
 
-Value *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
+SelectInst *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
   // The use of a promoted value in a select instruction may need to be cast (to
   // ensure that the select instruction type checks)
 
@@ -51,6 +51,15 @@ Value *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
   Select->replaceUsesOfWith(OrigV, BitCastNewV);
 
   return Select;
+}
+
+ReturnInst *updateReturn(ReturnInst *Return, Value *OrigV, Value *NewV) {
+  auto *LoadNewV = new LoadInst(NewV, "", Return);
+  auto *BitCastNewV = CastInst::CreatePointerCast(
+      LoadNewV, Return->getReturnValue()->getType(), "", Return);
+  Return->replaceUsesOfWith(OrigV, BitCastNewV);
+
+  return Return;
 }
 
 bool isPromotableType(Type *Ty) {
