@@ -284,7 +284,6 @@ static s32 interesting_32[] = { INTERESTING_8, INTERESTING_16, INTERESTING_32 };
 extern char **environ;
 
 #ifdef DATAFLOW_COLLECT_INPUTS
-static u8 *dataflow_input_dir = NULL;
 static u64 dataflow_input_count = 0;
 static u64 dataflow_max_input_count = 0;
 #endif
@@ -2492,7 +2491,8 @@ static void write_to_testcase(void* mem, u32 len) {
   } else lseek(fd, 0, SEEK_SET);
 
 #ifdef DATAFLOW_COLLECT_INPUTS
-  u8 *input_path = alloc_printf("%s/input_%08llu", dataflow_input_dir,
+  ACTF("Generating input %08llu...", dataflow_input_count);
+  u8 *input_path = alloc_printf("%s/inputs/id_%08llu", out_dir,
                                 dataflow_input_count);
   s32 input_fd = open(input_path, O_WRONLY | O_CREAT, 0600);
   ck_write(input_fd, mem, len, input_path);
@@ -3851,6 +3851,13 @@ static void maybe_delete_out_dir(void) {
 
   if (delete_files(fn, CASE_PREFIX)) goto dir_cleanup_failed;
   ck_free(fn);
+
+#ifdef DATAFLOW_COLLECT_INPUTS
+  fn = alloc_printf("%s/inputs", out_dir);
+
+  if (delete_files(fn, NULL)) goto dir_cleanup_failed;
+  ck_free(fn);
+#endif
 
   /* And now, for some finishing touches. */
 
@@ -7207,6 +7214,14 @@ EXP_ST void setup_dirs_fds(void) {
   if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
   ck_free(tmp);
 
+#ifdef DATAFLOW_COLLECT_INPUTS
+  /* All generated inputs. */
+
+  tmp = alloc_printf("%s/inputs", out_dir);
+  if (mkdir(tmp, 0700)) PFATAL("Unable to create '%s'", tmp);
+  ck_free(tmp);
+#endif
+
   /* Generally useful file descriptors. */
 
   dev_null_fd = open("/dev/null", O_RDWR);
@@ -7750,13 +7765,6 @@ int main(int argc, char** argv) {
   struct timezone tz;
 
 #ifdef DATAFLOW_COLLECT_INPUTS
-  struct stat st;
-  u8 *input_dir = getenv("DATAFLOW_INPUT_PATH");
-  dataflow_input_dir = input_dir ? input_dir : getcwd(NULL, 0);
-  if (stat(dataflow_input_dir, &st) || !S_ISDIR(st.st_mode)) {
-    FATAL("Input directory %s is not valid", dataflow_input_dir);
-  }
-
   u8 *max_input_str = getenv("DATAFLOW_MAX_INPUTS");
   if (!max_input_str) {
     FATAL("Max num. inputs not specified in DATAFLOW_MAX_INPUTS");
@@ -7766,6 +7774,8 @@ int main(int argc, char** argv) {
   if (!dataflow_max_input_count) {
     FATAL("Invalid value of DATAFLOW_MAX_INPUTS");
   }
+
+  not_on_tty = 1;
 
   SAYF(cCYA "dataflow-collect " cBRI VERSION cRST
             " by <lcamtuf@google.com, adrian.herrera@anu.edu.au>\n");
