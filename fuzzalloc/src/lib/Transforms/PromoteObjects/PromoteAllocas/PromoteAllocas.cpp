@@ -317,6 +317,7 @@ bool PromoteAllocas::runOnModule(Module &M) {
   }
 
   printStatistic(M, NumOfAllocaArrayPromotion);
+  printStatistic(M, NumOfFreeInsert);
 
   return NumOfAllocaArrayPromotion > 0;
 }

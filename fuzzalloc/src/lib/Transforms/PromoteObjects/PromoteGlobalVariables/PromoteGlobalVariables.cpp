@@ -232,6 +232,7 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
 
   if (!OrigGV->isDeclaration()) {
     initializePromotedGlobalVariable(OrigGV, NewGV, ArrayPromCtor);
+    NumOfGlobalVariableArrayPromotion++;
   }
 
   // Now that the global variable has been promoted to the heap, it must be
@@ -326,7 +327,6 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
 
     for (auto *GV : GVsToPromote) {
       auto *PromotedGV = promoteGlobalVariable(GV, GlobalCtorF);
-      NumOfGlobalVariableArrayPromotion++;
 
       if (!PromotedGV->isDeclaration()) {
         insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
@@ -354,6 +354,7 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
   }
 
   printStatistic(M, NumOfGlobalVariableArrayPromotion);
+  printStatistic(M, NumOfFreeInsert);
 
   return NumOfGlobalVariableArrayPromotion > 0;
 }
