@@ -713,8 +713,14 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
             }
           }
         } else {
-          // TODO handle other users
-          assert(false && "Unsupported global variable load user");
+          // Warn on unsupported load user and replace with an undef
+          std::string LUStr;
+          raw_string_ostream OS(LUStr);
+          OS << *LU;
+
+          WARNF("[%s] Replacing unsupported load user %s with an undef value",
+                this->Mod->getName().str().c_str(), LUStr.c_str());
+          LU->replaceUsesOfWith(Load, UndefValue::get(Load->getType()));
         }
       }
 
