@@ -130,10 +130,8 @@ static void initializePromotedGlobalVariable(const GlobalVariable *OrigGV,
       // allocated memory to zero. Likewise with promoted allocas that are
       // memset, reset the destination alignment
       uint64_t Size = DL.getTypeAllocSize(ElemTy) * ArrayNumElems;
-      auto MemSetCall =
-          IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
-                           Size, OrigGV->getAlignment());
-      cast<MemIntrinsic>(MemSetCall)->setDestAlignment(0);
+      IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
+                       Size, NewGV->getAlignment());
     } else if (auto *Initializer =
                    dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
       // If the initializer is a constant data array, we store the data into the
@@ -368,9 +366,9 @@ static void registerPromoteGlobalVariablesPass(const PassManagerBuilder &,
   PM.add(new PromoteGlobalVariables());
 }
 
-static RegisterStandardPasses
-    RegisterPromoteGlobalVariablesPass(PassManagerBuilder::EP_OptimizerLast,
-                                       registerPromoteGlobalVariablesPass);
+static RegisterStandardPasses RegisterPromoteGlobalVariablesPass(
+    PassManagerBuilder::EP_ModuleOptimizerEarly,
+    registerPromoteGlobalVariablesPass);
 
 static RegisterStandardPasses RegisterPromoteGlobalVariablesPass0(
     PassManagerBuilder::EP_EnabledOnOptLevel0,

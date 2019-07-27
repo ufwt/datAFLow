@@ -202,7 +202,7 @@ static void registerExpandGVInitializersPass(const PassManagerBuilder &,
 }
 
 static RegisterStandardPasses
-    RegisterExpandGVInitializersPass(PassManagerBuilder::EP_OptimizerLast,
+    RegisterExpandGVInitializersPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
                                      registerExpandGVInitializersPass);
 
 static RegisterStandardPasses
