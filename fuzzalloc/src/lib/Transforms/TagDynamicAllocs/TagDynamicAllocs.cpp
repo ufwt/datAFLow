@@ -197,6 +197,20 @@ ConstantInt *TagDynamicAllocs::generateTag() const {
 }
 
 void TagDynamicAllocs::getTagSites() {
+  // Ensure that we always tag malloc/calloc/realloc
+  auto *MallocF = this->Mod->getFunction("malloc");
+  if (MallocF) {
+    this->FunctionsToTag.insert(MallocF);
+  }
+  auto *CallocF = this->Mod->getFunction("calloc");
+  if (CallocF) {
+    this->FunctionsToTag.insert(CallocF);
+  }
+  auto *ReallocF = this->Mod->getFunction("realloc");
+  if (ReallocF) {
+    this->FunctionsToTag.insert(ReallocF);
+  }
+
   if (ClLogPath.empty()) {
     return;
   }
@@ -610,7 +624,8 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF) {
     }
 
     SmallVector<ReturnInst *, 8> Returns;
-    CloneFunctionInto(TaggedF, OrigF, VMap, true, Returns);
+    CloneFunctionInto(TaggedF, OrigF, VMap, /* ModuleLevelChanges */ true,
+                      Returns);
 
     // Update the contents of the function (i.e., the instructions) when we
     // update the users of the dynamic memory allocation function (i.e., in

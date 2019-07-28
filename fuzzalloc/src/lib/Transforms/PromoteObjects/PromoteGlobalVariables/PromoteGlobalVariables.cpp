@@ -67,7 +67,8 @@ char PromoteGlobalVariables::ID = 0;
 static Function *createArrayPromCtor(Module &M) {
   LLVMContext &C = M.getContext();
 
-  FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
+  FunctionType *GlobalCtorTy =
+      FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
                        "fuzzalloc.init_prom_global_arrays_" + M.getName(), &M);
@@ -84,10 +85,11 @@ static Function *createArrayPromCtor(Module &M) {
 static Function *createArrayPromDtor(Module &M) {
   LLVMContext &C = M.getContext();
 
-  FunctionType *GlobalDtorTy = FunctionType::get(Type::getVoidTy(C), false);
+  FunctionType *GlobalDtorTy =
+      FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
   Function *GlobalDtorF =
       Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "__fin_prom_global_arrays_" + M.getName(), &M);
+                       "fuzzalloc.fin_prom_global_arrays_" + M.getName(), &M);
   appendToGlobalDtors(M, GlobalDtorF, kPromotedGVCtorAndDtorPriority);
 
   BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
@@ -212,12 +214,13 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
   PointerType *NewGVTy = ArrayTy->getArrayElementType()->getPointerTo();
 
   GlobalVariable *NewGV = new GlobalVariable(
-      *M, NewGVTy, false, OrigGV->getLinkage(),
+      *M, NewGVTy, /* isConstant */ false, OrigGV->getLinkage(),
       // If the original global variable had an initializer, replace it with the
       // null pointer initializer
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
-      OrigGV->getName() + "_prom", nullptr, OrigGV->getThreadLocalMode(),
-      OrigGV->getType()->getAddressSpace(), OrigGV->isExternallyInitialized());
+      OrigGV->getName() + "_prom", /* InsertBefore */ nullptr,
+      OrigGV->getThreadLocalMode(), OrigGV->getType()->getAddressSpace(),
+      OrigGV->isExternallyInitialized());
   NewGV->copyAttributesFrom(OrigGV);
   NewGV->setAlignment(0);
 

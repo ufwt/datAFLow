@@ -118,7 +118,8 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
   //
   // The constructor must be executed after the promoted global variable's
   // constructor, hence the higher priority
-  FunctionType *GlobalCtorTy = FunctionType::get(Type::getVoidTy(C), false);
+  FunctionType *GlobalCtorTy =
+      FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
                        "fuzzalloc.init_" + GV->getName(), M);
@@ -201,9 +202,9 @@ static void registerExpandGVInitializersPass(const PassManagerBuilder &,
   PM.add(new ExpandGVInitializers());
 }
 
-static RegisterStandardPasses
-    RegisterExpandGVInitializersPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
-                                     registerExpandGVInitializersPass);
+static RegisterStandardPasses RegisterExpandGVInitializersPass(
+    PassManagerBuilder::EP_ModuleOptimizerEarly,
+    registerExpandGVInitializersPass);
 
 static RegisterStandardPasses
     RegisterExpandGVInitializersPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,

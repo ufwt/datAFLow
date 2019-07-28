@@ -86,8 +86,8 @@ Instruction *PromoteAllocas::insertMalloc(const AllocaInst *OrigAlloca,
 
   IRBuilder<> IRB(InsertPt);
 
-  auto *MallocCall =
-      createArrayMalloc(C, *this->DL, IRB, ElemTy, ArrayNumElems);
+  auto *MallocCall = createArrayMalloc(C, *this->DL, IRB, ElemTy, ArrayNumElems,
+                                       OrigAlloca->getName() + "_malloccall");
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
@@ -211,7 +211,7 @@ AllocaInst *PromoteAllocas::promoteAlloca(
 
 bool PromoteAllocas::doInitialization(Module &M) {
   this->DL = new DataLayout(M.getDataLayout());
-  this->DBuilder = new DIBuilder(M, false);
+  this->DBuilder = new DIBuilder(M, /* AllowUnresolved */ false);
 
   return false;
 }
