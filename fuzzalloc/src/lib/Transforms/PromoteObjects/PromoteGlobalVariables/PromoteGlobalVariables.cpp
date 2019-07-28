@@ -339,16 +339,21 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
     }
   }
 
-  // Global arrays may be memset/memcpy'd to (e.g., when assigned the empty
-  // string, etc.). The alignment may be suitable for the old static array, but
-  // may break the new dynamically allocated pointer. To be safe we remove any
-  // alignment and let LLVM decide what is appropriate
+  // Stores to the newly-promoted global variables may not be aligned correctly
+  // for memory on the heap. To be safe we set the alignment to 1, which is
+  // "always safe" (according to the LLVM docs)
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
+      if (auto *Store = dyn_cast<StoreInst>(&*I)) {
+        auto *Obj =
+            GetUnderlyingObjectThroughLoads(Store->getPointerOperand(), DL);
+        if (PromotedGVs.count(Obj) > 0) {
+          Store->setAlignment(1);
+        }
+      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
         auto *Obj = GetUnderlyingObjectThroughLoads(MemI->getDest(), DL);
         if (PromotedGVs.count(Obj) > 0) {
-          MemI->setDestAlignment(0);
+          MemI->setDestAlignment(1);
         }
       }
     }

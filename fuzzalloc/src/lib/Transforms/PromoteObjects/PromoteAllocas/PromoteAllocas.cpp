@@ -237,6 +237,9 @@ bool PromoteAllocas::runOnModule(Module &M) {
   // before them
   SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
+  // Store instructions that may require realignment
+  SmallVector<StoreInst *, 4> Stores;
+
   // llvm.mem* intrinsics that may require realignment
   SmallVector<MemIntrinsic *, 4> MemIntrinsics;
 
@@ -249,6 +252,7 @@ bool PromoteAllocas::runOnModule(Module &M) {
     LifetimeStarts.clear();
     LifetimeEnds.clear();
     MemIntrinsics.clear();
+    Stores.clear();
     Returns.clear();
 
     // Collect all the things!
@@ -257,6 +261,8 @@ bool PromoteAllocas::runOnModule(Module &M) {
         if (isPromotableType(Alloca->getAllocatedType())) {
           AllocasToPromote.push_back(Alloca);
         }
+      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
+        Stores.push_back(Store);
       } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
         MemIntrinsics.push_back(MemI);
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
@@ -300,14 +306,21 @@ bool PromoteAllocas::runOnModule(Module &M) {
         }
       }
 
-      // Array allocas may be memset/memcpy'd to (e.g., when assigned the empty
-      // string, etc.). The alignment may be suitable for the old static array,
-      // but may break the new dynamically allocated pointer. To be safe we
-      // remove any alignment and let LLVM decide what is appropriate
+      // Stores to the newly-promoted allocas may not be aligned correctly for
+      // memory on the heap. To be safe we set the alignment to 1, which is
+      // "always safe" (according to the LLVM docs)
+
+      for (auto *Store : Stores) {
+        if (GetUnderlyingObjectThroughLoads(Store->getPointerOperand(),
+                                            *this->DL) == NewAlloca) {
+          Store->setAlignment(1);
+        }
+      }
+
       for (auto *MemI : MemIntrinsics) {
         if (GetUnderlyingObjectThroughLoads(MemI->getDest(), *this->DL) ==
             NewAlloca) {
-          MemI->setDestAlignment(0);
+          MemI->setDestAlignment(1);
         }
       }
 
