@@ -12,6 +12,14 @@ else()
                PROPERTY COMPILE_DEFINITIONS
                USE_TSD_DATA_HACK ONLY_MSPACES)
 endif()
+if(CMAKE_BUILD_TYPE MATCHES DEBUG)
+  set_property(SOURCE malloc.c
+               PROPERTY COMPILE_DEFINITIONS
+               DEBUG=1)
+  set_property(SOURCE ptmalloc3.c
+               PROPERTY COMPILE_DEFINITIONS
+               MALLOC_DEBUG=1)
+endif()
 
 # Need to remove -Werror
 string(REPLACE " -Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")

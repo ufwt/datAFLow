@@ -14,6 +14,8 @@ cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DAFL_PATH=/path/to.
 make -j
 ```
 
+Add `-DAFL_INSTRUMENTATION=On` to compile `libfuzzalloc` with AFL support.
+
 We use LLVM 7.0 (available from http://releases.llvm.org/download.html#7.0.0).
 
 # Usage
