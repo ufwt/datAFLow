@@ -1,22 +1,20 @@
 # fuzzer-test-suite
 
-This set of scripts will build the Google
-[fuzzer test suite](https://github.com/google/fuzzer-test-suite) with the
-datAFLow instrumentation.
+This set of files will build the Google [fuzzer test
+suite](https://github.com/google/fuzzer-test-suite) with the datAFLow
+instrumentation.
 
 # Usage
 
 Run `setup.sh` (from the directory where you want the test suite to be) to
 download the test suite and required tools (AFL and LLVM's
-compiler-rt). You can set the `AFL_PATH` and `COMPILER_RT_PATH` environment
-variables if you already have AFL and LLVM's compiler-rt 7.0 respectively. Set
-the `DEBUG` environment variable (e.g., to 1) to build a debug version of
-libfuzzalloc.
+compiler-rt). You can set the and `COMPILER_RT_PATH` environment variables if
+you already have AFL and LLVM's compiler-rt 7.0 respectively.
 
 ```bash
 mkdir dataflow-test-suite
 cd dataflow-test-suite
-# Specify AFL_PATH + COMPILER_RT_PATH if appropriate
+# Specify COMPILER_RT_PATH if appropriate
 /path/to/datAFLow/fuzzer-test-suite/setup.sh
 export DATAFLOW_TEST_DIR=$(pwd)
 ```

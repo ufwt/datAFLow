@@ -10,9 +10,7 @@ FUZZER_TEST_SUITE="fuzzer-test-suite"
 FUZZER_TEST_SUITE_URL="https://github.com/google/${FUZZER_TEST_SUITE}.git"
 FUZZER_TEST_SUITE_REV="729dea6c49521cf6965d71a0ffb2c4dc52bd8222"
 
-AFL="AFL"
-AFL_TAR="afl-latest.tgz"
-AFL_URL="http://lcamtuf.coredump.cx/afl/releases/${AFL_TAR}"
+AFL_PATH=${SRC_DIR}/../afl-2.52b
 
 COMPILER_RT="compiler-rt"
 COMPILER_RT_TAR="compiler-rt-7.0.1.src.tar.xz"
@@ -26,31 +24,10 @@ if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
 fi
 
 # Get AFL
-if [ -z "${AFL_PATH}" ]; then
-  if [ ! -d "${AFL}" ]; then
-    echo "AFL_PATH not set. Downloading and building AFL"
-    mkdir -p ${AFL}
-    wget ${AFL_URL}
-    tar xf ${AFL_TAR} -C AFL --strip-components=1
-    rm ${AFL_TAR}
-
-    make -C ${AFL} clean all
-    make -C ${AFL}/llvm_mode clean all
-  fi
-
-  export AFL_PATH=${PWD}/${AFL}
-else
-  echo "Using existing AFL at ${AFL_PATH}"
-  if [ ! -f "${AFL_PATH}/afl-fuzz.c" ]; then
-    echo "Invalid AFL path"
-    exit 1
-  fi
-
-  make -C ${AFL_PATH}
-  make -C ${AFL_PATH}/llvm_mode
-
-  ln -sf ${AFL_PATH} AFL
-fi
+export AFL_PATH
+make -C ${AFL_PATH}
+make -C ${AFL_PATH}/llvm_mode
+ln -sf ${AFL_PATH} AFL
 
 # Get compiler-rt
 if [ -z "${COMPILER_RT_PATH}" ]; then
