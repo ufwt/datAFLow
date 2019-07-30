@@ -67,7 +67,8 @@ def main():
                    inst_stats.items()]
 
     print('\nAFL instrumentation stats\n')
-    print(tabulate(sorted(stats_table, key=lambda x: x[0]),
+    print(tabulate(sorted(stats_table, key=lambda x: x[0]) +
+                   [('Total', sum(inst_stats.values()))],
                    headers=['Module', 'Basic blocks'], tablefmt='psql'))
 
     csv_path = args.csv

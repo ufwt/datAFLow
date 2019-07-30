@@ -143,15 +143,21 @@ def main():
     # Print the results
     #
 
-    stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,
-                    stats.tagged_direct_calls, stats.tagged_indirect_calls) for
-                   mod, stats in inst_stats.items()]
+    stats_table = [(mod, stats.alloca_proms, stats.global_proms,
+                    stats.tagged_direct_calls, stats.tagged_indirect_calls,
+                    stats.derefs) for mod, stats in inst_stats.items()]
 
     print('\ndatAFLow instrumentation stats\n')
-    print(tabulate(sorted(stats_table, key=lambda x: x[0]),
-                   headers=['Module', 'Derefs', 'Alloca promotions',
-                            'Global promotions', 'Tagged direct calls',
-                            'Tagged indirect calls'],
+    print(tabulate(sorted(stats_table, key=lambda x: x[0]) +
+                   [('Total',
+                     sum(stats.alloca_proms for stats in inst_stats.values()),
+                     sum(stats.global_proms for stats in inst_stats.values()),
+                     sum(stats.tagged_direct_calls for stats in inst_stats.values()),
+                     sum(stats.tagged_indirect_calls for stats in inst_stats.values()),
+                     sum(stats.derefs for stats in inst_stats.values()))],
+                   headers=['Module', 'Alloca promotions', 'Global promotions',
+                            'Tagged direct calls', 'Tagged indirect calls',
+                            'Derefs'],
                    tablefmt='psql'))
 
     csv_path = args.csv
@@ -159,9 +165,9 @@ def main():
         with open(csv_path, 'w') as csvfile:
             csv_writer = csv.writer(csvfile)
 
-            csv_writer.writerow(['module', 'derefs', 'alloca promotions',
+            csv_writer.writerow(['module', 'alloca promotions',
                                  'global promotions', 'tagged direct calls',
-                                 'tagged indirect calls'])
+                                 'tagged indirect calls', 'derefs'])
             csv_writer.writerows(stats_table)
 
     return 0
