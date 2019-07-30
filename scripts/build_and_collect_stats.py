@@ -21,7 +21,8 @@ from tabulate import tabulate
 FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfInstrumentedDereferences')
 FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAllocaArrayPromotion')
 FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
-FUZZALLOC_TAG_ALLOCS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedCalls')
+FUZZALLOC_TAG_DIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedDirectCalls')
+FUZZALLOC_TAG_INDIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedIndirectCalls')
 
 
 class ModuleStats(object):
@@ -29,7 +30,8 @@ class ModuleStats(object):
         self._derefs = 0
         self._alloca_proms = 0
         self._global_proms = 0
-        self._tagged_funcs = 0
+        self._tagged_direct_calls = 0
+        self._tagged_indirect_calls = 0
 
     @property
     def derefs(self):
@@ -56,12 +58,20 @@ class ModuleStats(object):
         self._global_proms = count
 
     @property
-    def tagged_funcs(self):
-        return self._tagged_funcs
+    def tagged_direct_calls(self):
+        return self._tagged_direct_calls
 
-    @tagged_funcs.setter
-    def tagged_funcs(self, count):
-        self._tagged_funcs = count
+    @tagged_direct_calls.setter
+    def tagged_direct_calls(self, count):
+        self._tagged_direct_calls = count
+
+    @property
+    def tagged_indirect_calls(self):
+        return self._tagged_indirect_calls
+
+    @tagged_indirect_calls.setter
+    def tagged_indirect_calls(self, count):
+        self._tagged_indirect_calls = count
 
 
 inst_stats = defaultdict(ModuleStats)
@@ -93,12 +103,18 @@ def process_output(line):
         inst_stats[module].global_proms = count
         return
 
-    match = FUZZALLOC_TAG_ALLOCS_RE.search(line)
+    match = FUZZALLOC_TAG_DIRECT_CALLS_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
-        inst_stats[module].tagged_funcs = count
+        inst_stats[module].tagged_direct_calls = count
         return
+
+    match = FUZZALLOC_TAG_INDIRECT_CALLS_RE.search(line)
+    if match:
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].tagged_indirect_calls = count
 
 
 def parse_args():
@@ -144,7 +160,8 @@ def main():
     #
 
     stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,
-                    stats.tagged_funcs) for mod, stats in inst_stats.items()]
+                    stats.tagged_direct_calls) for mod, stats in
+                   inst_stats.items()]
 
     print('\ninstrumentation stats\n')
     print(tabulate(sorted(stats_table, key=lambda x: x[0]),
