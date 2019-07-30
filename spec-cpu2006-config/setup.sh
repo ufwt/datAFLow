@@ -12,13 +12,14 @@ source ./shrc
 
 # Add AFL
 ln -sf ${AFL_PATH} afl
+export AFL_PATH
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
-  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=True -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
   make -j)
 mkdir -p fuzzalloc-debug && \
-  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
 # Add config files
