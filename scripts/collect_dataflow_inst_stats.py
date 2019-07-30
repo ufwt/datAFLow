@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 #
-# Wrapper around the fuzzer-test-suite build.sh script that will collect
-# instrumentation stats as the build executes
+# Collect instrumentation stats from a datAFLow-instrumented build log
 #
 
 
@@ -14,7 +13,6 @@ import os
 import re
 import sys
 
-from sh import Command
 from tabulate import tabulate
 
 
@@ -77,10 +75,8 @@ class ModuleStats(object):
 inst_stats = defaultdict(ModuleStats)
 
 
-def process_output(line):
+def parse_line(line):
     global inst_stats
-
-    print(line, end='')
 
     match = FUZZALLOC_DEREF_RE.search(line)
     if match:
@@ -118,14 +114,10 @@ def process_output(line):
 
 
 def parse_args():
-    parser = ArgumentParser(description='Wrapper around fuzzer-test-suite\'s '
-                                        'build.sh that collects fuzzalloc '
-                                        'instrumentation stats')
+    parser = ArgumentParser(description='Collect datAFLow instrumentation '
+                                        'statistics from a build log')
     parser.add_argument('--csv', help='Path to an output CSV file')
-    parser.add_argument('build_path',
-                        help='Path to the fuzzer-test-suite\'s build.sh')
-    parser.add_argument('build_args', nargs='*',
-                        help='Options to build.sh')
+    parser.add_argument('input', help='Path to the build log')
 
     return parser.parse_args()
 
@@ -135,38 +127,31 @@ def main():
 
     args = parse_args()
 
-    build_path = args.build_path
-    if not os.path.isfile(build_path):
-        raise Exception('%s is not a valid build script' % build_path)
+    build_log_path = args.input
+    if not os.path.isfile(build_log_path):
+        raise Exception('%s is not a valid build log' % build_log_path)
 
     #
-    # Set the relevant environment variables. Note that we must disable parallel
-    # builds otherwise tracking of modules will fail
+    # Parse the build log
     #
 
-    env_vars = os.environ.copy()
-    env_vars['FUZZING_ENGINE'] = 'datAFLow'
-    env_vars['JOBS'] = '1'
-
-    #
-    # Do the build
-    #
-
-    build_cmd = Command(build_path).bake(*args.build_args, _env=env_vars)
-    build_cmd(_out=process_output, _err_to_out=True)
+    with open(build_log_path, 'r') as build_log:
+        for line in build_log:
+            parse_line(line)
 
     #
     # Print the results
     #
 
     stats_table = [(mod, stats.derefs, stats.alloca_proms, stats.global_proms,
-                    stats.tagged_direct_calls) for mod, stats in
-                   inst_stats.items()]
+                    stats.tagged_direct_calls, stats.tagged_indirect_calls) for
+                   mod, stats in inst_stats.items()]
 
-    print('\ninstrumentation stats\n')
+    print('\ndatAFLow instrumentation stats\n')
     print(tabulate(sorted(stats_table, key=lambda x: x[0]),
                    headers=['Module', 'Derefs', 'Alloca promotions',
-                            'Global promotions', 'Tagged Functions'],
+                            'Global promotions', 'Tagged direct calls',
+                            'Tagged indirect calls'],
                    tablefmt='psql'))
 
     csv_path = args.csv
@@ -175,7 +160,8 @@ def main():
             csv_writer = csv.writer(csvfile)
 
             csv_writer.writerow(['module', 'derefs', 'alloca promotions',
-                                 'global promotions', 'tagged functions'])
+                                 'global promotions', 'tagged direct calls',
+                                 'tagged indirect calls'])
             csv_writer.writerows(stats_table)
 
     return 0
