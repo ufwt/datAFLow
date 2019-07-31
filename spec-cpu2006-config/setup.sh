@@ -10,9 +10,11 @@ CONFIG_DIR=${SRC_DIR}/config
 # Activate SPEC CPU2006 environment
 source ./shrc
 
-# Add AFL
-ln -sf ${AFL_PATH} afl
+# Get AFL
 export AFL_PATH
+make -C ${AFL_PATH}
+make -C ${AFL_PATH}/llvm_mode
+ln -sf ${AFL_PATH} afl
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
