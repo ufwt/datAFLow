@@ -12,8 +12,8 @@ source ./shrc
 
 # Get AFL
 export AFL_PATH
-make -C ${AFL_PATH}
-make -C ${AFL_PATH}/llvm_mode
+make -j -C ${AFL_PATH}
+make -j -C ${AFL_PATH}/llvm_mode
 ln -sf ${AFL_PATH} afl
 
 # Build the fuzzalloc libraries and tools

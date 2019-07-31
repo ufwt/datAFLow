@@ -25,8 +25,8 @@ fi
 
 # Get AFL
 export AFL_PATH
-make -C ${AFL_PATH}
-make -C ${AFL_PATH}/llvm_mode
+make -j -C ${AFL_PATH}
+make -j -C ${AFL_PATH}/llvm_mode
 ln -sf ${AFL_PATH} AFL
 
 # Get compiler-rt
