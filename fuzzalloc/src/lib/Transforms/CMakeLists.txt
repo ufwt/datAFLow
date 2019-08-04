@@ -1,3 +1,4 @@
 add_subdirectory(InstrumentDerefs)
 add_subdirectory(PromoteObjects)
+add_subdirectory(RewriteNews)
 add_subdirectory(TagDynamicAllocs)

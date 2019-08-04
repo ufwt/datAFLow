@@ -110,11 +110,16 @@ static void edit_params(u32 argc, char **argv) {
 
   maybe_assembler = check_if_assembler(argc, argv);
 
+  /* Rewrite calls to new with calls to malloc */
+
+  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
+                            "/Transforms/RewriteNews/fuzzalloc-rewrite-news.so";
+
   /* Expand global variables with static ConstantAggregate initializers */
 
-  cc_params[cc_par_cnt++] =
-      "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/PromoteObjects/ExpandGVInitializers/fuzzalloc-expand-gv-initializers.so";
+  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
+                            "/Transforms/PromoteObjects/ExpandGVInitializers/"
+                            "fuzzalloc-expand-gv-initializers.so";
 
   /* Promote static arrays to dynamically allocated arrays */
 
