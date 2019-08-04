@@ -95,35 +95,24 @@ static bool isDeleteFn(const Value *V, const TargetLibraryInfo *TLI) {
 }
 
 static Instruction *rewriteNew(CallSite &CS) {
+  LLVM_DEBUG(dbgs() << "rewriting new call " << *CS.getInstruction() << '\n');
+
   Value *AllocSize = CS.getArgOperand(CS.getNumArgOperands() - 1);
   Instruction *CSInst = CS.getInstruction();
 
-  IRBuilder<> IRB(CSInst);
+  auto *MallocCall = CallInst::CreateMalloc(
+      CSInst, AllocSize->getType(), CS.getType()->getPointerElementType(),
+      AllocSize, nullptr, nullptr, "rewrite_new");
 
-  auto *MallocCall =
-      CallInst::CreateMalloc(&*IRB.GetInsertPoint(), AllocSize->getType(),
-                             CS.getType()->getPointerElementType(), AllocSize,
-                             nullptr, nullptr, "rewrite_new");
-
-  // If new was invoked, rather than called, we try to emulate invoke's
-  // behaviour.
+  // If new was invoke-d, rather than call-ed, we must branch to the invoke's
+  // normal destination.
   //
-  // To do this, we check if malloc returned NULL. If it did, we branch to the
-  // invoke's unwind destionation. Otherwise, we branch to the normal
-  // destination.
+  // TODO Emulate exception handling (i.e., the invoke's unwind destination)
   if (auto *Invoke = dyn_cast<InvokeInst>(CSInst)) {
     auto *NormalDest = Invoke->getNormalDest();
-    auto *UnwindDest = Invoke->getUnwindDest();
+    assert(NormalDest && "Invoke has no normal destination");
 
-    if (UnwindDest) {
-      auto *NullCheck = IRB.CreateICmpEQ(
-          MallocCall, Constant::getNullValue(MallocCall->getType()),
-          "malloc_is_null");
-      IRB.CreateCondBr(NullCheck, UnwindDest, NormalDest);
-    } else {
-      assert(NormalDest && "Invoke has no normal destination");
-      IRB.CreateBr(NormalDest);
-    }
+    BranchInst::Create(NormalDest, CSInst);
   }
 
   CS->replaceAllUsesWith(MallocCall);
@@ -135,6 +124,9 @@ static Instruction *rewriteNew(CallSite &CS) {
 }
 
 static Instruction *rewriteDelete(CallSite &CS) {
+  LLVM_DEBUG(dbgs() << "rewriting delete call " << *CS.getInstruction()
+                    << '\n');
+
   Value *Ptr = CS.getArgOperand(CS.getNumArgOperands() - 1);
 
   auto *FreeCall = CallInst::CreateFree(Ptr, CS.getInstruction());
