@@ -96,11 +96,36 @@ static bool isDeleteFn(const Value *V, const TargetLibraryInfo *TLI) {
 
 static Instruction *rewriteNew(CallSite &CS) {
   Value *AllocSize = CS.getArgOperand(CS.getNumArgOperands() - 1);
+  Instruction *CSInst = CS.getInstruction();
+
+  IRBuilder<> IRB(CSInst);
 
   auto *MallocCall =
-      CallInst::CreateMalloc(CS.getInstruction(), AllocSize->getType(),
+      CallInst::CreateMalloc(&*IRB.GetInsertPoint(), AllocSize->getType(),
                              CS.getType()->getPointerElementType(), AllocSize,
                              nullptr, nullptr, "rewrite_new");
+
+  // If new was invoked, rather than called, we try to emulate invoke's
+  // behaviour.
+  //
+  // To do this, we check if malloc returned NULL. If it did, we branch to the
+  // invoke's unwind destionation. Otherwise, we branch to the normal
+  // destination.
+  if (auto *Invoke = dyn_cast<InvokeInst>(CSInst)) {
+    auto *NormalDest = Invoke->getNormalDest();
+    auto *UnwindDest = Invoke->getUnwindDest();
+
+    if (UnwindDest) {
+      auto *NullCheck = IRB.CreateICmpEQ(
+          MallocCall, Constant::getNullValue(MallocCall->getType()),
+          "malloc_is_null");
+      IRB.CreateCondBr(NullCheck, UnwindDest, NormalDest);
+    } else {
+      assert(NormalDest && "Invoke has no normal destination");
+      IRB.CreateBr(NormalDest);
+    }
+  }
+
   CS->replaceAllUsesWith(MallocCall);
   CS->eraseFromParent();
 
