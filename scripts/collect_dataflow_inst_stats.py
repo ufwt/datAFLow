@@ -21,6 +21,8 @@ FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAlloca
 FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
 FUZZALLOC_TAG_DIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedDirectCalls')
 FUZZALLOC_TAG_INDIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedIndirectCalls')
+FUZZALLOC_NEW_REWRITES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfNewRewrites')
+FUZZALLOC_DELETE_REWRITES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfDeleteRewrites')
 
 
 class ModuleStats(object):
@@ -30,6 +32,8 @@ class ModuleStats(object):
         self._global_proms = 0
         self._tagged_direct_calls = 0
         self._tagged_indirect_calls = 0
+        self._new_rewrites = 0
+        self._delete_rewrites = 0
 
     @property
     def derefs(self):
@@ -70,6 +74,22 @@ class ModuleStats(object):
     @tagged_indirect_calls.setter
     def tagged_indirect_calls(self, count):
         self._tagged_indirect_calls = count
+
+    @property
+    def new_rewrites(self):
+        return self._new_rewrites
+
+    @new_rewrites.setter
+    def new_rewrites(self, count):
+        self._new_rewrites = count
+
+    @property
+    def delete_rewrites(self):
+        return self._delete_rewrites
+
+    @delete_rewrites.setter
+    def delete_rewrites(self, count):
+        self._delete_rewrites = count
 
 
 inst_stats = defaultdict(ModuleStats)
@@ -112,6 +132,18 @@ def parse_line(line):
         count = int(match.group(2))
         inst_stats[module].tagged_indirect_calls = count
 
+    match = FUZZALLOC_NEW_REWRITES_RE.search(line)
+    if match:
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].new_rewrites = count
+
+    match = FUZZALLOC_DELETE_REWRITES_RE.search(line)
+    if match:
+        module = match.group(1)
+        count = int(match.group(2))
+        inst_stats[module].delete_rewrites = count
+
 
 def parse_args():
     parser = ArgumentParser(description='Collect datAFLow instrumentation '
@@ -143,19 +175,23 @@ def main():
     # Print the results
     #
 
-    stats_table = [(mod, stats.alloca_proms, stats.global_proms,
+    stats_table = [(mod, stats.new_rewrites, stats.delete_rewrites,
+                    stats.alloca_proms, stats.global_proms,
                     stats.tagged_direct_calls, stats.tagged_indirect_calls,
                     stats.derefs) for mod, stats in inst_stats.items()]
 
     print('\ndatAFLow instrumentation stats\n')
     print(tabulate(sorted(stats_table, key=lambda x: x[0]) +
                    [('Total',
+                     sum(stats.new_rewrites for stats in inst_stats.values()),
+                     sum(stats.delete_rewrites for stats in inst_stats.values()),
                      sum(stats.alloca_proms for stats in inst_stats.values()),
                      sum(stats.global_proms for stats in inst_stats.values()),
                      sum(stats.tagged_direct_calls for stats in inst_stats.values()),
                      sum(stats.tagged_indirect_calls for stats in inst_stats.values()),
                      sum(stats.derefs for stats in inst_stats.values()))],
-                   headers=['Module', 'Alloca promotions', 'Global promotions',
+                   headers=['Module', 'New rewrites', 'Delete rewrites',
+                            'Alloca promotions', 'Global promotions',
                             'Tagged direct calls', 'Tagged indirect calls',
                             'Derefs'],
                    tablefmt='psql'))
@@ -165,9 +201,10 @@ def main():
         with open(csv_path, 'w') as csvfile:
             csv_writer = csv.writer(csvfile)
 
-            csv_writer.writerow(['module', 'alloca promotions',
-                                 'global promotions', 'tagged direct calls',
-                                 'tagged indirect calls', 'derefs'])
+            csv_writer.writerow(['module', 'new rewrites', 'delete rewrites',
+                                 'alloca promotions', 'global promotions',
+                                 'tagged direct calls', 'tagged indirect calls',
+                                 'derefs'])
             csv_writer.writerows(stats_table)
 
     return 0
