@@ -166,6 +166,10 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
       continue;
     }
 
+    if (isVTableOrTypeInfo(&GV)) {
+      continue;
+    }
+
     const Constant *Initializer = GV.getInitializer();
     if (!isa<ConstantAggregate>(Initializer)) {
       continue;

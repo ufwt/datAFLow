@@ -46,6 +46,10 @@ llvm::ReturnInst *updateReturn(llvm::ReturnInst *, llvm::Value *,
 /// Returns \c true if the given type is promotable to dynamic allocation.
 bool isPromotableType(llvm::Type *);
 
+/// Returns \c true if the given value is C++ virtual table or type info
+/// metadata
+bool isVTableOrTypeInfo(const llvm::Value *);
+
 /// Create a call to \c malloc that will create an array.
 llvm::Instruction *createArrayMalloc(llvm::LLVMContext &,
                                      const llvm::DataLayout &,

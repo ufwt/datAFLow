@@ -197,6 +197,7 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
       NewInst->insertBefore(Inst);
       Inst->replaceUsesOfWith(ConstExpr, NewInst);
     } else if (auto *Const = dyn_cast<Constant>(U)) {
+      Const->removeDeadConstantUsers();
       assert(Const->user_empty() && "Constant user must have no users");
     } else {
       assert(false && "Unsupported constant expression user");
@@ -312,6 +313,10 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
 
     // XXX Check for private or internal linkage
     if (GV.isConstant()) {
+      continue;
+    }
+
+    if (isVTableOrTypeInfo(&GV)) {
       continue;
     }
 

@@ -12,6 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include <cxxabi.h>
+
 #include "llvm/IR/Instructions.h"
 
 #include "PromoteCommon.h"
@@ -77,6 +79,27 @@ bool isPromotableType(Type *Ty) {
   }
 
   return true;
+}
+
+bool isVTableOrTypeInfo(const Value *V) {
+  if (!isa<GlobalVariable>(V)) {
+    return false;
+  }
+
+  int DemangleStatus;
+  char *DemangleNameCStr = abi::__cxa_demangle(
+      V->getName().str().c_str(), nullptr, nullptr, &DemangleStatus);
+  if (DemangleStatus == 0) {
+    StringRef DemangleName = StringRef(DemangleNameCStr);
+
+    if (DemangleName.startswith_lower("vtable for ") ||
+        DemangleName.startswith_lower("typeinfo for ") ||
+        DemangleName.startswith_lower("typeinfo name for ")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Instruction *createArrayMalloc(LLVMContext &C, const DataLayout &DL,
