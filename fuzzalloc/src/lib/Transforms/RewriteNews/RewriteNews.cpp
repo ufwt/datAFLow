@@ -97,7 +97,7 @@ static bool isDeleteFn(const Value *V, const TargetLibraryInfo *TLI) {
 static Instruction *rewriteNew(CallSite &CS) {
   LLVM_DEBUG(dbgs() << "rewriting new call " << *CS.getInstruction() << '\n');
 
-  Value *AllocSize = CS.getArgOperand(CS.getNumArgOperands() - 1);
+  Value *AllocSize = CS.getArgOperand(0);
   Instruction *CSInst = CS.getInstruction();
 
   auto *MallocCall = CallInst::CreateMalloc(
