@@ -17,8 +17,8 @@ from tabulate import tabulate
 
 
 FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfInstrumentedDereferences')
-FUZZALLOC_PROM_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAllocaArrayPromotion')
-FUZZALLOC_PROM_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayPromotion')
+FUZZALLOC_HEAPIFY_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAllocaArrayHeapification')
+FUZZALLOC_HEAPIFY_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayHeapification')
 FUZZALLOC_TAG_DIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedDirectCalls')
 FUZZALLOC_TAG_INDIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedIndirectCalls')
 FUZZALLOC_NEW_REWRITES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfNewRewrites')
@@ -28,8 +28,8 @@ FUZZALLOC_DELETE_REWRITES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfDe
 class ModuleStats(object):
     def __init__(self):
         self._derefs = 0
-        self._alloca_proms = 0
-        self._global_proms = 0
+        self._alloca_heapifys = 0
+        self._global_heapifys = 0
         self._tagged_direct_calls = 0
         self._tagged_indirect_calls = 0
         self._new_rewrites = 0
@@ -44,20 +44,20 @@ class ModuleStats(object):
         self._derefs = count
 
     @property
-    def alloca_proms(self):
-        return self._alloca_proms
+    def alloca_heapifys(self):
+        return self._alloca_heapifys
 
-    @alloca_proms.setter
-    def alloca_proms(self, count):
-        self._alloca_proms = count
+    @alloca_heapifys.setter
+    def alloca_heapifys(self, count):
+        self._alloca_heapifys = count
 
     @property
-    def global_proms(self):
-        return self._global_proms
+    def global_heapifys(self):
+        return self._global_heapifys
 
-    @global_proms.setter
-    def global_proms(self, count):
-        self._global_proms = count
+    @global_heapifys.setter
+    def global_heapifys(self, count):
+        self._global_heapifys = count
 
     @property
     def tagged_direct_calls(self):
@@ -105,18 +105,18 @@ def parse_line(line):
         inst_stats[module].derefs = count
         return
 
-    match = FUZZALLOC_PROM_ALLOCA_RE.search(line)
+    match = FUZZALLOC_HEAPIFY_ALLOCA_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
-        inst_stats[module].alloca_proms = count
+        inst_stats[module].alloca_heapifys = count
         return
 
-    match = FUZZALLOC_PROM_GLOBAL_RE.search(line)
+    match = FUZZALLOC_HEAPIFY_GLOBAL_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
-        inst_stats[module].global_proms = count
+        inst_stats[module].global_heapifys = count
         return
 
     match = FUZZALLOC_TAG_DIRECT_CALLS_RE.search(line)
@@ -176,7 +176,7 @@ def main():
     #
 
     stats_table = [(mod, stats.new_rewrites, stats.delete_rewrites,
-                    stats.alloca_proms, stats.global_proms,
+                    stats.alloca_heapifys, stats.global_heapifys,
                     stats.tagged_direct_calls, stats.tagged_indirect_calls,
                     stats.derefs) for mod, stats in inst_stats.items()]
 
@@ -185,13 +185,13 @@ def main():
                    [('Total',
                      sum(stats.new_rewrites for stats in inst_stats.values()),
                      sum(stats.delete_rewrites for stats in inst_stats.values()),
-                     sum(stats.alloca_proms for stats in inst_stats.values()),
-                     sum(stats.global_proms for stats in inst_stats.values()),
+                     sum(stats.alloca_heapifys for stats in inst_stats.values()),
+                     sum(stats.global_heapifys for stats in inst_stats.values()),
                      sum(stats.tagged_direct_calls for stats in inst_stats.values()),
                      sum(stats.tagged_indirect_calls for stats in inst_stats.values()),
                      sum(stats.derefs for stats in inst_stats.values()))],
                    headers=['Module', 'New rewrites', 'Delete rewrites',
-                            'Alloca promotions', 'Global promotions',
+                            'Alloca Heapifications', 'Global Heapifications',
                             'Tagged direct calls', 'Tagged indirect calls',
                             'Derefs'],
                    tablefmt='psql'))
@@ -202,9 +202,9 @@ def main():
             csv_writer = csv.writer(csvfile)
 
             csv_writer.writerow(['module', 'new rewrites', 'delete rewrites',
-                                 'alloca promotions', 'global promotions',
-                                 'tagged direct calls', 'tagged indirect calls',
-                                 'derefs'])
+                                 'alloca heapifications',
+                                 'global heapifications', 'tagged direct calls',
+                                 'tagged indirect calls', 'derefs'])
             csv_writer.writerows(stats_table)
 
     return 0

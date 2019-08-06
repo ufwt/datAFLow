@@ -1,4 +1,4 @@
-//===-- PromoteAllocas.cpp - Promote alloca arrays to mallocs -------------===//
+//===-- HeapifyAllocas.cpp - Heapify alloca arrays ------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass promotes stack-based (i.e., allocas) static arrays to
+/// This pass heapifies stack-based (i.e., allocas) static arrays to
 /// dynamically-allocated arrays via \p malloc.
 ///
 //===----------------------------------------------------------------------===//
@@ -26,26 +26,27 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "Common.h"
-#include "PromoteCommon.h"
+#include "HeapifyCommon.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-prom-allocas"
+#define DEBUG_TYPE "fuzzalloc-heapify-allocas"
 
 static cl::opt<int> ClMinArraySize(
     "fuzzalloc-min-alloca array-size",
-    cl::desc("The minimum size of a static alloca array to promote to malloc"),
+    cl::desc("The minimum size of a static alloca array to heapify to malloc"),
     cl::init(1));
 
-STATISTIC(NumOfAllocaArrayPromotion, "Number of alloca array promotions.");
+STATISTIC(NumOfAllocaArrayHeapification,
+          "Number of alloca array heapifications.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
 
-/// PromoteAllocas: instrument the code in a module to promote static,
+/// HeapifyAllocas: instrument the code in a module to heapify static,
 /// fixed-size arrays on the stack (i.e., allocas) to dynamically allocated
 /// arrays via \p malloc.
-class PromoteAllocas : public ModulePass {
+class HeapifyAllocas : public ModulePass {
 private:
   DataLayout *DL;
   DIBuilder *DBuilder;
@@ -55,12 +56,12 @@ private:
 
   void copyDebugInfo(const AllocaInst *, AllocaInst *) const;
 
-  AllocaInst *promoteAlloca(AllocaInst *,
+  AllocaInst *heapifyAlloca(AllocaInst *,
                             const ArrayRef<IntrinsicInst *> &) const;
 
 public:
   static char ID;
-  PromoteAllocas() : ModulePass(ID) {}
+  HeapifyAllocas() : ModulePass(ID) {}
 
   bool doInitialization(Module &M) override;
   bool doFinalization(Module &) override;
@@ -69,11 +70,11 @@ public:
 
 } // end anonymous namespace
 
-char PromoteAllocas::ID = 0;
+char HeapifyAllocas::ID = 0;
 
 /// Insert a call to `malloc` before the `InsertPt` instruction. The result of
 /// the `malloc` call is stored in `NewAlloca`.
-Instruction *PromoteAllocas::insertMalloc(const AllocaInst *OrigAlloca,
+Instruction *HeapifyAllocas::insertMalloc(const AllocaInst *OrigAlloca,
                                           AllocaInst *NewAlloca,
                                           Instruction *InsertPt) const {
   const Module *M = OrigAlloca->getModule();
@@ -95,7 +96,7 @@ Instruction *PromoteAllocas::insertMalloc(const AllocaInst *OrigAlloca,
   return MallocCall;
 }
 
-void PromoteAllocas::copyDebugInfo(const AllocaInst *OrigAlloca,
+void HeapifyAllocas::copyDebugInfo(const AllocaInst *OrigAlloca,
                                    AllocaInst *NewAlloca) const {
   auto *F = OrigAlloca->getFunction();
 
@@ -111,9 +112,9 @@ void PromoteAllocas::copyDebugInfo(const AllocaInst *OrigAlloca,
   }
 }
 
-AllocaInst *PromoteAllocas::promoteAlloca(
+AllocaInst *HeapifyAllocas::heapifyAlloca(
     AllocaInst *Alloca, const ArrayRef<IntrinsicInst *> &LifetimeStarts) const {
-  LLVM_DEBUG(dbgs() << "promoting" << *Alloca << " in function "
+  LLVM_DEBUG(dbgs() << "heapifying " << *Alloca << " in function "
                     << Alloca->getFunction()->getName() << "\n");
 
   // Cache uses
@@ -143,7 +144,7 @@ AllocaInst *PromoteAllocas::promoteAlloca(
 
   PointerType *NewAllocaTy = ElemTy->getPointerTo();
   auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
-                                   Alloca->getName() + "_prom", Alloca);
+                                   Alloca->getName() + "_heapify", Alloca);
   copyDebugInfo(Alloca, NewAlloca);
 
   // Decide where to insert the call to malloc.
@@ -209,14 +210,14 @@ AllocaInst *PromoteAllocas::promoteAlloca(
   return NewAlloca;
 }
 
-bool PromoteAllocas::doInitialization(Module &M) {
+bool HeapifyAllocas::doInitialization(Module &M) {
   this->DL = new DataLayout(M.getDataLayout());
   this->DBuilder = new DIBuilder(M, /* AllowUnresolved */ false);
 
   return false;
 }
 
-bool PromoteAllocas::doFinalization(Module &) {
+bool HeapifyAllocas::doFinalization(Module &) {
   delete this->DL;
 
   this->DBuilder->finalize();
@@ -225,9 +226,9 @@ bool PromoteAllocas::doFinalization(Module &) {
   return false;
 }
 
-bool PromoteAllocas::runOnModule(Module &M) {
-  // Static array allocations to promote
-  SmallVector<AllocaInst *, 8> AllocasToPromote;
+bool HeapifyAllocas::runOnModule(Module &M) {
+  // Static array allocations to heapify
+  SmallVector<AllocaInst *, 8> AllocasToHeapify;
 
   // lifetime.start intrinsics that will require calls to mallic to be inserted
   // before them
@@ -248,7 +249,7 @@ bool PromoteAllocas::runOnModule(Module &M) {
   SmallVector<ReturnInst *, 4> Returns;
 
   for (auto &F : M.functions()) {
-    AllocasToPromote.clear();
+    AllocasToHeapify.clear();
     LifetimeStarts.clear();
     LifetimeEnds.clear();
     MemIntrinsics.clear();
@@ -258,8 +259,8 @@ bool PromoteAllocas::runOnModule(Module &M) {
     // Collect all the things!
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-        if (isPromotableType(Alloca->getAllocatedType())) {
-          AllocasToPromote.push_back(Alloca);
+        if (isHeapifiableType(Alloca->getAllocatedType())) {
+          AllocasToHeapify.push_back(Alloca);
         }
       } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
         Stores.push_back(Store);
@@ -276,13 +277,13 @@ bool PromoteAllocas::runOnModule(Module &M) {
       }
     }
 
-    // Promote static arrays to dynamically allocated arrays and insert calls
+    // Heapify static arrays to dynamically allocated arrays and insert calls
     // to free at the appropriate locations (either at lifetime.end intrinsics
     // or at return instructions)
-    for (auto *Alloca : AllocasToPromote) {
-      // Promote the alloca. After this function call all users of the original
+    for (auto *Alloca : AllocasToHeapify) {
+      // Heapify the alloca. After this function call all users of the original
       // alloca are invalid
-      auto *NewAlloca = promoteAlloca(Alloca, LifetimeStarts);
+      auto *NewAlloca = heapifyAlloca(Alloca, LifetimeStarts);
 
       // Check if any of the original allocas (which have now been replaced by
       // the new alloca) are used in any lifetime.end intrinsics. If they are,
@@ -306,7 +307,7 @@ bool PromoteAllocas::runOnModule(Module &M) {
         }
       }
 
-      // Stores to the newly-promoted allocas may not be aligned correctly for
+      // Stores to the newly-heapified allocas may not be aligned correctly for
       // memory on the heap. To be safe we set the alignment to 1, which is
       // "always safe" (according to the LLVM docs)
 
@@ -325,29 +326,29 @@ bool PromoteAllocas::runOnModule(Module &M) {
       }
 
       Alloca->eraseFromParent();
-      NumOfAllocaArrayPromotion++;
+      NumOfAllocaArrayHeapification++;
     }
   }
 
-  printStatistic(M, NumOfAllocaArrayPromotion);
+  printStatistic(M, NumOfAllocaArrayHeapification);
   printStatistic(M, NumOfFreeInsert);
 
-  return NumOfAllocaArrayPromotion > 0;
+  return NumOfAllocaArrayHeapification > 0;
 }
 
-static RegisterPass<PromoteAllocas>
-    X("fuzzalloc-prom-allocas", "Promote static array allocas to malloc calls",
-      false, false);
+static RegisterPass<HeapifyAllocas>
+    X("fuzzalloc-heapify-allocas",
+      "Heapify static array allocas to malloc calls", false, false);
 
-static void registerPromoteAllocasPass(const PassManagerBuilder &,
+static void registerHeapifyAllocasPass(const PassManagerBuilder &,
                                        legacy::PassManagerBase &PM) {
-  PM.add(new PromoteAllocas());
+  PM.add(new HeapifyAllocas());
 }
 
 static RegisterStandardPasses
-    RegisterPromoteAllocasPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
-                               registerPromoteAllocasPass);
+    RegisterHeapifyAllocasPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
+                               registerHeapifyAllocasPass);
 
 static RegisterStandardPasses
-    RegisterPromoteAllocasPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                                registerPromoteAllocasPass);
+    RegisterHeapifyAllocasPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                                registerHeapifyAllocasPass);

@@ -1,4 +1,4 @@
-//===-- PromoteGlobalVariables.cpp - Promote global var. arrays to mallocs ===//
+//===-- HeapifyGlobalVariables.cpp - Heapify global variable arrays -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass promotes static global variable arrays to dynamically-allocated
+/// This pass heapifies static global variable arrays to dynamically-allocated
 /// arrays via \p malloc.
 ///
 //===----------------------------------------------------------------------===//
@@ -26,53 +26,53 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "Common.h"
-#include "PromoteCommon.h"
+#include "HeapifyCommon.h"
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-prom-global-vars"
+#define DEBUG_TYPE "fuzzalloc-heapify-global-vars"
 
 static cl::opt<int>
     ClMinArraySize("fuzzalloc-min-global-array-size",
                    cl::desc("The minimum size of a static global variable "
-                            "array to promote to malloc"),
+                            "array to heapify to malloc"),
                    cl::init(1));
 
-STATISTIC(NumOfGlobalVariableArrayPromotion,
-          "Number of global variable array promotions.");
+STATISTIC(NumOfGlobalVariableArrayHeapification,
+          "Number of global variable array heapifications.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
 
-/// PromoteGlobalVariables: instrument the code in a module to promote static,
+/// HeapifyGlobalVariables: instrument the code in a module to heapify static,
 /// fixed-size global variable arrays to dynamically-allocated arrays via
 /// \p malloc.
-class PromoteGlobalVariables : public ModulePass {
+class HeapifyGlobalVariables : public ModulePass {
 private:
-  GlobalVariable *promoteGlobalVariable(GlobalVariable *, Function *) const;
+  GlobalVariable *heapifyGlobalVariable(GlobalVariable *, Function *) const;
 
 public:
   static char ID;
-  PromoteGlobalVariables() : ModulePass(ID) {}
+  HeapifyGlobalVariables() : ModulePass(ID) {}
 
   bool runOnModule(Module &M) override;
 };
 
 } // end anonymous namespace
 
-char PromoteGlobalVariables::ID = 0;
+char HeapifyGlobalVariables::ID = 0;
 
 /// Create a constructor function that will be used to `malloc` all of the
-/// promoted global variables in the module.
-static Function *createArrayPromCtor(Module &M) {
+/// heapified global variables in the module.
+static Function *createArrayHeapifyCtor(Module &M) {
   LLVMContext &C = M.getContext();
 
   FunctionType *GlobalCtorTy =
       FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
-  Function *GlobalCtorF =
-      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "fuzzalloc.init_prom_global_arrays_" + M.getName(), &M);
-  appendToGlobalCtors(M, GlobalCtorF, kPromotedGVCtorAndDtorPriority);
+  Function *GlobalCtorF = Function::Create(
+      GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+      "fuzzalloc.init_heapify_global_arrays_" + M.getName(), &M);
+  appendToGlobalCtors(M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
   ReturnInst::Create(C, GlobalCtorBB);
@@ -81,16 +81,16 @@ static Function *createArrayPromCtor(Module &M) {
 }
 
 /// Create a destructor function that will be used to `free` all of the
-/// promoted global variables in the module.
-static Function *createArrayPromDtor(Module &M) {
+/// heapified global variables in the module.
+static Function *createArrayHeapifyDtor(Module &M) {
   LLVMContext &C = M.getContext();
 
   FunctionType *GlobalDtorTy =
       FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
-  Function *GlobalDtorF =
-      Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "fuzzalloc.fin_prom_global_arrays_" + M.getName(), &M);
-  appendToGlobalDtors(M, GlobalDtorF, kPromotedGVCtorAndDtorPriority);
+  Function *GlobalDtorF = Function::Create(
+      GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+      "fuzzalloc.fin_heapify_global_arrays_" + M.getName(), &M);
+  appendToGlobalDtors(M, GlobalDtorF, kHeapifyGVCtorAndDtorPriority);
 
   BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
   ReturnInst::Create(C, GlobalDtorBB);
@@ -98,11 +98,11 @@ static Function *createArrayPromDtor(Module &M) {
   return GlobalDtorF;
 }
 
-/// Initialize the promoted global variable in the given constructor function.
+/// Initialize the heapified global variable in the given constructor function.
 ///
 /// The initialization is based off the original global variable's static
 /// initializer.
-static void initializePromotedGlobalVariable(const GlobalVariable *OrigGV,
+static void initializeHeapifydGlobalVariable(const GlobalVariable *OrigGV,
                                              GlobalVariable *NewGV,
                                              Function *Ctor) {
   LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << " in "
@@ -129,7 +129,7 @@ static void initializePromotedGlobalVariable(const GlobalVariable *OrigGV,
   if (OrigGV->hasInitializer()) {
     if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitializer, just memset the dynamically
-      // allocated memory to zero. Likewise with promoted allocas that are
+      // allocated memory to zero. Likewise with heapified allocas that are
       // memset, reset the destination alignment
       uint64_t Size = DL.getTypeAllocSize(ElemTy) * ArrayNumElems;
       IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
@@ -205,10 +205,9 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
   }
 }
 
-GlobalVariable *
-PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
-                                              Function *ArrayPromCtor) const {
-  LLVM_DEBUG(dbgs() << "promoting " << *OrigGV << '\n');
+GlobalVariable *HeapifyGlobalVariables::heapifyGlobalVariable(
+    GlobalVariable *OrigGV, Function *ArrayHeapifyCtor) const {
+  LLVM_DEBUG(dbgs() << "heapifying " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
   ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
@@ -219,7 +218,7 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
       // If the original global variable had an initializer, replace it with the
       // null pointer initializer
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
-      OrigGV->getName() + "_prom", /* InsertBefore */ nullptr,
+      OrigGV->getName() + "_heapify", /* InsertBefore */ nullptr,
       OrigGV->getThreadLocalMode(), OrigGV->getType()->getAddressSpace(),
       OrigGV->isExternallyInitialized());
   NewGV->copyAttributesFrom(OrigGV);
@@ -233,11 +232,11 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
   }
 
   if (!OrigGV->isDeclaration()) {
-    initializePromotedGlobalVariable(OrigGV, NewGV, ArrayPromCtor);
-    NumOfGlobalVariableArrayPromotion++;
+    initializeHeapifydGlobalVariable(OrigGV, NewGV, ArrayHeapifyCtor);
+    NumOfGlobalVariableArrayHeapification++;
   }
 
-  // Now that the global variable has been promoted to the heap, it must be
+  // Now that the global variable has been heapified to the heap, it must be
   // loaded before we can do anything else to it. This means that any constant
   // expressions that used the old global variable must be replaced, because a
   // load instruction is not a constant expression. To do this we just expand
@@ -297,14 +296,14 @@ PromoteGlobalVariables::promoteGlobalVariable(GlobalVariable *OrigGV,
   return NewGV;
 }
 
-bool PromoteGlobalVariables::runOnModule(Module &M) {
+bool HeapifyGlobalVariables::runOnModule(Module &M) {
   const DataLayout &DL = M.getDataLayout();
 
-  // Global variables to promote
-  SmallPtrSet<GlobalVariable *, 8> GVsToPromote;
+  // Global variables to heapify
+  SmallPtrSet<GlobalVariable *, 8> GVsToHeapify;
 
-  // Promoted global variables
-  SmallPtrSet<Value *, 8> PromotedGVs;
+  // Heapifyd global variables
+  SmallPtrSet<Value *, 8> HeapifydGVs;
 
   for (auto &GV : M.globals()) {
     if (GV.getName().startswith("llvm.")) {
@@ -320,31 +319,31 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
       continue;
     }
 
-    if (isPromotableType(GV.getValueType())) {
-      GVsToPromote.insert(&GV);
+    if (isHeapifiableType(GV.getValueType())) {
+      GVsToHeapify.insert(&GV);
     }
   }
 
-  // Promote non-constant global static arrays in a module constructor and free
+  // Heapify non-constant global static arrays in a module constructor and free
   // them in a destructor
-  if (!GVsToPromote.empty()) {
-    Function *GlobalCtorF = createArrayPromCtor(M);
-    Function *GlobalDtorF = createArrayPromDtor(M);
+  if (!GVsToHeapify.empty()) {
+    Function *GlobalCtorF = createArrayHeapifyCtor(M);
+    Function *GlobalDtorF = createArrayHeapifyDtor(M);
 
-    for (auto *GV : GVsToPromote) {
-      auto *PromotedGV = promoteGlobalVariable(GV, GlobalCtorF);
+    for (auto *GV : GVsToHeapify) {
+      auto *HeapifydGV = heapifyGlobalVariable(GV, GlobalCtorF);
 
-      if (!PromotedGV->isDeclaration()) {
-        insertFree(PromotedGV, GlobalDtorF->getEntryBlock().getTerminator());
+      if (!HeapifydGV->isDeclaration()) {
+        insertFree(HeapifydGV, GlobalDtorF->getEntryBlock().getTerminator());
         NumOfFreeInsert++;
       }
 
-      PromotedGVs.insert(PromotedGV);
+      HeapifydGVs.insert(HeapifydGV);
       GV->eraseFromParent();
     }
   }
 
-  // Stores to the newly-promoted global variables may not be aligned correctly
+  // Stores to the newly-heapified global variables may not be aligned correctly
   // for memory on the heap. To be safe we set the alignment to 1, which is
   // "always safe" (according to the LLVM docs)
   for (auto &F : M.functions()) {
@@ -352,37 +351,37 @@ bool PromoteGlobalVariables::runOnModule(Module &M) {
       if (auto *Store = dyn_cast<StoreInst>(&*I)) {
         auto *Obj =
             GetUnderlyingObjectThroughLoads(Store->getPointerOperand(), DL);
-        if (PromotedGVs.count(Obj) > 0) {
+        if (HeapifydGVs.count(Obj) > 0) {
           Store->setAlignment(1);
         }
       } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
         auto *Obj = GetUnderlyingObjectThroughLoads(MemI->getDest(), DL);
-        if (PromotedGVs.count(Obj) > 0) {
+        if (HeapifydGVs.count(Obj) > 0) {
           MemI->setDestAlignment(1);
         }
       }
     }
   }
 
-  printStatistic(M, NumOfGlobalVariableArrayPromotion);
+  printStatistic(M, NumOfGlobalVariableArrayHeapification);
   printStatistic(M, NumOfFreeInsert);
 
-  return NumOfGlobalVariableArrayPromotion > 0;
+  return NumOfGlobalVariableArrayHeapification > 0;
 }
 
-static RegisterPass<PromoteGlobalVariables>
-    X("fuzzalloc-prom-global-vars",
-      "Promote static global variable arrays to malloc calls", false, false);
+static RegisterPass<HeapifyGlobalVariables>
+    X("fuzzalloc-heapify-global-vars",
+      "Heapify static global variable arrays to malloc calls", false, false);
 
-static void registerPromoteGlobalVariablesPass(const PassManagerBuilder &,
+static void registerHeapifyGlobalVariablesPass(const PassManagerBuilder &,
                                                legacy::PassManagerBase &PM) {
-  PM.add(new PromoteGlobalVariables());
+  PM.add(new HeapifyGlobalVariables());
 }
 
-static RegisterStandardPasses RegisterPromoteGlobalVariablesPass(
+static RegisterStandardPasses RegisterHeapifyGlobalVariablesPass(
     PassManagerBuilder::EP_ModuleOptimizerEarly,
-    registerPromoteGlobalVariablesPass);
+    registerHeapifyGlobalVariablesPass);
 
-static RegisterStandardPasses RegisterPromoteGlobalVariablesPass0(
+static RegisterStandardPasses RegisterHeapifyGlobalVariablesPass0(
     PassManagerBuilder::EP_EnabledOnOptLevel0,
-    registerPromoteGlobalVariablesPass);
+    registerHeapifyGlobalVariablesPass);

@@ -1,4 +1,4 @@
-//===-- PromoteCommon.cpp - Promote static arrays to mallocs --------------===//
+//===-- HeapifyCommon.cpp - Heapify static arrays -------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Common functionality for static array/struct promotion.
+/// Common functionality for static array/struct heapification.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -16,7 +16,7 @@
 
 #include "llvm/IR/Instructions.h"
 
-#include "PromoteCommon.h"
+#include "HeapifyCommon.h"
 
 using namespace llvm;
 
@@ -30,7 +30,7 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   auto *MallocPtrGEP = GetElementPtrInst::CreateInBounds(
       BitCastMallocPtr,
       SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
-      GEP->hasName() ? GEP->getName() + "_prom" : "", GEP);
+      GEP->hasName() ? GEP->getName() + "_heapify" : "", GEP);
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
@@ -41,8 +41,8 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
 }
 
 SelectInst *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
-  // The use of a promoted value in a select instruction may need to be cast (to
-  // ensure that the select instruction type checks)
+  // The use of a heapified value in a select instruction may need to be cast
+  // (to ensure that the select instruction type checks)
 
   // The original value must be one of the select values
   assert(Select->getTrueValue() == OrigV || Select->getFalseValue() == OrigV);
@@ -64,12 +64,12 @@ ReturnInst *updateReturn(ReturnInst *Return, Value *OrigV, Value *NewV) {
   return Return;
 }
 
-bool isPromotableType(Type *Ty) {
+bool isHeapifiableType(Type *Ty) {
   if (!Ty->isArrayTy()) {
     return false;
   }
 
-  // Don't promote va_list (i.e., variable arguments): it's too hard and for
+  // Don't heapify va_list (i.e., variable arguments): it's too hard and for
   // some reason everything breaks :(
   if (auto *StructTy = dyn_cast<StructType>(Ty->getArrayElementType())) {
     if (!StructTy->isLiteral() &&

@@ -118,17 +118,17 @@ static void edit_params(u32 argc, char **argv) {
   /* Expand global variables with static ConstantAggregate initializers */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/PromoteObjects/ExpandGVInitializers/"
+                            "/Transforms/HeapifyObjects/ExpandGVInitializers/"
                             "fuzzalloc-expand-gv-initializers.so";
 
-  /* Promote static arrays to dynamically allocated arrays */
+  /* Heapify static arrays to dynamically allocated arrays */
 
   cc_params[cc_par_cnt++] =
       "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/PromoteObjects/PromoteAllocas/fuzzalloc-prom-allocas.so";
+      "/Transforms/HeapifyObjects/HeapifyAllocas/fuzzalloc-heapify-allocas.so";
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/PromoteObjects/PromoteGlobalVariables/"
-                            "fuzzalloc-prom-global-vars.so";
+                            "/Transforms/HeapifyObjects/HeapifyGlobalVariables/"
+                            "fuzzalloc-heapify-global-vars.so";
 
   /* Tag dynamically allocated arrays and redirect them to the fuzzalloc
    * allocator library */

@@ -23,7 +23,7 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
 #include "Common.h"
-#include "PromoteCommon.h"
+#include "HeapifyCommon.h"
 
 using namespace llvm;
 
@@ -116,14 +116,14 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
 
   // Create the constructor
   //
-  // The constructor must be executed after the promoted global variable's
+  // The constructor must be executed after the heapified global variable's
   // constructor, hence the higher priority
   FunctionType *GlobalCtorTy =
       FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
   Function *GlobalCtorF =
       Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
                        "fuzzalloc.init_" + GV->getName(), M);
-  appendToGlobalCtors(*M, GlobalCtorF, kPromotedGVCtorAndDtorPriority + 1);
+  appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority + 1);
 
   BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
 
@@ -176,7 +176,7 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
     }
 
     if (auto *ConstArray = dyn_cast<ConstantArray>(Initializer)) {
-      if (isPromotableType(ConstArray->getType())) {
+      if (isHeapifiableType(ConstArray->getType())) {
         expandInitializer(&GV);
       }
     } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(Initializer)) {

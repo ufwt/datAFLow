@@ -1,4 +1,4 @@
-//===-- PromoteCommon.h - Promote static arrays to mallocs ----------------===//
+//===-- HeapifyCommon.h - Heapify static arrays ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,12 +8,12 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// Common functionality for static array/struct promotion.
+/// Common functionality for static array/struct heapification.
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FUZZALLOC_PROMOTE_COMMON_H
-#define FUZZALLOC_PROMOTE_COMMON_H
+#ifndef FUZZALLOC_HEAPIFY_COMMON_H
+#define FUZZALLOC_HEAPIFY_COMMON_H
 
 #include "llvm/IR/IRBuilder.h"
 
@@ -29,8 +29,8 @@ class Twine;
 class Value;
 } // namespace llvm
 
-/// Priority for promoted global variable constructor
-const unsigned kPromotedGVCtorAndDtorPriority = 0;
+/// Priority for heapified global variable constructor
+const unsigned kHeapifyGVCtorAndDtorPriority = 0;
 
 /// Update a GEP instruction to use the given value
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
@@ -43,8 +43,8 @@ llvm::SelectInst *updateSelect(llvm::SelectInst *, llvm::Value *,
 llvm::ReturnInst *updateReturn(llvm::ReturnInst *, llvm::Value *,
                                llvm::Value *);
 
-/// Returns \c true if the given type is promotable to dynamic allocation.
-bool isPromotableType(llvm::Type *);
+/// Returns \c true if the given type is heapifiable to dynamic allocation.
+bool isHeapifiableType(llvm::Type *);
 
 /// Returns \c true if the given value is C++ virtual table or type info
 /// metadata
@@ -59,4 +59,4 @@ llvm::Instruction *createArrayMalloc(llvm::LLVMContext &,
 /// Insert a call to \c free for the given alloca
 void insertFree(llvm::Value *, llvm::Instruction *);
 
-#endif // FUZZALLOC_PROMOTE_COMMON_H
+#endif // FUZZALLOC_HEAPIFY_COMMON_H
