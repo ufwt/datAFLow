@@ -113,6 +113,16 @@ static Instruction *rewriteNew(CallSite &CS) {
     assert(NormalDest && "Invoke has no normal destination");
 
     BranchInst::Create(NormalDest, CSInst);
+
+    // Remove the basic block containing the rewritten new in any PHI nodes,
+    // otherwise the verifier will fail
+    auto *UnwindDest = Invoke->getUnwindDest();
+    for (PHINode &PHI : UnwindDest->phis()) {
+      int BBIdx = PHI.getBasicBlockIndex(CSInst->getParent());
+      if (BBIdx >= 0) {
+        PHI.removeIncomingValue(BBIdx);
+      }
+    }
   }
 
   CS->replaceAllUsesWith(MallocCall);
