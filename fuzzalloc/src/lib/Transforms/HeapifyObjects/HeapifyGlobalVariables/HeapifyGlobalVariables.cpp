@@ -102,9 +102,9 @@ static Function *createArrayHeapifyDtor(Module &M) {
 ///
 /// The initialization is based off the original global variable's static
 /// initializer.
-static void initializeHeapifydGlobalVariable(const GlobalVariable *OrigGV,
-                                             GlobalVariable *NewGV,
-                                             Function *Ctor) {
+static void initializeHeapifiedGlobalVariable(const GlobalVariable *OrigGV,
+                                              GlobalVariable *NewGV,
+                                              Function *Ctor) {
   LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << " in "
                     << Ctor->getName() << '\n');
 
@@ -232,7 +232,7 @@ GlobalVariable *HeapifyGlobalVariables::heapifyGlobalVariable(
   }
 
   if (!OrigGV->isDeclaration()) {
-    initializeHeapifydGlobalVariable(OrigGV, NewGV, ArrayHeapifyCtor);
+    initializeHeapifiedGlobalVariable(OrigGV, NewGV, ArrayHeapifyCtor);
     NumOfGlobalVariableArrayHeapification++;
   }
 
@@ -302,8 +302,8 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
   // Global variables to heapify
   SmallPtrSet<GlobalVariable *, 8> GVsToHeapify;
 
-  // Heapifyd global variables
-  SmallPtrSet<Value *, 8> HeapifydGVs;
+  // Heapified global variables
+  SmallPtrSet<Value *, 8> HeapifiedGVs;
 
   for (auto &GV : M.globals()) {
     if (GV.getName().startswith("llvm.")) {
@@ -331,32 +331,38 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
     Function *GlobalDtorF = createArrayHeapifyDtor(M);
 
     for (auto *GV : GVsToHeapify) {
-      auto *HeapifydGV = heapifyGlobalVariable(GV, GlobalCtorF);
+      auto *HeapifiedGV = heapifyGlobalVariable(GV, GlobalCtorF);
 
-      if (!HeapifydGV->isDeclaration()) {
-        insertFree(HeapifydGV, GlobalDtorF->getEntryBlock().getTerminator());
+      if (!HeapifiedGV->isDeclaration()) {
+        insertFree(HeapifiedGV, GlobalDtorF->getEntryBlock().getTerminator());
         NumOfFreeInsert++;
       }
 
-      HeapifydGVs.insert(HeapifydGV);
+      HeapifiedGVs.insert(HeapifiedGV);
       GV->eraseFromParent();
     }
   }
 
-  // Stores to the newly-heapified global variables may not be aligned correctly
-  // for memory on the heap. To be safe we set the alignment to 1, which is
-  // "always safe" (according to the LLVM docs)
+  // Loads and stores to the newly-heapified global variables may not be aligned
+  // correctly for memory on the heap. To be safe we set the alignment to 1,
+  // which is "always safe" (according to the LLVM docs)
   for (auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *Store = dyn_cast<StoreInst>(&*I)) {
+      if (auto *Load = dyn_cast<LoadInst>(&*I)) {
+        auto *Obj =
+            GetUnderlyingObjectThroughLoads(Load->getPointerOperand(), DL);
+        if (HeapifiedGVs.count(Obj) > 0) {
+          Load->setAlignment(1);
+        }
+      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
         auto *Obj =
             GetUnderlyingObjectThroughLoads(Store->getPointerOperand(), DL);
-        if (HeapifydGVs.count(Obj) > 0) {
+        if (HeapifiedGVs.count(Obj) > 0) {
           Store->setAlignment(1);
         }
       } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
         auto *Obj = GetUnderlyingObjectThroughLoads(MemI->getDest(), DL);
-        if (HeapifydGVs.count(Obj) > 0) {
+        if (HeapifiedGVs.count(Obj) > 0) {
           MemI->setDestAlignment(1);
         }
       }

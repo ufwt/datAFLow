@@ -238,6 +238,9 @@ bool HeapifyAllocas::runOnModule(Module &M) {
   // before them
   SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
+  // Load instructions that may require realignment
+  SmallVector<LoadInst *, 4> Loads;
+
   // Store instructions that may require realignment
   SmallVector<StoreInst *, 4> Stores;
 
@@ -253,6 +256,7 @@ bool HeapifyAllocas::runOnModule(Module &M) {
     LifetimeStarts.clear();
     LifetimeEnds.clear();
     MemIntrinsics.clear();
+    Loads.clear();
     Stores.clear();
     Returns.clear();
 
@@ -262,6 +266,8 @@ bool HeapifyAllocas::runOnModule(Module &M) {
         if (isHeapifiableType(Alloca->getAllocatedType())) {
           AllocasToHeapify.push_back(Alloca);
         }
+      } else if (auto *Load = dyn_cast<LoadInst>(&*I)) {
+        Loads.push_back(Load);
       } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
         Stores.push_back(Store);
       } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
@@ -307,9 +313,16 @@ bool HeapifyAllocas::runOnModule(Module &M) {
         }
       }
 
-      // Stores to the newly-heapified allocas may not be aligned correctly for
-      // memory on the heap. To be safe we set the alignment to 1, which is
-      // "always safe" (according to the LLVM docs)
+      // Loads and stores to the newly-heapified allocas may not be aligned
+      // correctly for memory on the heap. To be safe we set the alignment to 1,
+      // which is "always safe" (according to the LLVM docs)
+
+      for (auto *Load : Loads) {
+        if (GetUnderlyingObjectThroughLoads(Load->getPointerOperand(),
+                                            *this->DL) == NewAlloca) {
+          Load->setAlignment(1);
+        }
+      }
 
       for (auto *Store : Stores) {
         if (GetUnderlyingObjectThroughLoads(Store->getPointerOperand(),
