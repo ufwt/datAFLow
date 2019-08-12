@@ -11,7 +11,7 @@ INC=${SRC}/include
 
 LLVM=$(pwd)
 CLANG=$(pwd)/tools/clang
-COMPILER_RT=$(pwd)/projects/compiler-rt
+COMPILER_RT=$(pwd)/compiler-rt
 COMPILER_RT_LIB=${COMPILER_RT}/lib
 COMPILER_RT_TEST=${COMPILER_RT}/test
 

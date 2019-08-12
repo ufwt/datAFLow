@@ -63,12 +63,13 @@ mkdir build
 mkdir install
 cd build
 # If debugging you can also add -DCMAKE_BUILD_TYPE=Debug -DCOMPILER_RT_DEBUG=On
-cmake .. -DFUZZALLOC_ASAN=On -DLIBFUZZALLOC_PATH=/path/to/libfuzzalloc.so   \
+cmake ../llvm -DLLVM_ENABLE_PROJECTS="clang;compiler-rt"                    \
+    -DFUZZALLOC_ASAN=On -DLIBFUZZALLOC_PATH=/path/to/libfuzzalloc.so        \
     -DLLVM_BUILD_EXAMPLES=Off -DLLVM_INCLUDE_EXAMPLES=Off                   \
     -DLLVM_PARALLEL_LINK_JOBS=1 -DLLVM_TARGETS_TO_BUILD="X86"               \
     -DLLVM_ENABLE_ASSERTIONS=True -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
-make -j
-make install
+cmake --build .
+cmake --build . --target install
 
 # Add the install directory to your path so that you use the correct clang
 export PATH=$(realpath ../install):$PATH
