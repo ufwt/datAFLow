@@ -55,8 +55,8 @@ To build the custom ASan:
 # Get the LLVM source code and update the ASan source code
 mkdir llvm
 cd llvm
-./scripts/get_llvm_source.sh
-./scripts/update_asan_source.sh
+./scripts/get_llvm_src.sh
+./scripts/update_compiler_rt_src.sh
 
 # Build and install LLVM/clang/etc.
 mkdir build
