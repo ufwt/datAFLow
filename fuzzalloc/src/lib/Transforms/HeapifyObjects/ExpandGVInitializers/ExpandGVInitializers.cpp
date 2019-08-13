@@ -53,6 +53,27 @@ public:
 
 char ExpandGVInitializers::ID = 0;
 
+static void getGVsToExpand(const GlobalVariable *OrigGV,
+                           SmallPtrSet<GlobalVariable *, 8> &GVs) {
+  SmallVector<const User *, 16> Worklist(OrigGV->user_begin(),
+                                         OrigGV->user_end());
+
+  while (!Worklist.empty()) {
+    auto *U = Worklist.pop_back_val();
+    if (!isa<Constant>(U)) {
+      continue;
+    }
+
+    if (auto *GV = dyn_cast<GlobalVariable>(U)) {
+      if (GV->hasInitializer()) {
+        GVs.insert(const_cast<GlobalVariable *>(GV));
+      }
+    }
+
+    Worklist.append(U->user_begin(), U->user_end());
+  }
+}
+
 static bool constantStructContainsArray(const ConstantStruct *ConstStruct) {
   for (auto &Op : ConstStruct->operands()) {
     if (isa<ArrayType>(Op->getType())) {
@@ -112,7 +133,6 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
 
   Module *M = GV->getParent();
   LLVMContext &C = M->getContext();
-  Constant *Initializer = GV->getInitializer();
 
   // Create the constructor
   //
@@ -125,26 +145,38 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
                        "fuzzalloc.init_" + GV->getName(), M);
   appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority + 1);
 
-  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
+  // Create the entry basic block
+  BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalCtorF);
 
-  IRBuilder<> IRB(GlobalCtorBB);
-  for (unsigned I = 0; I < Initializer->getNumOperands(); ++I) {
-    auto *Op = Initializer->getOperand(I);
+  IRBuilder<> IRB(EntryBB);
+  Constant *Initializer = GV->getInitializer();
 
-    if (auto *AggregateOp = dyn_cast<ConstantAggregate>(Op)) {
-      std::vector<unsigned> Idxs = {0, I};
-      expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
-    } else {
-      auto *Store = IRB.CreateStore(
-          Op, IRB.CreateConstInBoundsGEP2_32(nullptr, GV, 0, I));
-      Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
-                         MDNode::get(C, None));
+  if (isa<ConstantAggregate>(Initializer)) {
+    for (unsigned I = 0; I < Initializer->getNumOperands(); ++I) {
+      auto *Op = Initializer->getOperand(I);
+
+      if (auto *AggregateOp = dyn_cast<ConstantAggregate>(Op)) {
+        std::vector<unsigned> Idxs = {0, I};
+        expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
+      } else {
+        auto *Store = IRB.CreateStore(
+            Op, IRB.CreateConstInBoundsGEP2_32(nullptr, GV, 0, I));
+        Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                           MDNode::get(C, None));
+      }
     }
+  } else if (auto *ConstExpr = dyn_cast<ConstantExpr>(Initializer)) {
+    auto *Store = IRB.CreateStore(ConstExpr, GV);
+    Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                       MDNode::get(C, None));
+  } else {
+    assert(false && "Unsupported initializer to expand");
   }
+
   IRB.CreateRetVoid();
 
+  GV->setInitializer(Constant::getNullValue(GV->getValueType()));
   this->DeadConstants.insert(Initializer);
-  GV->setInitializer(ConstantAggregateZero::get(GV->getValueType()));
 
   NumOfExpandedGlobalVariables++;
 
@@ -152,21 +184,33 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
 }
 
 bool ExpandGVInitializers::runOnModule(Module &M) {
+  SmallPtrSet<GlobalVariable *, 8> GVsToExpand;
+
   for (auto &GV : M.globals()) {
+    // Skip LLVM intrinsics
     if (GV.getName().startswith("llvm.")) {
       continue;
     }
 
-    if (!GV.hasInitializer()) {
-      continue;
-    }
-
-    // XXX Check for private or internal linkage
-    if (GV.isConstant()) {
-      continue;
-    }
-
+    // Skip C++ junk
     if (isVTableOrTypeInfo(&GV)) {
+      continue;
+    }
+
+    // The global variable may not be expandable itself, but other globals that
+    // use this one may require expansion
+    if (isHeapifiableType(GV.getValueType())) {
+      getGVsToExpand(&GV, GVsToExpand);
+    }
+
+    // If the global variable is constant and cannot be exported, skip it
+    if (GV.isConstant() &&
+        (GV.hasPrivateLinkage() || GV.hasInternalLinkage())) {
+      continue;
+    }
+
+    // Nothing to expand
+    if (!GV.hasInitializer()) {
       continue;
     }
 
@@ -176,20 +220,27 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
     }
 
     if (auto *ConstArray = dyn_cast<ConstantArray>(Initializer)) {
-      if (isHeapifiableType(ConstArray->getType())) {
-        expandInitializer(&GV);
-      }
+      // Arrays are always expandable
+      GVsToExpand.insert(&GV);
     } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(Initializer)) {
+      // Structs are expandable if they contain an array
       if (constantStructContainsArray(ConstStruct)) {
-        expandInitializer(&GV);
+        GVsToExpand.insert(&GV);
       }
-    } else if (isa<ConstantVector>(Initializer)) {
-      assert(false && "Constant vector initializers not supported");
+    } else {
+      assert(false && "Unsupported constant initializer");
     }
   }
 
+  for (auto *GV : GVsToExpand) {
+    expandInitializer(GV);
+  }
+
   for (auto *C : this->DeadConstants) {
-    C->destroyConstant();
+    C->removeDeadConstantUsers();
+    if (C->hasNUses(0)) {
+      C->destroyConstant();
+    }
   }
 
   printStatistic(M, NumOfExpandedGlobalVariables);

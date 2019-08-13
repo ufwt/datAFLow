@@ -49,7 +49,13 @@ namespace {
 /// \p malloc.
 class HeapifyGlobalVariables : public ModulePass {
 private:
-  GlobalVariable *heapifyGlobalVariable(GlobalVariable *, Function *) const;
+  Function *GlobalCtorF;
+  Function *GlobalDtorF;
+
+  void initializeHeapifiedGlobalVariable(const GlobalVariable *,
+                                         GlobalVariable *);
+  void expandConstantExpression(ConstantExpr *);
+  GlobalVariable *heapifyGlobalVariable(GlobalVariable *);
 
 public:
   static char ID;
@@ -74,7 +80,7 @@ static Function *createArrayHeapifyCtor(Module &M) {
       "fuzzalloc.init_heapify_global_arrays_" + M.getName(), &M);
   appendToGlobalCtors(M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority);
 
-  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "", GlobalCtorF);
+  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "entry", GlobalCtorF);
   ReturnInst::Create(C, GlobalCtorBB);
 
   return GlobalCtorF;
@@ -92,7 +98,7 @@ static Function *createArrayHeapifyDtor(Module &M) {
       "fuzzalloc.fin_heapify_global_arrays_" + M.getName(), &M);
   appendToGlobalDtors(M, GlobalDtorF, kHeapifyGVCtorAndDtorPriority);
 
-  BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "", GlobalDtorF);
+  BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "entry", GlobalDtorF);
   ReturnInst::Create(C, GlobalDtorBB);
 
   return GlobalDtorF;
@@ -102,11 +108,10 @@ static Function *createArrayHeapifyDtor(Module &M) {
 ///
 /// The initialization is based off the original global variable's static
 /// initializer.
-static void initializeHeapifiedGlobalVariable(const GlobalVariable *OrigGV,
-                                              GlobalVariable *NewGV,
-                                              Function *Ctor) {
+void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
+    const GlobalVariable *OrigGV, GlobalVariable *NewGV) {
   LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << " in "
-                    << Ctor->getName() << '\n');
+                    << this->GlobalCtorF->getName() << '\n');
 
   Module *M = NewGV->getParent();
   LLVMContext &C = M->getContext();
@@ -118,7 +123,7 @@ static void initializeHeapifiedGlobalVariable(const GlobalVariable *OrigGV,
 
   // Insert a new global variable into the module and initialize it with a call
   // to malloc in the module's constructor
-  IRBuilder<> IRB(Ctor->getEntryBlock().getTerminator());
+  IRBuilder<> IRB(this->GlobalCtorF->getEntryBlock().getTerminator());
 
   auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
                                        OrigGV->getName() + "_malloccall");
@@ -146,16 +151,8 @@ static void initializeHeapifiedGlobalVariable(const GlobalVariable *OrigGV,
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
                                   MDNode::get(C, None));
       }
-    } else if (auto *Initializer =
-                   dyn_cast<ConstantArray>(OrigGV->getInitializer())) {
-      // Similarly for constant arrays
-      for (unsigned I = 0; I < Initializer->getNumOperands(); ++I) {
-        auto *StoreToNewGV = IRB.CreateStore(
-            Initializer->getOperand(I),
-            IRB.CreateConstInBoundsGEP1_32(nullptr, MallocCall, I));
-        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
-                                  MDNode::get(C, None));
-      }
+    } else if (isa<ConstantArray>(OrigGV->getInitializer())) {
+      assert(false && "Constant array initializers should already be expanded");
     } else {
       assert(false && "Unsupported global variable initializer");
     }
@@ -166,7 +163,7 @@ static void initializeHeapifiedGlobalVariable(const GlobalVariable *OrigGV,
                            MDNode::get(C, None));
 }
 
-static void expandConstantExpression(ConstantExpr *ConstExpr) {
+void HeapifyGlobalVariables::expandConstantExpression(ConstantExpr *ConstExpr) {
   for (auto *U : ConstExpr->users()) {
     if (auto *CE = dyn_cast<ConstantExpr>(U)) {
       expandConstantExpression(CE);
@@ -198,15 +195,15 @@ static void expandConstantExpression(ConstantExpr *ConstExpr) {
       Inst->replaceUsesOfWith(ConstExpr, NewInst);
     } else if (auto *Const = dyn_cast<Constant>(U)) {
       Const->removeDeadConstantUsers();
-      assert(Const->user_empty() && "Constant user must have no users");
+      assert(Const->hasNUses(0));
     } else {
       assert(false && "Unsupported constant expression user");
     }
   }
 }
 
-GlobalVariable *HeapifyGlobalVariables::heapifyGlobalVariable(
-    GlobalVariable *OrigGV, Function *ArrayHeapifyCtor) const {
+GlobalVariable *
+HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   LLVM_DEBUG(dbgs() << "heapifying " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
@@ -232,7 +229,7 @@ GlobalVariable *HeapifyGlobalVariables::heapifyGlobalVariable(
   }
 
   if (!OrigGV->isDeclaration()) {
-    initializeHeapifiedGlobalVariable(OrigGV, NewGV, ArrayHeapifyCtor);
+    initializeHeapifiedGlobalVariable(OrigGV, NewGV);
     NumOfGlobalVariableArrayHeapification++;
   }
 
@@ -293,6 +290,13 @@ GlobalVariable *HeapifyGlobalVariables::heapifyGlobalVariable(
     }
   }
 
+  if (!NewGV->isDeclaration()) {
+    insertFree(NewGV, this->GlobalDtorF->getEntryBlock().getTerminator());
+    NumOfFreeInsert++;
+  }
+
+  OrigGV->eraseFromParent();
+
   return NewGV;
 }
 
@@ -306,16 +310,18 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
   SmallPtrSet<Value *, 8> HeapifiedGVs;
 
   for (auto &GV : M.globals()) {
+    // Skip LLVM intrinsics
     if (GV.getName().startswith("llvm.")) {
       continue;
     }
 
-    // XXX Check for private or internal linkage
-    if (GV.isConstant()) {
+    // Skip C++ junk
+    if (isVTableOrTypeInfo(&GV)) {
       continue;
     }
 
-    if (isVTableOrTypeInfo(&GV)) {
+    if (GV.isConstant() &&
+        (GV.hasPrivateLinkage() || GV.hasInternalLinkage())) {
       continue;
     }
 
@@ -327,19 +333,12 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
   // Heapify non-constant global static arrays in a module constructor and free
   // them in a destructor
   if (!GVsToHeapify.empty()) {
-    Function *GlobalCtorF = createArrayHeapifyCtor(M);
-    Function *GlobalDtorF = createArrayHeapifyDtor(M);
+    this->GlobalCtorF = createArrayHeapifyCtor(M);
+    this->GlobalDtorF = createArrayHeapifyDtor(M);
 
     for (auto *GV : GVsToHeapify) {
-      auto *HeapifiedGV = heapifyGlobalVariable(GV, GlobalCtorF);
-
-      if (!HeapifiedGV->isDeclaration()) {
-        insertFree(HeapifiedGV, GlobalDtorF->getEntryBlock().getTerminator());
-        NumOfFreeInsert++;
-      }
-
+      auto *HeapifiedGV = heapifyGlobalVariable(GV);
       HeapifiedGVs.insert(HeapifiedGV);
-      GV->eraseFromParent();
     }
   }
 
