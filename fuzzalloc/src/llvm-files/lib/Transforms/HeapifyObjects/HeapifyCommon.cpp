@@ -93,6 +93,7 @@ bool isVTableOrTypeInfo(const Value *V) {
     StringRef DemangleName = StringRef(DemangleNameCStr);
 
     if (DemangleName.startswith_lower("vtable for ") ||
+        DemangleName.startswith_lower("vtt for ") ||
         DemangleName.startswith_lower("typeinfo for ") ||
         DemangleName.startswith_lower("typeinfo name for ")) {
       return true;
