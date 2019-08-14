@@ -175,7 +175,11 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
 
   IRB.CreateRetVoid();
 
+  // Reset the initializer and make sure the global doesn't get placed into
+  // readonly memory
   GV->setInitializer(Constant::getNullValue(GV->getValueType()));
+  GV->setConstant(false);
+
   this->DeadConstants.insert(Initializer);
 
   NumOfExpandedGlobalVariables++;
