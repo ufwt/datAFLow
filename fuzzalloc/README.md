@@ -27,8 +27,7 @@ cd build
 # If debugging you can also add -DCMAKE_BUILD_TYPE=Debug -DCOMPILER_RT_DEBUG=On
 cmake ../llvm -DLLVM_ENABLE_PROJECTS="clang;compiler-rt"        \
     -DLLVM_BUILD_EXAMPLES=Off -DLLVM_INCLUDE_EXAMPLES=Off       \
-    -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_ASSERTIONS=True \
-    -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
+    -DLLVM_TARGETS_TO_BUILD="X86" -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
 cmake --build .
 cmake --build . --target install
 
