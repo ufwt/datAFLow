@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags gclang"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -95,6 +95,15 @@ elif [[ $FUZZING_ENGINE == "afl" ]]; then
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
   fi
   export CXXFLAGS=${CFLAGS}
+elif [[ $FUZZING_ENGINE == "gclang" ]]; then
+  export LLVM_CC_NAME="clang"
+  export LLVM_CXX_NAME="clang++"
+
+  export CC="gclang"
+  export CXX="gclang++"
+
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  export CXXFLAGS=${CFLAGS}
 else
   export CFLAGS=${CFLAGS:-"$FUZZ_CXXFLAGS"}
   export CXXFLAGS=${CXXFLAGS:-"$FUZZ_CXXFLAGS"}
@@ -132,13 +141,22 @@ build_datAFLow() {
 }
 
 build_tags() {
+  STANDALONE_TARGET=1
   $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
   ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
+  rm *.o
 }
 
 build_afl() {
   $CXX $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
   ar r $LIB_FUZZING_ENGINE afl_driver.o
+  rm *.o
+}
+
+build_gclang() {
+  STANDALONE_TARGET=1
+  $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
+  ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
   rm *.o
 }
 

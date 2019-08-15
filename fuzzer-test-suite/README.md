@@ -51,6 +51,20 @@ This will:
  * Add the necessary ASan compiler flags; and
  * Set `ASAN_OPTIONS` in line with AFL: e.g., disabling leak detection, etc.
 
+## With gclang
+
+[gclang] is a tool for building whole-program LLVM bitcode files. This is useful
+for building targets to fuzz with
+[Angora](https://github.com/AngoraFuzzer/Angora).
+
+1. Install gclang from https://github.com/SRI-CSL/gllvm
+2. Build a target
+
+```bash
+FUZZING_ENGINE=gclang $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh            \
+    libxml2-v2.9.2
+```
+
 # Fuzzing example (libxml)
 
 To fuzz libxml from the fuzzer test suite:
