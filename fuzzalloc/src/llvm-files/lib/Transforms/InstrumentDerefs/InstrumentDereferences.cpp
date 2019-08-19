@@ -20,6 +20,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -45,22 +46,34 @@ static cl::opt<bool> ClInstrumentAtomics(
     "fuzzalloc-instrument-atomics",
     cl::desc("Instrument atomic instructions (rmw, cmpxchg)"));
 
+static cl::opt<bool>
+    ClDebugInstrument("fuzzalloc-debug-instrument",
+                      cl::desc("Instrument with debug function"), cl::Hidden);
+
 STATISTIC(NumOfInstrumentedDereferences,
           "Number of pointer dereferences instrumented.");
 
-static const char *const InstrumentationName = "__ptr_deref";
+static const char *const DbgInstrumentName = "__ptr_deref";
+static const char *const AllocSiteMapName = "__pool_to_alloc_site_map_ptr";
+static const char *const AFLMapName = "__afl_area_ptr";
 
 namespace {
 
 class InstrumentDereferences : public ModulePass {
 private:
+  IntegerType *Int8Ty;
   IntegerType *Int64Ty;
   IntegerType *TagTy;
 
   ConstantInt *TagShiftSize;
   ConstantInt *TagMask;
 
-  void doInstrumentDeref(Instruction *, Value *, Function *);
+  Value *ReadPCAsm;
+  GlobalVariable *AllocSiteMapPtr;
+  GlobalVariable *AFLMapPtr;
+  Function *DbgInstrumentFn;
+
+  void doInstrumentDeref(Instruction *, Value *);
 
 public:
   static char ID;
@@ -246,25 +259,67 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 }
 
 /// Instrument the Instruction `I` that dereferences `Pointer`.
-void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer,
-                                               Function *InstrumentationF) {
-  IRBuilder<> IRB(I);
+void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
   auto *M = I->getModule();
+  IRBuilder<> IRB(I);
+  LLVMContext &C = IRB.getContext();
 
   // This metadata can be used by the static pointer analysis
   I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
-                 MDNode::get(IRB.getContext(), None));
+                 MDNode::get(C, None));
 
+  // Cast the memory access pointer to an integer and mask out the pool
+  // identifier from the pointer by right-shifting by 32 bits
   auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
   if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
     PtrAsIntInst->setMetadata(M->getMDKindID("nosanitize"),
-                              MDNode::get(IRB.getContext(), None));
+                              MDNode::get(C, None));
   }
-
   auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                this->TagMask);
-  auto *PoolIdCast = IRB.CreateIntCast(PoolId, this->TagTy, false);
-  IRB.CreateCall(InstrumentationF, PoolIdCast);
+  auto *PoolIdCast =
+      IRB.CreateIntCast(PoolId, this->TagTy, /* isSigned */ false);
+
+  if (ClDebugInstrument) {
+    // For debugging
+    IRB.CreateCall(this->DbgInstrumentFn, PoolIdCast);
+  } else {
+    // Retrieve the allocation (def) site identifier from the appropriate
+    // mapping
+    auto *AllocSiteMap = IRB.CreateLoad(this->AllocSiteMapPtr);
+    AllocSiteMap->setMetadata(M->getMDKindID("nosanitize"),
+                              MDNode::get(C, None));
+    auto *AllocSiteMapIdx = IRB.CreateGEP(AllocSiteMap, PoolIdCast);
+    auto *AllocSite = IRB.CreateLoad(AllocSiteMapIdx);
+    AllocSite->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+
+    // Use the PC as the use site identifier
+    auto *PC = IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
+                                 /* isSigned */ false);
+
+    // Load the AFL bitmap
+    auto *AFLMap = IRB.CreateLoad(this->AFLMapPtr);
+    AFLMap->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+
+    // Hash the allocation site and use site to index into the bitmap
+    //
+    // XXX zext is necessary otherwise we end up using signed indices
+    auto *Hash = IRB.CreateZExt(IRB.CreateXor(AllocSite, PC), IRB.getInt32Ty());
+    auto *AFLMapIdx = IRB.CreateGEP(AFLMap, Hash);
+
+    // Update the bitmap only if the allocation site is non-zero (i.e., the
+    // pointer dereferenced is a tagged pointer)
+    auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
+    CounterLoad->setMetadata(M->getMDKindID("nosanitize"),
+                             MDNode::get(C, None));
+    auto *IncrAmount = IRB.CreateSelect(
+        IRB.CreateICmpEQ(AllocSite, Constant::getNullValue(this->TagTy)),
+        ConstantInt::get(this->Int8Ty, 0), ConstantInt::get(this->Int8Ty, 1));
+    auto *Incr = IRB.CreateAdd(CounterLoad, IncrAmount);
+    auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
+    CounterStore->setMetadata(M->getMDKindID("nosanitize"),
+                              MDNode::get(C, None));
+  }
 
   NumOfInstrumentedDereferences++;
 }
@@ -279,6 +334,7 @@ bool InstrumentDereferences::doInitialization(Module &M) {
 
   IntegerType *SizeTTy = DL.getIntPtrType(C);
 
+  this->Int8Ty = Type::getInt8Ty(C);
   this->Int64Ty = Type::getInt64Ty(C);
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
   this->TagShiftSize =
@@ -297,10 +353,19 @@ bool InstrumentDereferences::runOnModule(Module &M) {
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
-  Type *VoidTy = Type::getVoidTy(C);
+  this->ReadPCAsm = InlineAsm::get(
+      FunctionType::get(this->Int64Ty, /* isVarArg */ false), "leaq (%rip), $0",
+      /* Constraints */ "=r", /* hasSideEffects */ false);
+  this->AllocSiteMapPtr =
+      new GlobalVariable(M, PointerType::getUnqual(this->TagTy),
+                         /* isConstant */ false, GlobalValue::ExternalLinkage,
+                         /* Initializer */ nullptr, AllocSiteMapName);
+  this->AFLMapPtr = new GlobalVariable(
+      M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
+      GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
 
-  Function *InstrumentationF = checkInstrumentationFunc(
-      M.getOrInsertFunction(InstrumentationName, VoidTy, this->TagTy));
+  this->DbgInstrumentFn = checkInstrumentationFunc(M.getOrInsertFunction(
+      DbgInstrumentName, Type::getVoidTy(C), this->TagTy));
 
   // For determining whether to instrument a memory dereference
   ObjectSizeOpts ObjSizeOpts;
@@ -371,7 +436,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           continue;
         }
 
-        doInstrumentDeref(I, Addr, InstrumentationF);
+        doInstrumentDeref(I, Addr);
       } else {
         // TODO instrumentMemIntrinsic
       }

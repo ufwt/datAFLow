@@ -56,7 +56,7 @@ static cl::opt<std::string>
 static cl::opt<bool> ClEnableIndirectCallTag(
     "enable-indirect-call-tagging",
     cl::desc("Enable static tagging of indirect call sites when possible"),
-    cl::init(true));
+    cl::init(true), cl::Hidden);
 
 STATISTIC(NumOfTaggedDirectCalls, "Number of tagged direct function calls.");
 STATISTIC(NumOfTaggedIndirectCalls,

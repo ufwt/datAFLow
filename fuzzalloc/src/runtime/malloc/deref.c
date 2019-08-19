@@ -14,9 +14,8 @@
 #include "types.h" // from afl
 #endif
 
-/// Maps allocation pool tags (created during malloc/calloc/reallocs) to
-/// allocation call site tags (inserted during compilation)
-tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
+// Defined in malloc.c
+extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
 
 #if defined(AFL_INSTRUMENT)
 extern u8 *__afl_area_ptr;

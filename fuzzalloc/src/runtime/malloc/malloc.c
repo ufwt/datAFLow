@@ -18,7 +18,7 @@
 
 //===-- Global variables --------------------------------------------------===//
 
-/// Maps malloc/calloc/realloc allocation call site tags (inserted during
+/// Maps malloc/calloc/realloc allocation def site tags (inserted during
 /// compilation) to allocation pool tags
 static tag_t alloc_site_to_pool_map[TAG_MAX + 1];
 
@@ -33,8 +33,13 @@ static ptrdiff_t pool_overhead = -1;
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-// Defined in deref.c
-extern tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
+/// Maps allocation pool tags (created during malloc/calloc/reallocs) to
+/// allocation def site tags (inserted during compilation).
+///
+/// The pointer is needed so that we can access the map from LLVM
+/// instrumentation.
+tag_t __pool_to_alloc_site_map[TAG_MAX + 1];
+tag_t *__pool_to_alloc_site_map_ptr = __pool_to_alloc_site_map;
 
 //===-- Public helper functions -------------------------------------------===//
 
