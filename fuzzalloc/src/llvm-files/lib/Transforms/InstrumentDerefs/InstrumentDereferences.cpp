@@ -373,6 +373,13 @@ bool InstrumentDereferences::runOnModule(Module &M) {
   ObjectSizeOffsetVisitor ObjSizeVis(DL, TLI, C, ObjSizeOpts);
 
   for (auto &F : M.functions()) {
+    // Don't instrument our own constructors/destructors
+    if (F.getName().startswith("fuzzalloc.init_") ||
+        F.getName().startswith("fuzzalloc.alloc_") ||
+        F.getName().startswith("fuzzalloc.free_")) {
+      continue;
+    }
+
     // We only want to instrument every address only once per basic block
     // (unless there are calls between uses)
     SmallPtrSet<Value *, 16> TempsToInstrument;
