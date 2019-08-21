@@ -90,6 +90,28 @@ static bool constantStructContainsArray(const ConstantStruct *ConstStruct) {
   return false;
 }
 
+/// Create the constructor
+///
+/// The constructor must be executed after the heapified global variable's
+/// constructor, hence the higher priority
+static IRBuilder<> createInitCtor(GlobalVariable *GV) {
+  Module *M = GV->getParent();
+  LLVMContext &C = M->getContext();
+
+  FunctionType *GlobalCtorTy =
+      FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
+  Function *GlobalCtorF =
+      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+                       "fuzzalloc.init_" + GV->getName(), M);
+  appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority + 1);
+
+  // Create the entry basic block
+  BasicBlock *BB = BasicBlock::Create(C, "entry", GlobalCtorF);
+  ReturnInst::Create(C, BB);
+
+  return IRBuilder<>(BB->getTerminator());
+}
+
 /// Recursively expand `ConstantAggregate`s by generating equivalent
 /// instructions in a module constructor.
 static void expandConstantAggregate(IRBuilder<> &IRB, GlobalVariable *GV,
@@ -135,20 +157,7 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
   LLVMContext &C = M->getContext();
 
   // Create the constructor
-  //
-  // The constructor must be executed after the heapified global variable's
-  // constructor, hence the higher priority
-  FunctionType *GlobalCtorTy =
-      FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
-  Function *GlobalCtorF =
-      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-                       "fuzzalloc.init_" + GV->getName(), M);
-  appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority + 1);
-
-  // Create the entry basic block
-  BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalCtorF);
-
-  IRBuilder<> IRB(EntryBB);
+  IRBuilder<> IRB = createInitCtor(GV);
   Constant *Initializer = GV->getInitializer();
 
   if (isa<ConstantAggregate>(Initializer)) {
@@ -160,7 +169,7 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
         expandConstantAggregate(IRB, GV, AggregateOp, Idxs);
       } else {
         auto *Store = IRB.CreateStore(
-            Op, IRB.CreateConstInBoundsGEP2_32(nullptr, GV, 0, I));
+            Op, IRB.CreateConstInBoundsGEP2_32(/* Ty */ nullptr, GV, 0, I));
         Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
       }
@@ -173,8 +182,6 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
     assert(false && "Unsupported initializer to expand");
   }
 
-  IRB.CreateRetVoid();
-
   // Reset the initializer and make sure the global doesn't get placed into
   // readonly memory
   GV->setInitializer(Constant::getNullValue(GV->getValueType()));
@@ -184,7 +191,7 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
 
   NumOfExpandedGlobalVariables++;
 
-  return GlobalCtorF;
+  return IRB.GetInsertBlock()->getParent();
 }
 
 bool ExpandGVInitializers::runOnModule(Module &M) {

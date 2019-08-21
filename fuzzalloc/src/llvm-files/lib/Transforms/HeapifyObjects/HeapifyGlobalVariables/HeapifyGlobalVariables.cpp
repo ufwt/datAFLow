@@ -49,9 +49,6 @@ namespace {
 /// \p malloc.
 class HeapifyGlobalVariables : public ModulePass {
 private:
-  Function *GlobalCtorF;
-  Function *GlobalDtorF;
-
   void initializeHeapifiedGlobalVariable(const GlobalVariable *,
                                          GlobalVariable *);
   void expandConstantExpression(ConstantExpr *);
@@ -68,40 +65,116 @@ public:
 
 char HeapifyGlobalVariables::ID = 0;
 
-/// Create a constructor function that will be used to `malloc` all of the
-/// heapified global variables in the module.
-static Function *createArrayHeapifyCtor(Module &M) {
-  LLVMContext &C = M.getContext();
+/// Create a constructor function that will be used to `malloc` the given
+/// heapified global variable.
+static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
+  Module *M = GV->getParent();
+  LLVMContext &C = M->getContext();
 
   FunctionType *GlobalCtorTy =
       FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
-  Function *GlobalCtorF = Function::Create(
-      GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-      "fuzzalloc.init_heapify_global_arrays_" + M.getName(), &M);
-  appendToGlobalCtors(M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority);
+  Function *GlobalCtorF =
+      Function::Create(GlobalCtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+                       "fuzzalloc.alloc_" + GV->getName(), M);
+  appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority);
 
-  BasicBlock *GlobalCtorBB = BasicBlock::Create(C, "entry", GlobalCtorF);
-  ReturnInst::Create(C, GlobalCtorBB);
+  BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalCtorF);
+  IRBuilder<> IRB(EntryBB);
 
-  return GlobalCtorF;
+  if (GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceAnyLinkage ||
+      GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceODRLinkage) {
+    // Weak linkage means that the same constructor may be inserted in multiple
+    // modules, causing the global variable to be malloc'd multiple times. To
+    // prevent this, we generate code to check if the global variable has
+    // already been malloc'd. If so, just return.
+
+    // Basic block when the global variable has already been allocated. Nothing
+    // to do when this is the case
+    BasicBlock *AllocTrueBB = BasicBlock::Create(C, "alloc.true", GlobalCtorF);
+    ReturnInst::Create(C, AllocTrueBB);
+
+    // Basic block when the global variable has not been allocated
+    BasicBlock *AllocFalseBB =
+        BasicBlock::Create(C, "alloc.false", GlobalCtorF);
+    ReturnInst::Create(C, AllocFalseBB);
+
+    // Load the global variable
+    auto *LoadGV = IRB.CreateLoad(GV);
+    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+                        MDNode::get(C, None));
+
+    // Check if the global variable has already been allocated
+    auto *AllocCheck =
+        IRB.CreateICmpNE(LoadGV, Constant::getNullValue(LoadGV->getType()));
+    IRB.CreateCondBr(AllocCheck, AllocTrueBB, AllocFalseBB);
+
+    // Only insert code when the global variable has not already been allocated
+    IRB.SetInsertPoint(AllocFalseBB->getTerminator());
+  } else {
+    // No branching - just return from the entry block
+    auto *RetVoid = IRB.CreateRetVoid();
+    IRB.SetInsertPoint(RetVoid);
+  }
+
+  return IRB;
 }
 
-/// Create a destructor function that will be used to `free` all of the
-/// heapified global variables in the module.
-static Function *createArrayHeapifyDtor(Module &M) {
-  LLVMContext &C = M.getContext();
+/// Create a destructor function that will be used to `free` all the given
+/// heapified global variable.
+static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
+  Module *M = GV->getParent();
+  LLVMContext &C = M->getContext();
 
   FunctionType *GlobalDtorTy =
       FunctionType::get(Type::getVoidTy(C), /* isVarArg */ false);
-  Function *GlobalDtorF = Function::Create(
-      GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
-      "fuzzalloc.fin_heapify_global_arrays_" + M.getName(), &M);
-  appendToGlobalDtors(M, GlobalDtorF, kHeapifyGVCtorAndDtorPriority);
+  Function *GlobalDtorF =
+      Function::Create(GlobalDtorTy, GlobalValue::LinkageTypes::InternalLinkage,
+                       "fuzzalloc.free_" + GV->getName(), M);
+  appendToGlobalDtors(*M, GlobalDtorF, kHeapifyGVCtorAndDtorPriority);
 
-  BasicBlock *GlobalDtorBB = BasicBlock::Create(C, "entry", GlobalDtorF);
-  ReturnInst::Create(C, GlobalDtorBB);
+  BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalDtorF);
+  IRBuilder<> IRB(EntryBB);
 
-  return GlobalDtorF;
+  if (GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceAnyLinkage ||
+      GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceODRLinkage) {
+    // Weak linkage means that the same destructor may be inserted in multiple
+    // modules, causing the global variable to be free'd multiple times. To
+    // prevent this, we generate code to check if the global variable has
+    // already been free'd. If so, just return.
+
+    // Basic block when the global variable has already been freed. Nothing to
+    // do when this is the case
+    BasicBlock *FreeTrueBB = BasicBlock::Create(C, "free.true", GlobalDtorF);
+    ReturnInst::Create(C, FreeTrueBB);
+
+    // Basic block when the global variable has not been freed
+    BasicBlock *FreeFalseBB = BasicBlock::Create(C, "free.false", GlobalDtorF);
+    ReturnInst::Create(C, FreeFalseBB);
+
+    // Load the global variable
+    auto *LoadGV = IRB.CreateLoad(GV);
+    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+                        MDNode::get(C, None));
+
+    // Check if the global variable has already been freed
+    auto *FreeCheck =
+        IRB.CreateICmpEQ(LoadGV, Constant::getNullValue(LoadGV->getType()));
+    IRB.CreateCondBr(FreeCheck, FreeTrueBB, FreeFalseBB);
+
+    // Set the global variable to NULL
+    IRB.SetInsertPoint(FreeFalseBB->getTerminator());
+    auto *NullStore =
+        IRB.CreateStore(Constant::getNullValue(GV->getType()), GV);
+
+    // Free the global variable before setting it to NULL
+    IRB.SetInsertPoint(NullStore);
+  } else {
+    // No branching - just return from the entry block
+    auto *RetVoid = IRB.CreateRetVoid();
+    IRB.SetInsertPoint(RetVoid);
+  }
+
+  return IRB;
 }
 
 /// Initialize the heapified global variable in the given constructor function.
@@ -110,20 +183,19 @@ static Function *createArrayHeapifyDtor(Module &M) {
 /// initializer.
 void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
     const GlobalVariable *OrigGV, GlobalVariable *NewGV) {
-  LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << " in "
-                    << this->GlobalCtorF->getName() << '\n');
-
-  Module *M = NewGV->getParent();
-  LLVMContext &C = M->getContext();
-  const DataLayout &DL = M->getDataLayout();
+  LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << '\n');
 
   ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
   Type *ElemTy = ArrayTy->getArrayElementType();
   uint64_t ArrayNumElems = ArrayTy->getNumElements();
 
   // Insert a new global variable into the module and initialize it with a call
-  // to malloc in the module's constructor
-  IRBuilder<> IRB(this->GlobalCtorF->getEntryBlock().getTerminator());
+  // to malloc in a constructor
+  IRBuilder<> IRB = createHeapifyCtor(NewGV);
+
+  Module *M = NewGV->getParent();
+  LLVMContext &C = M->getContext();
+  const DataLayout &DL = M->getDataLayout();
 
   auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
                                        OrigGV->getName() + "_malloccall");
@@ -291,7 +363,9 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   }
 
   if (!NewGV->isDeclaration()) {
-    insertFree(NewGV, this->GlobalDtorF->getEntryBlock().getTerminator());
+    IRBuilder<> IRB = createHeapifyDtor(NewGV);
+
+    insertFree(NewGV, &*IRB.GetInsertPoint());
     NumOfFreeInsert++;
   }
 
@@ -333,9 +407,6 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
   // Heapify non-constant global static arrays in a module constructor and free
   // them in a destructor
   if (!GVsToHeapify.empty()) {
-    this->GlobalCtorF = createArrayHeapifyCtor(M);
-    this->GlobalDtorF = createArrayHeapifyDtor(M);
-
     for (auto *GV : GVsToHeapify) {
       auto *HeapifiedGV = heapifyGlobalVariable(GV);
       HeapifiedGVs.insert(HeapifiedGV);
