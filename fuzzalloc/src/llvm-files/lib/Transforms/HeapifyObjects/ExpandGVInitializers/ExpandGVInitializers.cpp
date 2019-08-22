@@ -143,6 +143,7 @@ static void expandConstantAggregate(IRBuilder<> &IRB, GlobalVariable *GV,
       auto *Store = IRB.CreateStore(Op, IRB.CreateInBoundsGEP(GV, IdxValues));
       Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                          MDNode::get(C, None));
+      Store->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
     }
   }
 }
@@ -172,12 +173,19 @@ Function *ExpandGVInitializers::expandInitializer(GlobalVariable *GV) {
             Op, IRB.CreateConstInBoundsGEP2_32(/* Ty */ nullptr, GV, 0, I));
         Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
+        Store->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
       }
     }
   } else if (auto *ConstExpr = dyn_cast<ConstantExpr>(Initializer)) {
     auto *Store = IRB.CreateStore(ConstExpr, GV);
     Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                        MDNode::get(C, None));
+    Store->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+  } else if (auto *GlobalVal = dyn_cast<GlobalValue>(Initializer)) {
+    auto *Store = IRB.CreateStore(GlobalVal, GV);
+    Store->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
+                       MDNode::get(C, None));
+    Store->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
   } else {
     assert(false && "Unsupported initializer to expand");
   }
