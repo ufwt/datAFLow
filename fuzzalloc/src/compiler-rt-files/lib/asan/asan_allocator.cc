@@ -651,8 +651,10 @@ struct Allocator {
 
     if (m->alloc_type != alloc_type) {
       if (atomic_load(&alloc_dealloc_mismatch, memory_order_acquire)) {
+#if !FUZZALLOC_ASAN
         ReportAllocTypeMismatch((uptr)ptr, stack, (AllocType)m->alloc_type,
                                 (AllocType)alloc_type);
+#endif
       }
     } else {
       if (flags()->new_delete_type_mismatch &&
