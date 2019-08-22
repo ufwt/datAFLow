@@ -60,8 +60,7 @@ cd build
 cmake ../llvm -DLLVM_ENABLE_PROJECTS="clang;compiler-rt"                \
     -DFUZZALLOC_ASAN=On -DLIBFUZZALLOC_PATH=/path/to/libfuzzalloc.so    \
     -DLLVM_BUILD_EXAMPLES=Off -DLLVM_INCLUDE_EXAMPLES=Off               \
-    -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_ENABLE_ASSERTIONS=True         \
-    -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
+    -DLLVM_TARGETS_TO_BUILD="X86" -DCMAKE_INSTALL_PREFIX=$(realpath ../install)
 cmake --build .
 cmake --build . --target install
 

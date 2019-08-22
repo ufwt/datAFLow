@@ -101,3 +101,13 @@ $FUZZER_TEST_SUITE/AFL/afl-fuzz -i $FUZZDATA/samples/xml -o ./libxml2-fuzz-out \
     $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint      \
     -o /dev/null @@
 ```
+
+Or for a longer campaign:
+
+```bash
+AFL_NO_UI=1 nohup timeout 24h $FUZZER_TEST_SUITE/AFL/afl-fuzz                  \
+    -i $FUZZDATA/samples/xml -o ./libxml2-fuzz-out                             \
+    -m none -t 1000+ --                                                        \
+    $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint      \
+    -o /dev/null @@
+```
