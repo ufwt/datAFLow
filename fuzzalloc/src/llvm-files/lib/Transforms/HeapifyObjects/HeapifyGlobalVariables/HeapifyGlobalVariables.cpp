@@ -100,7 +100,7 @@ static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
 
     // Load the global variable
     auto *LoadGV = IRB.CreateLoad(GV);
-    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                         MDNode::get(C, None));
     LoadGV->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
@@ -154,7 +154,7 @@ static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
 
     // Load the global variable
     auto *LoadGV = IRB.CreateLoad(GV);
-    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+    LoadGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                         MDNode::get(C, None));
     LoadGV->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
@@ -222,7 +222,7 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
         auto *StoreToNewGV = IRB.CreateStore(
             Initializer->getElementAsConstant(I),
             IRB.CreateConstInBoundsGEP1_32(nullptr, MallocCall, I));
-        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+        StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                                   MDNode::get(C, None));
         StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
                                   MDNode::get(C, None));
@@ -235,7 +235,7 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
   }
 
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
-  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.no_instrument"),
+  MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
   MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 }

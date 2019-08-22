@@ -425,9 +425,9 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           continue;
         }
 
-        // Finally, check if the instruction has the "no_instrument" metadata
+        // Finally, check if the instruction has the "noinstrument" metadata
         // attached to it (from the array heapify pass)
-        if (!Inst.getMetadata(M.getMDKindID("fuzzalloc.no_instrument"))) {
+        if (!Inst.getMetadata(M.getMDKindID("fuzzalloc.noinstrument"))) {
           ToInstrument.push_back(&Inst);
         }
       }
