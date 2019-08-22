@@ -22,8 +22,8 @@ ln -sf ${RT_SRC}/lib/asan/tests/CMakeLists.txt ${RT_DEST}/lib/asan/tests/CMakeLi
 ln -sf ${RT_SRC}/lib/sanitizer_common/sanitizer_allocator.h ${RT_DEST}/lib/sanitizer_common/sanitizer_allocator.h
 ln -sf ${RT_SRC}/lib/sanitizer_common/sanitizer_fuzzalloc_allocator.h ${RT_DEST}/lib/sanitizer_common/sanitizer_fuzzalloc_allocator.h
 
-ln -sf ${RT_SRC}/test/asan/CMakeLists.txt ${RT_DEST}/lib/asan/CMakeLists.txt
-ln -sf ${RT_SRC}/test/asan/lit.site.cfg.in ${RT_DEST}/lib/asan/lit.site.cfg.in
-ln -sf ${RT_SRC}/test/asan/lit.cfg ${RT_DEST}/lib/asan/lit.cfg
+ln -sf ${RT_SRC}/test/asan/CMakeLists.txt ${RT_DEST}/test/asan/CMakeLists.txt
+ln -sf ${RT_SRC}/test/asan/lit.site.cfg.in ${RT_DEST}/test/asan/lit.site.cfg.in
+ln -sf ${RT_SRC}/test/asan/lit.cfg ${RT_DEST}/test/asan/lit.cfg
 
 ln -sf ${INC}/fuzzalloc.h ${RT_DEST}/lib/sanitizer_common/fuzzalloc.h
