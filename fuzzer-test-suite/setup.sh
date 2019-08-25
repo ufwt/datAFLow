@@ -62,7 +62,8 @@ ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
 
 # Add scripts to just build stuff
 ln -sf ${SRC_DIR}/build.sh ${FUZZER_TEST_SUITE}/build.sh
-ln -sf ${SRC_DIR}/build-everything.sh ${FUZZER_TEST_SUITE}/build-everything.sh
+ln -sf ${SRC_DIR}/build-everything-afl.sh ${FUZZER_TEST_SUITE}/build-everything-afl.sh
+ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everything-datAFLow.sh
 
 # Add whitelists into the appropriate directory
 for WHITELIST in $(ls ${WHITELIST_DIR}); do
