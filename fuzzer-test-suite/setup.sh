@@ -16,6 +16,9 @@ COMPILER_RT="compiler-rt"
 COMPILER_RT_TAR="compiler-rt-7.0.1.src.tar.xz"
 COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
 
+ANGORA="angora"
+ANGORA_URL="https://github.com/AngoraFuzzer.git"
+
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
   echo "${FUZZER_TEST_SUITE} not found. Downloading the Google fuzzer test suite"
@@ -49,6 +52,17 @@ else
 fi
 ln -sf ${COMPILER_RT_PATH}/lib/fuzzer Fuzzer
 
+# Get Angora
+if [ -z "${ANGORA_BUILD_DIR}" ]; then
+  if [ ! -d "${ANGORA}" ]; then
+    echo "${ANGOAR} not found. Downloading"
+    git clone ${ANGORA_URL} ${ANGORA}
+  fi
+
+  export ANGORA_BUILD_DIR=${PWD}/${ANGORA}
+fi
+ln -sf ${ANGORA_BUILD_DIR}/llvm_mode/compiler/angora_clang.c
+
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
   (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
@@ -67,7 +81,7 @@ ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everyt
 ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everything-angora.sh
 
 # Add Angora driver
-ln -sf ${SRC_DIR}/angora_driver.c angora_driver.c
+ln -sf ${SRC_DIR}/angora/angora_driver.c angora_driver.c
 
 # Add whitelists into the appropriate directory
 for WHITELIST in $(ls ${WHITELIST_DIR}); do
