@@ -65,6 +65,37 @@ FUZZING_ENGINE=gclang $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh            \
     libxml2-v2.9.2
 ```
 
+## With Angora
+
+[Angora](https://github.com/AngoraFuzzer/Angora) is a state-of-the-art
+taint-based fuzzer.
+
+1. Install Angora from https://github.com/AngoraFuzzer/Angora
+
+```bash
+git clone https://github/com/AngoraFuzzer/Angora.git $ANGORA_DIR
+cd $ANGORA_DIR
+./build/build.sh
+```
+
+2. Build a target
+
+```bash
+# Build track version
+USE_TRACK=1 ANGORA_BUILD_DIR=$ANGORA_DIR/bin FUZZING_ENGINE=angora             \
+    ANGORA_TAINT_RULE_LIST=$ANGORA_DIR/bin/rules/zlib_abilist.txt              \
+    LDFLAGS="-L$ANGORA_DIR/bin/lib" LIBS="-lZlibRt -lz"                        \
+    $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh libxml2-v2.9.2
+mv RUNDIR-angora-libxml2-v2.9.2 RUNDIR-angora-track-libxml2-v2.9.2
+
+# Build fast version
+USE_FAST=1 ANGORA_BUILD_DIR=$ANGORA_DIR/bin FUZZING_ENGINE=angora              \
+    ANGORA_TAINT_RULE_LIST=$ANGORA_DIR/bin/rules/zlib_abilist.txt              \
+    LDFLAGS="-L$ANGORA_DIR/bin/lib" LIBS="-lZlibRt -lz"                        \
+    $DATAFLOW_TEST_DIR/fuzzer-test-suite/build.sh libxml2-v2.9.2
+mv RUNDIR-angora-libxml2-v2.9.2 RUNDIR-angora-fast-libxml2-v2.9.2
+```
+
 # Fuzzing example (libxml)
 
 To fuzz libxml from the fuzzer test suite:

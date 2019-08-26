@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags gclang"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags gclang angora"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -104,6 +104,29 @@ elif [[ $FUZZING_ENGINE == "gclang" ]]; then
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
+elif [[ $FUZZING_ENGINE == "angora" ]]; then
+  export ANGORA_BUILD_DIR=${ANGORA_BUILD_DIR:-$(dirname $SCRIPT_DIR)/Angora/bin}
+
+  export LLVM_CC_NAME="${ANGORA_BUILD_DIR}/angora-clang"
+  export LLVM_CXX_NAME="${ANGORA_BUILD_DIR}/angora-clang++"
+
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
+  export LD=${LLVM_CC_NAME}
+  export LD_LIBRARY_PATH="${ANGORA_BUILD_DIR}/lib:${LD_LIBRARY_PATH}"
+
+  if [[ -z $USE_TRACK ]] && [[ -z $USE_FAST ]]; then
+    echo "Angora build must specify one of USE_TRACK or USE_FAST"
+    exit 1
+  fi
+
+  CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  if [ ! -z $USE_FAST ]; then
+    CFLAGS="${CFLAGS} -DUSE_FAST"
+  fi
+
+  export CFLAGS
+  export CXXFLAGS=${CFLAGS}
 else
   export CFLAGS=${CFLAGS:-"$FUZZ_CXXFLAGS"}
   export CXXFLAGS=${CXXFLAGS:-"$FUZZ_CXXFLAGS"}
@@ -157,6 +180,12 @@ build_gclang() {
   STANDALONE_TARGET=1
   $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
   ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
+  rm *.o
+}
+
+build_angora() {
+  $CC $CFLAGS -c ${SCRIPT_DIR}/../../angora_driver.c -I$LIBFUZZER_SRC
+  ar rc $LIB_FUZZING_ENGINE angora_driver.o
   rm *.o
 }
 
