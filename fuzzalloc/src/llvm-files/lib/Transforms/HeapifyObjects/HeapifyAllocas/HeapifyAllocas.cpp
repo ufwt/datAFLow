@@ -144,7 +144,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
 
   PointerType *NewAllocaTy = ElemTy->getPointerTo();
   auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
-                                   Alloca->getName() + "_heapify", Alloca);
+                                   Alloca->getName(), Alloca);
+  NewAlloca->takeName(Alloca);
   copyDebugInfo(Alloca, NewAlloca);
 
   // Decide where to insert the call to malloc.

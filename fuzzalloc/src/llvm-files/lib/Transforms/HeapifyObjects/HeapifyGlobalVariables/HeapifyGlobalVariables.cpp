@@ -292,9 +292,10 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
       // If the original global variable had an initializer, replace it with the
       // null pointer initializer
       !OrigGV->isDeclaration() ? Constant::getNullValue(NewGVTy) : nullptr,
-      OrigGV->getName() + "_heapify", /* InsertBefore */ nullptr,
+      OrigGV->getName(), /* InsertBefore */ nullptr,
       OrigGV->getThreadLocalMode(), OrigGV->getType()->getAddressSpace(),
       OrigGV->isExternallyInitialized());
+  NewGV->takeName(OrigGV);
   NewGV->copyAttributesFrom(OrigGV);
   NewGV->setAlignment(0);
 
