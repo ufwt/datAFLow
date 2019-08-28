@@ -149,13 +149,15 @@ static void edit_params(u32 argc, char **argv) {
 
   /* Instrument pointer dereferences */
 
-  cc_params[cc_par_cnt++] =
-      "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/InstrumentDerefs/fuzzalloc-inst-derefs.so";
-  cc_params[cc_par_cnt++] = "-mllvm";
-  cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
-  cc_params[cc_par_cnt++] = "-mllvm";
-  cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
+  if (!maybe_assembler) {
+    cc_params[cc_par_cnt++] =
+        "-fplugin=" FUZZALLOC_LLVM_DIR
+        "/Transforms/InstrumentDerefs/fuzzalloc-inst-derefs.so";
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
+  }
 
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
