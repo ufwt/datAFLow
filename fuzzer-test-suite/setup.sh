@@ -17,7 +17,7 @@ COMPILER_RT_TAR="compiler-rt-7.0.1.src.tar.xz"
 COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
 
 ANGORA="angora"
-ANGORA_URL="https://github.com/AngoraFuzzer.git"
+ANGORA_URL="https://github.com/AngoraFuzzer/Angora.git"
 
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
@@ -61,7 +61,7 @@ if [ -z "${ANGORA_BUILD_DIR}" ]; then
 
   export ANGORA_BUILD_DIR=${PWD}/${ANGORA}
 fi
-ln -sf ${ANGORA_BUILD_DIR}/llvm_mode/compiler/angora_clang.c
+ln -sf ${SRC_DIR}/angora/angora_clang.c ${ANGORA_BUILD_DIR}/llvm_mode/compiler/angora_clang.c
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
