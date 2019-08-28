@@ -416,8 +416,8 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     }
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     if (auto *GV = dyn_cast<GlobalVariable>(Store->getPointerOperand())) {
-      // Tag stores to global variables
-      tagGlobalVariable(GV);
+      // Save global variables to tag later
+      this->GlobalVariablesToTag.insert(GV);
     } else {
       // Replace the stored function with a trampoline, because we have no idea
       // how it will be used. The trampoline will calculate a tag dynamically
@@ -426,11 +426,11 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
       Store->replaceUsesOfWith(F, createTrampoline(F));
     }
   } else if (auto *GV = dyn_cast<GlobalVariable>(U)) {
-    // Tag global variables
-    tagGlobalVariable(GV);
+    // Save global variables to tag later
+    this->GlobalVariablesToTag.insert(GV);
   } else if (auto *GA = dyn_cast<GlobalAlias>(U)) {
-    // Tag global aliases
-    tagGlobalAlias(GA);
+    // Save global aliases to tag later
+    this->GlobalAliasesToTag.insert(GA);
   } else if (auto *Const = dyn_cast<Constant>(U)) {
     // Replace unsupported constant with a trampoline.
     //

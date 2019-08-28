@@ -141,6 +141,11 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
   } else if (auto *Store = dyn_cast<StoreInst>(U)) {
     auto *StorePtrOp = Store->getPointerOperand();
 
+    // Strip away bitcasts before we do anything else
+    if (Operator::getOpcode(StorePtrOp) == Instruction::BitCast) {
+      StorePtrOp = cast<Operator>(StorePtrOp)->getOperand(0);
+    }
+
     if (auto *GV = dyn_cast<GlobalVariable>(StorePtrOp)) {
       // Store to a global variable
       this->GlobalVariablesToTag.insert(GV);

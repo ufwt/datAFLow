@@ -116,14 +116,6 @@ Optional<StructOffset> getStructOffset(const StructType *StructTy,
     return getStructOffset(ElemStructTy,
                            ByteOffset - SL->getElementOffset(StructIdx), DL);
   } else {
-    // Only care about function pointers
-    if (!ElemTy->isPointerTy()) {
-      return None;
-    }
-    if (!ElemTy->getPointerElementType()->isFunctionTy()) {
-      return None;
-    }
-
     return Optional<StructOffset>({StructTy, StructIdx});
   }
 }

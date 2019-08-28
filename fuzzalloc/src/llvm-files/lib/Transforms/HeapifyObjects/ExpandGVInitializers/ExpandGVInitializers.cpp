@@ -66,7 +66,10 @@ static void getGVsToExpand(const GlobalVariable *OrigGV,
 
     if (auto *GV = dyn_cast<GlobalVariable>(U)) {
       if (GV->hasInitializer()) {
-        GVs.insert(const_cast<GlobalVariable *>(GV));
+        auto Res = GVs.insert(const_cast<GlobalVariable *>(GV));
+        if (!Res.second) {
+          continue;
+        }
       }
     }
 
