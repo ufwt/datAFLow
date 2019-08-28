@@ -3,3 +3,8 @@ fun:_cmsMalloc
 fun:_cmsMallocZero
 fun:_cmsCalloc
 fun:_cmsRealloc
+
+fun:_cmsMallocDefaultFn
+fun:_cmsMallocZeroDefaultFn
+fun:_cmsReallocDefaultFn
+fun:_cmsCallocDefaultFn

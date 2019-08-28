@@ -1,0 +1,6 @@
+[fuzzalloc]
+fun:_ogg_malloc
+fun:_ogg_calloc
+fun:_ogg_realloc
+
+fun:_VDBG_malloc

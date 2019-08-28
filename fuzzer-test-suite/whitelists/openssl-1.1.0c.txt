@@ -1,7 +1,19 @@
 [fuzzalloc]
+fun:OPENSSL_malloc
+fun:OPENSSL_zalloc
+fun:OPENSSL_realloc
+fun:OPENSSL_clear_realloc
+fun:OPENSSL_secure_malloc
+fun:OPENSSL_secure_zalloc
+
+
 fun:CRYPTO_malloc
 fun:CRYPTO_zalloc
 fun:CRYPTO_realloc
 fun:CRYPTO_clear_realloc
 
-# Secure heap (i.e., CRYPTO_secure_malloc, etc.) is not yet supported
+fun:CRYPTO_secure_malloc
+fun:CRYPTO_secure_zalloc
+
+fun:CRYPTO_mem_debug_malloc
+fun:CRYPTO_mem_debug_realloc
