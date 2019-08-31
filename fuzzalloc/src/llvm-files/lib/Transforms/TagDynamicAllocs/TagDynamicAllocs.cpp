@@ -903,17 +903,17 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // Delete all the things that have been tagged
 
   for (auto *GA : this->GlobalAliasesToTag) {
-    assert(GA->getNumUses() == 0 && "Global alias still has uses");
+    assert(GA->hasNUses(0) && "Global alias still has uses");
     GA->eraseFromParent();
   }
 
   for (auto *GV : this->GlobalVariablesToTag) {
-    assert(GV->getNumUses() == 0 && "Global variable still has uses");
+    assert(GV->hasNUses(0) && "Global variable still has uses");
     GV->eraseFromParent();
   }
 
   for (auto *F : this->FunctionsToTag) {
-    assert(F->getNumUses() == 0 && "Function still has uses");
+    assert(F->hasNUses(0) && "Function still has uses");
     F->eraseFromParent();
   }
 

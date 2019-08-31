@@ -116,11 +116,18 @@ static Instruction *rewriteNew(CallSite &CS) {
 
     // Remove the basic block containing the rewritten new in any PHI nodes,
     // otherwise the verifier will fail
-    auto *UnwindDest = Invoke->getUnwindDest();
-    for (PHINode &PHI : UnwindDest->phis()) {
-      int BBIdx = PHI.getBasicBlockIndex(CSInst->getParent());
+    //
+    // Copy the PHI nodes into a vectorr so that we don't corrupt the iterator
+    // if the PHI node is deleted
+    SmallVector<PHINode *, 8> PHIs;
+    for (PHINode &PHI : Invoke->getUnwindDest()->phis()) {
+      PHIs.push_back(&PHI);
+    }
+
+    for (PHINode *PHI : PHIs) {
+      int BBIdx = PHI->getBasicBlockIndex(CSInst->getParent());
       if (BBIdx >= 0) {
-        PHI.removeIncomingValue(BBIdx);
+        PHI->removeIncomingValue(BBIdx);
       }
     }
   }
