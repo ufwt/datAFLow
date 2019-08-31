@@ -2,12 +2,11 @@
 # Copyright 2017 Google Inc. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 
-export FUZZING_ENGINE="angora"
-
-. $(dirname $0)/common.sh
+export DIR_NAME=$(dirname $0)
+. ${DIR_NAME}/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-export PARENT_DIR="${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE}"
+export PARENT_DIR="${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-angora"
 
 rm -rf ${PARENT_DIR}
 mkdir ${PARENT_DIR}
@@ -19,17 +18,19 @@ build_target() {
   [[ ! -d ${1} ]] && return
   [[ ! -e ${1}/build.sh ]] && return
 
-  # Build taint-tracking target
-  export USE_TRACK=1
-  echo "Running build ${TARGET} (track)"
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-track.log 2>&1
-  mv ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET} ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-track-${TARGET}
-
   # Build light-instrumentation target
-  export USE_FAST=1
   echo "Running build ${TARGET} (fast)"
+  export FUZZING_ENGINE="angora_fast"
+  . ${DIR_NAME}/common.sh
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-fast.log 2>&1
   mv ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET} ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-fast-${TARGET}
+
+  # Build taint-tracking target
+  echo "Running build ${TARGET} (track)"
+  export FUZZING_ENGINE="angora_track"
+  . ${DIR_NAME}/common.sh
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-track.log 2>&1
+  mv ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET} ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-track-${TARGET}
 
   # Create the empty seed
   mkdir -p ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-fast-${TARGET}/empty-seed
