@@ -117,7 +117,12 @@ elif [[ $FUZZING_ENGINE == "angora_fast" ]]; then
 
   export USE_FAST=1
 
-  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only -DUSE_FAST"
+  if [ ! -z $ASAN_ENABLE ]; then
+    echo "ASan enabled"
+    export ANGORA_USE_ASAN=1
+  fi
+
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "angora_track" ]]; then
   export ANGORA_BUILD_DIR=${ANGORA_BUILD_DIR:-$(dirname $SCRIPT_DIR)/angora/bin}
@@ -131,6 +136,8 @@ elif [[ $FUZZING_ENGINE == "angora_track" ]]; then
   export LD_LIBRARY_PATH="${ANGORA_BUILD_DIR}/lib:${LD_LIBRARY_PATH}"
 
   export USE_TRACK=1
+
+  # DFSan and ASan do not play well together, so don't enable ASan
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
