@@ -113,91 +113,6 @@ statistics from the file. If that fails then the process will quit.
 int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size);
 __attribute__((weak)) int LLVMFuzzerInitialize(int *argc, char ***argv);
 
-#ifdef USE_FAST
-extern void __angora_reset_context();
-
-// From common/src/config.rs
-#define MAP_SIZE_POW2   20
-#define BRANCHES_SIZE   (1 << MAP_SIZE_POW2)
-#endif
-
-// Emulate an AFL-style persistent mode in Angora.
-static int __angora_persistent_loop(unsigned int max_cnt) {
-  static uint8_t first_pass = 1;
-  static uint32_t cycle_cnt;
-
-  if (first_pass) {
-#ifdef USE_FAST
-    __angora_reset_context();
-#endif
-
-    cycle_cnt = max_cnt;
-    first_pass = 0;
-    return 1;
-  }
-
-  if (--cycle_cnt) {
-    raise(SIGSTOP);
-#ifdef USE_FAST
-    __angora_reset_context();
-#endif
-
-    return 1;
-  }
-
-  return 0;
-}
-
-// Emulate a deferred forkserver in Angora.
-static const char *kForksrvSocketFile = "/tmp/forksrv_socket";
-static int forksrv_sock;
-
-static void  __angora_manual_init(void) {
-#ifdef USE_FAST
-  int rc, listener_sock;
-  struct sockaddr_un listener_addr;
-
-  listener_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (listener_sock == -1) {
-    fprintf(stderr, "libFuzzer: socket failed with %d\n", errno);
-    exit(1);
-  }
-
-  // Don't block
-  fcntl(listener_sock, F_SETFL, O_NONBLOCK);
-
-  listener_addr.sun_family = AF_UNIX;
-  strcpy(listener_addr.sun_path, kForksrvSocketFile);
-
-  rc = bind(listener_sock, (struct sockaddr *)&listener_addr, sizeof(listener_addr));
-  if (rc == -1) {
-    fprintf(stderr, "libFuzzer: bind failed with %d\n", errno);
-    close(listener_sock);
-    exit(1);
-  }
-
-  rc = listen(listener_sock, /* backlog */ 128);
-  if (rc == -1) {
-    fprintf(stderr, "libFuzzer: listen failed with %d\n", errno);
-    close(listener_sock);
-    exit(1);
-  }
-
-  setenv("ANGORA_ENABLE_FORKSRV", "TRUE", 1);
-  setenv("ANGORA_FORKSRV_SOCKET_PATH", kForksrvSocketFile, 1);
-
-  forksrv_sock = accept(listener_sock, NULL, NULL);
-  if (forksrv_sock == -1) {
-    fprintf(stderr, "libFuzzer: accept failed with %d\n", errno);
-    close(listener_sock);
-    close(forksrv_sock);
-    exit(1);
-  }
-
-  // TODO set timeouts
-#endif
-}
-
 // Input buffer.
 static const size_t kMaxAngoraInputSize = 1 << 20;
 static uint8_t AngoraInputBuf[kMaxAngoraInputSize];
@@ -388,8 +303,6 @@ int main(int argc, char **argv) {
       "  %s INPUT_FILE1 [INPUT_FILE2 ... ]\n"
       "To fuzz with Angora execute this:\n"
       "  angora-fuzzer [angora-flags] %s [-N]\n"
-      "angora-fuzzer will run N iterations before "
-      "re-spawning the process (default: 1000)\n"
       "======================================================\n",
           argv[0], argv[0], argv[0]);
   if (LLVMFuzzerInitialize)
@@ -398,9 +311,6 @@ int main(int argc, char **argv) {
 
   maybe_duplicate_stderr();
   maybe_initialize_extra_stats();
-
-  if (!getenv("ANGORA_DRIVER_DONT_DEFER"))
-    __angora_manual_init();
 
   int N = 1000;
   if (argc == 2 && argv[1][0] == '-')
@@ -419,33 +329,30 @@ int main(int argc, char **argv) {
   LLVMFuzzerTestOneInput(dummy_input, 1);
 
   time_t unit_time_secs;
-  int num_runs = 0;
-  while (__angora_persistent_loop(N)) {
-    ssize_t n_read = read(0, AngoraInputBuf, kMaxAngoraInputSize);
-    if (n_read > 0) {
-      // Copy AngoraInputBuf into a separate buffer to let asan find buffer
-      // overflows. Don't use unique_ptr/etc to avoid extra dependencies.
-      uint8_t *copy = (uint8_t*)malloc(n_read);
-      memcpy(copy, AngoraInputBuf, n_read);
 
-      struct timeval unit_start_time;
-      CHECK_ERROR(gettimeofday(&unit_start_time, NULL) == 0,
-                  "Calling gettimeofday failed");
+  ssize_t n_read = read(0, AngoraInputBuf, kMaxAngoraInputSize);
+  if (n_read > 0) {
+    // Copy AngoraInputBuf into a separate buffer to let asan find buffer
+    // overflows. Don't use unique_ptr/etc to avoid extra dependencies.
+    uint8_t *copy = (uint8_t*)malloc(n_read);
+    memcpy(copy, AngoraInputBuf, n_read);
 
-      num_runs++;
-      LLVMFuzzerTestOneInput(copy, n_read);
+    struct timeval unit_start_time;
+    CHECK_ERROR(gettimeofday(&unit_start_time, NULL) == 0,
+                "Calling gettimeofday failed");
 
-      struct timeval unit_stop_time;
-      CHECK_ERROR(gettimeofday(&unit_stop_time, NULL) == 0,
-                  "Calling gettimeofday failed");
+    LLVMFuzzerTestOneInput(copy, n_read);
 
-      // Update slowest_unit_time_secs if we see a new max.
-      unit_time_secs = unit_stop_time.tv_sec - unit_start_time.tv_sec;
-      if (slowest_unit_time_secs < unit_time_secs)
-        slowest_unit_time_secs = unit_time_secs;
+    struct timeval unit_stop_time;
+    CHECK_ERROR(gettimeofday(&unit_stop_time, NULL) == 0,
+                "Calling gettimeofday failed");
 
-      free(copy);
-    }
+    // Update slowest_unit_time_secs if we see a new max.
+    unit_time_secs = unit_stop_time.tv_sec - unit_start_time.tv_sec;
+    if (slowest_unit_time_secs < unit_time_secs)
+      slowest_unit_time_secs = unit_time_secs;
+
+    free(copy);
   }
-  fprintf(stderr, "%s: successfully executed %d input(s)\n", argv[0], num_runs);
+  fprintf(stderr, "%s: successfully executed input\n", argv[0]);
 }
