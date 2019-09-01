@@ -137,6 +137,10 @@ elif [[ $FUZZING_ENGINE == "angora_track" ]]; then
 
   export USE_TRACK=1
 
+  if [ -f "${SCRIPT_DIR}/abilist.txt" ]; then
+    export ANGORA_TAINT_RULE_LIST="${SCRIPT_DIR}/abilist.txt"
+  fi
+
   # DFSan and ASan do not play well together, so don't enable ASan
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"

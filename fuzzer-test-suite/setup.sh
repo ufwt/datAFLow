@@ -18,6 +18,7 @@ COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
 
 ANGORA="angora"
 ANGORA_URL="https://github.com/AngoraFuzzer/Angora.git"
+ABILIST_DIR="${SRC_DIR}/angora/rules"
 
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
@@ -26,7 +27,7 @@ if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
     (cd ${FUZZER_TEST_SUITE} && git checkout ${FUZZER_TEST_SUITE_REV})
 fi
 
-# Get AFL
+# Build AFL
 export AFL_PATH
 make -j -C ${AFL_PATH} clean all
 make -j -C ${AFL_PATH}/llvm_mode clean all
@@ -71,7 +72,7 @@ mkdir -p fuzzalloc-debug && \
   (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
-# Replace common.sh with ours (because it supports datAFLow)
+# Replace common.sh with ours (because it supports datAFLow and Angora)
 ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
 
 # Add scripts to just build stuff
@@ -86,4 +87,9 @@ ln -sf ${SRC_DIR}/angora/angora_driver.c angora_driver.c
 # Add whitelists into the appropriate directory
 for WHITELIST in $(ls ${WHITELIST_DIR}); do
   ln -sf "${WHITELIST_DIR}/${WHITELIST}" "${FUZZER_TEST_SUITE}/${WHITELIST%.txt}/whitelist.txt"
+done
+
+# Add ABI lists into the appropriate directory
+for ABILIST in $(ls ${ABILIST_DIR}); do
+  ln -sf "${ABILIST_DIR}/${ABILIST}" "${FUZZER_TEST_SUITE}/${ABILIST%.txt}/abilist.txt"
 done
