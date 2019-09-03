@@ -2,13 +2,12 @@
 # Copyright 2017 Google Inc. All Rights Reserved.
 # Licensed under the Apache License, Version 2.0 (the "License");
 
-export FUZZING_ENGINE="datAFLow"
-export ASAN_ENABLE=1
-
-. $(dirname $0)/common.sh
+export DIR_NAME=$(readlink -f $(dirname $0))
+export FUZZING_ENGINE="gclang"
+. ${DIR_NAME}/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-export PARENT_DIR="${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE}"
+export PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-datAFLow)"
 
 rm -rf ${PARENT_DIR}
 mkdir ${PARENT_DIR}
@@ -20,17 +19,19 @@ build_target() {
   [[ ! -d ${1} ]] && return
   [[ ! -e ${1}/build.sh ]] && return
 
-  export FUZZALLOC_TAG_LOG="${PARENT_DIR}/${TARGET}-tags.csv"
+  cd ${PARENT_DIR}
 
   # Collect tags
   export FUZZING_ENGINE="tags"
+  export FUZZALLOC_TAG_LOG="${PARENT_DIR}/${TARGET}-tag-sites.csv"
+  . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
-  cd ${PARENT_DIR}
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
 
   # Build target
   export FUZZING_ENGINE="datAFLow"
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
+  . ${DIR_NAME}/common.sh
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
 
   # Create the empty seed
@@ -40,4 +41,4 @@ build_target() {
 
 export -f build_target
 BENCHMARKS="${ABS_SCRIPT_DIR}/*/"
-parallel build_target ::: "${BENCHMARKS}"
+parallel build_target ::: ${BENCHMARKS}

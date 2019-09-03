@@ -32,4 +32,4 @@ build_target() {
 
 export -f build_target
 BENCHMARKS="${ABS_SCRIPT_DIR}/*/"
-parallel build_target ::: "${BENCHMARKS}"
+parallel build_target ::: ${BENCHMARKS}
