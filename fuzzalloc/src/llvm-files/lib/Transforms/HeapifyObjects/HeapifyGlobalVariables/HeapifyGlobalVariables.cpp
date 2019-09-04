@@ -166,7 +166,7 @@ static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
     // Set the global variable to NULL
     IRB.SetInsertPoint(FreeFalseBB->getTerminator());
     auto *NullStore =
-        IRB.CreateStore(Constant::getNullValue(GV->getType()), GV);
+        IRB.CreateStore(Constant::getNullValue(LoadGV->getType()), GV);
 
     // Free the global variable before setting it to NULL
     IRB.SetInsertPoint(NullStore);
