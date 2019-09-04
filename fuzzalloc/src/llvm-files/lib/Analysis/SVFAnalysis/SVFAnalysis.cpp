@@ -67,7 +67,7 @@ public:
 char SVFAnalysis::ID = 0;
 
 SVFAnalysis::~SVFAnalysis() {
-  for (auto *Alias : Aliases) {
+  for (auto *Alias : this->Aliases) {
     delete Alias;
   }
 }
@@ -78,7 +78,7 @@ SVFAnalysis::ValueSet SVFAnalysis::collectTaggedAllocs(Module &M) const {
   for (auto &F : M) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (I->getMetadata(M.getMDKindID("fuzzalloc.tagged_alloc"))) {
-        assert(isa<CallInst>(&*I) &&
+        assert(CallSite(&*I) != CallSite() &&
                "Tagged allocations must be call instructions");
         TaggedAllocs.insert(&*I);
       }
@@ -123,23 +123,23 @@ void SVFAnalysis::print(raw_ostream &O, const Module *M) const {
   O << "  num. instrumented derefs: " << this->NumDerefs << "\n";
 
   for (auto *Alias : this->Aliases) {
-    auto *Alloc = cast<CallInst>(Alias->TaggedAlloc);
+    auto AllocCS = CallSite(const_cast<Value *>(Alias->TaggedAlloc));
     auto *Deref = Alias->InstrumentedDeref;
     auto AResult = Alias->Result;
 
     // The first argument to a tagged allocation routine should always be the
     // allocation site tag
     O << "    ";
-    if (auto *FirstArg = dyn_cast<ConstantInt>(Alloc->getArgOperand(0))) {
+    if (auto *FirstArg = dyn_cast<ConstantInt>(AllocCS.getArgument(0))) {
       uint64_t AllocSiteTag = FirstArg->getZExtValue();
 
       O << "allocation site 0x";
       O.write_hex(AllocSiteTag);
     } else {
-      Alloc->print(O);
+      AllocCS->print(O);
     }
 
-    if (DILocation *AllocLoc = Alloc->getDebugLoc()) {
+    if (DILocation *AllocLoc = AllocCS->getDebugLoc()) {
       O << " (" << AllocLoc->getFilename() << ":" << AllocLoc->getLine() << ")";
     }
     O << (AResult == MustAlias ? " IS " : " MAY BE ");
