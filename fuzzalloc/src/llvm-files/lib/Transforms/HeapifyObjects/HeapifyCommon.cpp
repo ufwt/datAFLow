@@ -29,8 +29,8 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
       LoadMallocPtr, GEP->getOperand(0)->getType(), "", GEP);
   auto *MallocPtrGEP = GetElementPtrInst::CreateInBounds(
       BitCastMallocPtr,
-      SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()),
-      GEP->hasName() ? GEP->getName() + "_heapify" : "", GEP);
+      SmallVector<Value *, 4>(GEP->idx_begin(), GEP->idx_end()), "", GEP);
+  MallocPtrGEP->takeName(GEP);
 
   // Update all the users of the original GEP instruction to use the updated
   // GEP. The updated GEP is correctly typed for the malloc pointer
@@ -38,30 +38,6 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   GEP->eraseFromParent();
 
   return MallocPtrGEP;
-}
-
-SelectInst *updateSelect(SelectInst *Select, Value *OrigV, Value *NewV) {
-  // The use of a heapified value in a select instruction may need to be cast
-  // (to ensure that the select instruction type checks)
-
-  // The original value must be one of the select values
-  assert(Select->getTrueValue() == OrigV || Select->getFalseValue() == OrigV);
-
-  auto *LoadNewV = new LoadInst(NewV, "", Select);
-  auto *BitCastNewV =
-      CastInst::CreatePointerCast(LoadNewV, Select->getType(), "", Select);
-  Select->replaceUsesOfWith(OrigV, BitCastNewV);
-
-  return Select;
-}
-
-ReturnInst *updateReturn(ReturnInst *Return, Value *OrigV, Value *NewV) {
-  auto *LoadNewV = new LoadInst(NewV, "", Return);
-  auto *BitCastNewV = CastInst::CreatePointerCast(
-      LoadNewV, Return->getReturnValue()->getType(), "", Return);
-  Return->replaceUsesOfWith(OrigV, BitCastNewV);
-
-  return Return;
 }
 
 bool isHeapifiableType(Type *Ty) {

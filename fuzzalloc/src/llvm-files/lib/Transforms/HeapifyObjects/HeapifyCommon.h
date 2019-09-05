@@ -22,8 +22,6 @@ class DataLayout;
 class GetElementPtrInst;
 class Instruction;
 class LLVMContext;
-class ReturnInst;
-class SelectInst;
 class Type;
 class Twine;
 class Value;
@@ -34,14 +32,6 @@ const unsigned kHeapifyGVCtorAndDtorPriority = 0;
 
 /// Update a GEP instruction to use the given value
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
-
-/// Update a select instruction to use the given value
-llvm::SelectInst *updateSelect(llvm::SelectInst *, llvm::Value *,
-                               llvm::Value *);
-
-/// Update a return instruction to use the given value
-llvm::ReturnInst *updateReturn(llvm::ReturnInst *, llvm::Value *,
-                               llvm::Value *);
 
 /// Returns \c true if the given type is heapifiable to dynamic allocation.
 bool isHeapifiableType(llvm::Type *);

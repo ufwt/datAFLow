@@ -193,16 +193,12 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
                                           NewAlloca, StorePtrElemTy, "", Store);
 
       Store->replaceUsesOfWith(Alloca, ReplacementAlloca);
-    } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // Ensure selects are correcty typed
-      updateSelect(Select, Alloca, NewAlloca);
-    } else if (auto *Return = dyn_cast<ReturnInst>(U)) {
-      // Ensure returns are correctly typed to the funtion type
-      updateReturn(Return, Alloca, NewAlloca);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we do anything with it
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);
-      Inst->replaceUsesOfWith(Alloca, LoadNewAlloca);
+      auto *BitCastNewAlloca = CastInst::CreatePointerCast(
+          LoadNewAlloca, Alloca->getType(), "", Inst);
+      Inst->replaceUsesOfWith(Alloca, BitCastNewAlloca);
     } else {
       assert(false && "Unsupported alloca user");
     }

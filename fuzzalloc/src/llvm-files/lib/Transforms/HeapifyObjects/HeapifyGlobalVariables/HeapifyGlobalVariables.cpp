@@ -353,16 +353,12 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
           PHI->setIncomingValue(I, BitCastNewGV);
         }
       }
-    } else if (auto *Select = dyn_cast<SelectInst>(U)) {
-      // Ensure selects are correctly typed
-      updateSelect(Select, OrigGV, NewGV);
-    } else if (auto *Return = dyn_cast<ReturnInst>(U)) {
-      // Ensure returns are correctly typed to the funtion type
-      updateReturn(Return, OrigGV, NewGV);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
       auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
-      Inst->replaceUsesOfWith(OrigGV, LoadNewGV);
+      auto *BitCastNewGV =
+          CastInst::CreatePointerCast(LoadNewGV, OrigGV->getType(), "", Inst);
+      Inst->replaceUsesOfWith(OrigGV, BitCastNewGV);
     } else {
       assert(false && "Unsupported global variable user");
     }
