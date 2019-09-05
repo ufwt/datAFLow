@@ -260,9 +260,6 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
 
   for (auto *C : this->DeadConstants) {
     C->removeDeadConstantUsers();
-    if (C->hasNUses(0)) {
-      C->destroyConstant();
-    }
   }
 
   printStatistic(M, NumOfExpandedGlobalVariables);
