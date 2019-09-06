@@ -45,6 +45,10 @@ bool isHeapifiableType(Type *Ty) {
     return false;
   }
 
+  if (Ty->getArrayNumElements() == 0) {
+    return false;
+  }
+
   // Don't heapify va_list (i.e., variable arguments): it's too hard and for
   // some reason everything breaks :(
   if (auto *StructTy = dyn_cast<StructType>(Ty->getArrayElementType())) {
