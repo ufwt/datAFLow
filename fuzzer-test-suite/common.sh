@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags gclang angora_fast angora_track"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags clang angora_fast angora_track"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -95,14 +95,19 @@ elif [[ $FUZZING_ENGINE == "afl" ]]; then
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
   fi
   export CXXFLAGS=${CFLAGS}
-elif [[ $FUZZING_ENGINE == "gclang" ]]; then
+elif [[ $FUZZING_ENGINE == "clang" ]]; then
   export LLVM_CC_NAME="clang"
   export LLVM_CXX_NAME="clang++"
 
-  export CC="gclang"
-  export CXX="gclang++"
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  if [ ! -z $ASAN_ENABLE ]; then
+    echo "ASan enabled"
+    export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
+    export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
+  fi
   export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "angora_fast" ]]; then
   export ANGORA_BUILD_DIR=${ANGORA_BUILD_DIR:-$(dirname $SCRIPT_DIR)/angora/bin}
@@ -194,7 +199,7 @@ build_afl() {
   rm *.o
 }
 
-build_gclang() {
+build_clang() {
   STANDALONE_TARGET=1
   $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
   ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o

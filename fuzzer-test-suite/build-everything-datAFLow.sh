@@ -3,7 +3,9 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 
 export DIR_NAME=$(readlink -f $(dirname $0))
-export FUZZING_ENGINE="gclang"
+
+# Need a dummy fuzzing engine here so that common.sh is sourced correctly
+export FUZZING_ENGINE="clang"
 . ${DIR_NAME}/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})

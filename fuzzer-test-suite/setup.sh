@@ -78,8 +78,9 @@ ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
 # Add scripts to just build stuff
 ln -sf ${SRC_DIR}/build.sh ${FUZZER_TEST_SUITE}/build.sh
 ln -sf ${SRC_DIR}/build-everything-afl.sh ${FUZZER_TEST_SUITE}/build-everything-afl.sh
+ln -sf ${SRC_DIR}/build-everything-angora.sh ${FUZZER_TEST_SUITE}/build-everything-angora.sh
+ln -sf ${SRC_DIR}/build-everything-clang.sh ${FUZZER_TEST_SUITE}/build-everything-clang.sh
 ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everything-datAFLow.sh
-ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everything-angora.sh
 
 # Add Angora driver
 ln -sf ${SRC_DIR}/angora/angora_driver.c angora_driver.c
