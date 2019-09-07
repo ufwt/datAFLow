@@ -12,10 +12,9 @@ replay_inputs() {
 
   rm -f ${TARGET}-replay.log
 
-  for I in `seq -f "%08g" 0 499999`; do
-    INPUT="${RUNDIR}/collect-seeds/inputs/id_${I}"
-    perf stat -r3 "${RUNDIR}/${TARGET}-${FUZZING_ENGINE}" "${INPUT}"
-  done > /dev/null 2>> ${TARGET}-replay.log
+  for I in 0 25001 50001 75001 100001 125001 150001 175001 200001 225001 250001 275001 300001 325001 350001 375001 400001 425001 450001 475001; do
+    perf stat -r3 "${RUNDIR}/${TARGET}-${FUZZING_ENGINE}" $(find "${RUNDIR}/collect-seeds/inputs" -type f | sort | tail -n +$I | head -25000) > /dev/null 2>> ${TARGET}-replay.log
+  done
 }
 
 export -f replay_inputs
