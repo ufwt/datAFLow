@@ -219,16 +219,16 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
       continue;
     }
 
-    // The global variable may not be expandable itself, but other globals that
-    // use this one may require expansion
-    if (isHeapifiableType(GV.getValueType())) {
-      getGVsToExpand(&GV, GVsToExpand);
-    }
-
     // If the global variable is constant and cannot be exported, skip it
     if (GV.isConstant() &&
         (GV.hasPrivateLinkage() || GV.hasInternalLinkage())) {
       continue;
+    }
+
+    // The global variable may not be expandable itself, but other globals that
+    // use this one may require expansion
+    if (isHeapifiableType(GV.getValueType())) {
+      getGVsToExpand(&GV, GVsToExpand);
     }
 
     // Nothing to expand

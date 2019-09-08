@@ -396,6 +396,7 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
       continue;
     }
 
+    // If the global variable is constant and cannot be exported, skip it
     if (GV.isConstant() &&
         (GV.hasPrivateLinkage() || GV.hasInternalLinkage())) {
       continue;
