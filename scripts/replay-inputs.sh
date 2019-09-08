@@ -3,11 +3,14 @@
 # Replay a set of recorded fuzzing inputs. This script should be run from a
 # directory containing a set of Google Fuzzer Test Suite "RUNDIR"s.
 
-export FUZZING_ENGINE="afl"
+if [ -z ${FUZZING_ENGINE} ]; then
+  echo "Please set the FUZZING_ENGINE environment variable"
+  exit 1
+fi
 
 replay_inputs() {
   RUNDIR=${1}
-  TARGET=$(echo -n ${RUNDIR} | cut -c14-)
+  TARGET=$(echo -n ${RUNDIR} | sed "s/RUNDIR-${FUZZING_ENGINE}-//g")
   echo "Replaying ${TARGET}"
 
   rm -f ${TARGET}-replay.log
