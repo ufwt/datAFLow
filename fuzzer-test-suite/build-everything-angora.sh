@@ -25,12 +25,16 @@ build_target() {
 
   # Build light-instrumentation target
   export FUZZING_ENGINE="angora_fast"
+  unset CC
+  unset CXX
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
 
   # Build taint-tracking target
   export FUZZING_ENGINE="angora_track"
+  unset CC
+  unset CXX
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
