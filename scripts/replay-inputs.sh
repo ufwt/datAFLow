@@ -11,12 +11,16 @@ fi
 replay_inputs() {
   RUNDIR=${1}
   TARGET=$(echo -n ${RUNDIR} | sed "s/RUNDIR-${FUZZING_ENGINE}-//g")
+  REPLAY_LOG="${TARGET}-${FUZZING_ENGINE}-replay.log"
+
   echo "Replaying ${TARGET}"
 
-  rm -f ${TARGET}-replay.log
+  rm -f ${REPLAY_LOG}
 
   for I in 0 25001 50001 75001 100001 125001 150001 175001 200001 225001 250001 275001 300001 325001 350001 375001 400001 425001 450001 475001; do
-    perf stat -r3 "${RUNDIR}/${TARGET}-${FUZZING_ENGINE}" $(find "${RUNDIR}/collect-seeds/inputs" -type f | sort | tail -n +$I | head -25000) > /dev/null 2>> ${TARGET}-replay.log
+    INPUTS=$(find "${RUNDIR}/collect-seeds/inputs" -type f | sort | tail -n +$I | head -25000)
+    perf stat -r3 --output ${REPLAY_LOG} --append  \
+      "${RUNDIR}/${TARGET}-${FUZZING_ENGINE}" ${INPUTS} > /dev/null 2>&1
   done
 }
 
