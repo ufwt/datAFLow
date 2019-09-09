@@ -45,10 +45,6 @@ bool isHeapifiableType(Type *Ty) {
     return false;
   }
 
-  if (Ty->getArrayNumElements() == 0) {
-    return false;
-  }
-
   // Don't heapify va_list (i.e., variable arguments): it's too hard and for
   // some reason everything breaks :(
   if (auto *StructTy = dyn_cast<StructType>(Ty->getArrayElementType())) {
@@ -76,6 +72,25 @@ bool isVTableOrTypeInfo(const Value *V) {
         DemangleName.startswith_lower("vtt for ") ||
         DemangleName.startswith_lower("typeinfo for ") ||
         DemangleName.startswith_lower("typeinfo name for ")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool isFromLibCpp(const Value *V) {
+  if (!isa<GlobalVariable>(V)) {
+    return false;
+  }
+
+  int DemangleStatus;
+  char *DemangleNameCStr = abi::__cxa_demangle(
+      V->getName().str().c_str(), nullptr, nullptr, &DemangleStatus);
+  if (DemangleStatus == 0) {
+    StringRef DemangleName = StringRef(DemangleNameCStr);
+
+    if (DemangleName.startswith("std::tr1::__")) {
       return true;
     }
   }

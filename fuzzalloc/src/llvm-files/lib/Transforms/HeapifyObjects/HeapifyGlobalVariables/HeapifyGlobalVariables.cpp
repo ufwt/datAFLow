@@ -392,7 +392,7 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
     }
 
     // Skip C++ junk
-    if (isVTableOrTypeInfo(&GV)) {
+    if (isVTableOrTypeInfo(&GV) || isFromLibCpp(&GV)) {
       continue;
     }
 
