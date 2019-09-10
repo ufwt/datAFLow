@@ -20,6 +20,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -160,6 +161,7 @@ void RewriteNews::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool RewriteNews::runOnModule(Module &M) {
+  const DataLayout &DL = M.getDataLayout();
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
@@ -169,9 +171,13 @@ bool RewriteNews::runOnModule(Module &M) {
   // delete calls to rewrite
   SmallVector<CallSite, 8> DeleteCalls;
 
+  // llvm.mem* intrinsics that may require realignment
+  SmallVector<MemIntrinsic *, 4> MemIntrinsics;
+
   for (auto &F : M.functions()) {
     NewCalls.clear();
     DeleteCalls.clear();
+    MemIntrinsics.clear();
 
     // Collect all the things!
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
@@ -183,13 +189,22 @@ bool RewriteNews::runOnModule(Module &M) {
           NewCalls.push_back(CS);
         } else if (isDeleteFn(Callee, TLI)) {
           DeleteCalls.push_back(CS);
+        } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
+          MemIntrinsics.push_back(MemI);
         }
       }
     }
 
     // Rewrite new calls
     for (auto &NewCall : NewCalls) {
-      rewriteNew(NewCall);
+      auto *MallocCall = rewriteNew(NewCall);
+
+      for (auto *MemI : MemIntrinsics) {
+        if (GetUnderlyingObjectThroughLoads(MemI->getDest(), DL) ==
+            MallocCall) {
+          MemI->setDestAlignment(1);
+        }
+      }
     }
 
     // Rewrite delete calls
