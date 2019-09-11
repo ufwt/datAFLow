@@ -3,7 +3,6 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 
 export FUZZING_ENGINE="clang"
-export ASAN_ENABLE=1
 
 . $(dirname $0)/common.sh
 

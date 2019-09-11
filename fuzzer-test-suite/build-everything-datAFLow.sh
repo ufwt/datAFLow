@@ -26,14 +26,18 @@ build_target() {
   # Collect tags
   export FUZZING_ENGINE="tags"
   export FUZZALLOC_TAG_LOG="${PARENT_DIR}/${TARGET}-tag-sites.csv"
+  unset CC
+  unset CXX
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
 
   # Build target
   export FUZZING_ENGINE="datAFLow"
-  echo "Running build ${TARGET} (${FUZZING_ENGINE})"
+  unset CC
+  unset CXX
   . ${DIR_NAME}/common.sh
+  echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
 
   # Create the empty seed
