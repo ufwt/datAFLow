@@ -7,7 +7,7 @@ export FUZZING_ENGINE="clang"
 . $(dirname $0)/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-export PARENT_DIR="${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE}"
+export PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE})"
 
 rm -rf ${PARENT_DIR}
 mkdir ${PARENT_DIR}
