@@ -76,6 +76,8 @@ private:
   using FuncTypeString = std::pair<std::string, std::string>;
 
   Module *Mod;
+
+  Function *ReturnAddrF;
   Function *AbortF;
   Function *FuzzallocMallocF;
   Function *FuzzallocCallocF;
@@ -171,16 +173,20 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
   IRBuilder<> IRB(TrampolineBB);
 
   // Use the trampoline's return address as the allocation site tag
-  Function *ReturnAddrF =
-      Intrinsic::getDeclaration(this->Mod, Intrinsic::returnaddress);
-  auto *RetAddr = IRB.CreateCall(ReturnAddrF,
-                                 {Constant::getNullValue(Type::getInt32Ty(C))});
-  Value *Tag = IRB.CreatePtrToInt(RetAddr, this->TagTy);
+  auto *RetAddr = IRB.CreateCall(this->ReturnAddrF, IRB.getInt32(0));
+
+  // XXX I have no idea why I need to cast the return address pointer to a large
+  // integer, then mask off the MSBs before casting to the correct type (tag_t).
+  // However, if I don't do this, the LLVM backend generates the wrong mov
+  // instruction and everything breaks :(
+  Value *Tag = IRB.CreatePtrToInt(RetAddr, this->SizeTTy);
+  Value *CastTag =
+      IRB.CreateIntCast(IRB.CreateAnd(Tag, TAG_MAX), this->TagTy, false);
 
   // Call a tagged version of the dynamic memory allocation function and return
   // its result
   Function *TaggedF = translateTaggedFunction(OrigF);
-  SmallVector<Value *, 4> TaggedCallArgs = {Tag};
+  SmallVector<Value *, 4> TaggedCallArgs = {CastTag};
   for (auto &Arg : TrampolineF->args()) {
     TaggedCallArgs.push_back(&Arg);
   }
@@ -844,6 +850,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
   Type *VoidTy = Type::getVoidTy(C);
 
+  this->ReturnAddrF = Intrinsic::getDeclaration(&M, Intrinsic::returnaddress);
   this->AbortF =
       checkFuzzallocFunc(M.getOrInsertFunction(AbortFuncName, VoidTy));
   this->AbortF->setDoesNotReturn();

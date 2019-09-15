@@ -40,7 +40,7 @@ typedef uint16_t tag_t;
 #define INST_TAG_START 2
 
 /// The maximum possible tag value
-#define TAG_MAX ((1 << NUM_TAG_BITS) - 1)
+#define TAG_MAX ((tag_t)~0)
 
 /// Extract the pool tag from the allocated pool
 tag_t get_pool_tag(void *p);
