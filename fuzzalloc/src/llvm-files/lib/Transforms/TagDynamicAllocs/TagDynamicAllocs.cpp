@@ -180,8 +180,8 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
   // However, if I don't do this, the LLVM backend generates the wrong mov
   // instruction and everything breaks :(
   Value *Tag = IRB.CreatePtrToInt(RetAddr, this->SizeTTy);
-  Value *CastTag =
-      IRB.CreateIntCast(IRB.CreateAnd(Tag, TAG_MAX), this->TagTy, false);
+  Value *CastTag = IRB.CreateIntCast(IRB.CreateAnd(Tag, TAG_MAX), this->TagTy,
+                                     /* isSigned */ false);
 
   // Call a tagged version of the dynamic memory allocation function and return
   // its result
