@@ -9,7 +9,13 @@ export FUZZING_ENGINE="clang"
 . ${DIR_NAME}/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-export PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-datAFLow)"
+PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-datAFLow)"
+
+if [ ! -z ${ASAN_ENABLE} ]; then
+  PARENT_DIR="${PARENT_DIR}-asan"
+fi
+
+export PARENT_DIR
 
 rm -rf ${PARENT_DIR}
 mkdir ${PARENT_DIR}

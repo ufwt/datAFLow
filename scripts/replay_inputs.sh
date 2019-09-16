@@ -1,12 +1,11 @@
 #!/bin/bash
-#
-# Replay a set of recorded fuzzing inputs. This script should be run from a
-# directory containing a set of Google Fuzzer Test Suite "RUNDIR"s.
 
 if [ -z ${FUZZING_ENGINE} ]; then
   echo "Please set the FUZZING_ENGINE environment variable"
   exit 1
 fi
+
+export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1"
 
 replay_inputs() {
   RUNDIR=${1}
@@ -28,6 +27,7 @@ replay_inputs() {
   echo "${TARGET}, ${TOTAL_TIME}"
 }
 
-export -f replay_inputs
-RUNDIRS="RUNDIR-${FUZZING_ENGINE}-*"
-parallel replay_inputs ::: ${RUNDIRS}
+if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
+  echo "Replaying inputs for $1..."
+  replay_inputs $1
+fi
