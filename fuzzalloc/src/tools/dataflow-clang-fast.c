@@ -157,7 +157,14 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
+
+    if (getenv("FUZZALLOC_DEBUG_INSTRUMENT")) {
+      cc_params[cc_par_cnt++] = "-mllvm";
+      cc_params[cc_par_cnt++] = "-fuzzalloc-debug-instrument";
+    }
   }
+
+  cc_params[cc_par_cnt++] = "-Qunused-arguments";
 
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
@@ -168,8 +175,6 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-stats";
   }
-
-  cc_params[cc_par_cnt++] = "-Qunused-arguments";
 
   /* Detect stray -v calls from ./configure scripts. */
 
