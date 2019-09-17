@@ -36,7 +36,7 @@ build_target() {
   unset CXX
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
   # Build target
   export FUZZING_ENGINE="datAFLow"
@@ -44,7 +44,7 @@ build_target() {
   unset CXX
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}.log 2>&1
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
   # Create the empty seed
   mkdir -p ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}/empty-seed

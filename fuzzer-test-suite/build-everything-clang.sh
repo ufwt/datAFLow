@@ -28,7 +28,7 @@ build_target() {
   # Build target
   echo "Building ${TARGET}"
   cd ${PARENT_DIR}
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}.log 2>&1
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 }
 
 export -f build_target

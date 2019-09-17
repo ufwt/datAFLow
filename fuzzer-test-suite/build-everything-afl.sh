@@ -23,7 +23,7 @@ build_target() {
   # Build target
   echo "Building ${TARGET}"
   cd ${PARENT_DIR}
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}.log 2>&1
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
   # Create the empty seed
   mkdir -p ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}/empty-seed
