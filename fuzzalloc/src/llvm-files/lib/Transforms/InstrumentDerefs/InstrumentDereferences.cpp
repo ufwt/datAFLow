@@ -380,8 +380,8 @@ bool InstrumentDereferences::runOnModule(Module &M) {
       continue;
     }
 
-    // We only want to instrument every address only once per basic block
-    // (unless there are calls between uses)
+    // We want to instrument every address only once per basic block (unless
+    // there are calls between uses)
     SmallPtrSet<Value *, 16> TempsToInstrument;
     SmallVector<Instruction *, 16> ToInstrument;
     bool IsWrite;
@@ -396,16 +396,18 @@ bool InstrumentDereferences::runOnModule(Module &M) {
 
         if (Value *Addr = isInterestingMemoryAccess(&Inst, &IsWrite, &TypeSize,
                                                     &Alignment, &MaybeMask)) {
+          Value *Obj = GetUnderlyingObject(Addr, DL);
+
           // If we have a mask, skip instrumentation if we've already
           // instrumented the full object. But don't add to TempsToInstrument
           // because we might get another load/store with a different mask
           if (MaybeMask) {
-            if (TempsToInstrument.count(Addr)) {
+            if (TempsToInstrument.count(Obj)) {
               // We've seen this (whole) temp in the current BB
               continue;
             }
           } else {
-            if (!TempsToInstrument.insert(Addr).second) {
+            if (!TempsToInstrument.insert(Obj).second) {
               // We've seen this temp in the current BB
               continue;
             }
