@@ -260,6 +260,8 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 
 /// Instrument the Instruction `I` that dereferences `Pointer`.
 void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
+  LLVM_DEBUG(dbgs() << "instrumenting " << *Pointer << " in " << *I << '\n');
+
   auto *M = I->getModule();
   IRBuilder<> IRB(I);
   LLVMContext &C = IRB.getContext();
@@ -381,7 +383,7 @@ bool InstrumentDereferences::runOnModule(Module &M) {
     }
 
     // We want to instrument every address only once per basic block (unless
-    // there are calls between uses)
+    // there are calls between uses that access memory)
     SmallPtrSet<Value *, 16> TempsToInstrument;
     SmallVector<Instruction *, 16> ToInstrument;
     bool IsWrite;
@@ -420,8 +422,15 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           CallSite CS(&Inst);
 
           if (CS) {
-            // A call inside BB
-            TempsToInstrument.clear();
+            // A call that accesses memory inside the basic block. If the call
+            // is indirect (getCalledFunction returns null) then we don't know
+            // so we just have to assume that it accesses memory
+            auto *CalledF = CS.getCalledFunction();
+            bool MaybeAccessMemory =
+                CalledF ? !CalledF->doesNotAccessMemory() : true;
+            if (MaybeAccessMemory) {
+              TempsToInstrument.clear();
+            }
           }
 
           continue;
