@@ -1,5 +1,6 @@
 add_library(fuzzalloc SHARED malloc.c
-                             deref.c)
+                             deref.c
+                             debug.c)
 add_dependencies(fuzzalloc ptmalloc3)
 
 if(FUZZALLOC_USE_LOCKS)

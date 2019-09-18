@@ -8,15 +8,19 @@
 #ifndef _MALLOC_DEBUG_H_
 #define _MALLOC_DEBUG_H_
 
+#include <stdint.h>
+
 #if !defined(NDEBUG)
 #include <assert.h>
 #include <stdio.h>
 
+uint64_t get_cur_time(void);
+
 #define DEBUG_MSG(format, args...)                                             \
-  fprintf(stderr, "[%s:%d] %s: " format, __FILE__, __LINE__, __func__, ##args)
-#else
+  fprintf(stderr, "[%llu] %s: " format, get_cur_time(), __func__, ##args)
+#else // NDEBUG
 #define DEBUG_MSG(format, ...)
 #define assert(x)
-#endif
+#endif // !defined(NDEBUG)
 
 #endif // _MALLOC_DEBUG_H_

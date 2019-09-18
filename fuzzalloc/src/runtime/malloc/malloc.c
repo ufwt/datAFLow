@@ -50,7 +50,7 @@ tag_t get_pool_tag(void *p) {
 
 //===-- Private helper functions ------------------------------------------===//
 
-static size_t init_pool_size() {
+static size_t init_pool_size(void) {
   size_t psize = DEFAULT_POOL_SIZE;
 
   char *pool_size_str = getenv(POOL_SIZE_ENV_VAR);
@@ -256,6 +256,7 @@ void *realloc(void *ptr, size_t size) {
 }
 
 void free(void *ptr) {
+  DEBUG_MSG("free(%p) called from %p\n", ptr, __builtin_return_address(0));
   tag_t pool_tag = get_pool_tag(ptr);
   pool_t pool = GET_POOL(pool_tag) + pool_overhead;
 
