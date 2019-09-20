@@ -241,7 +241,7 @@ bool ExpandGVInitializers::runOnModule(Module &M) {
       continue;
     }
 
-    if (auto *ConstArray = dyn_cast<ConstantArray>(Initializer)) {
+    if (isa<ConstantArray>(Initializer)) {
       // Arrays are always expandable
       GVsToExpand.insert(&GV);
     } else if (auto *ConstStruct = dyn_cast<ConstantStruct>(Initializer)) {

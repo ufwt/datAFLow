@@ -17,7 +17,7 @@
 uint64_t get_cur_time(void);
 
 #define DEBUG_MSG(format, args...)                                             \
-  fprintf(stderr, "[%llu] %s: " format, get_cur_time(), __func__, ##args)
+  fprintf(stderr, "[%lu] %s: " format, get_cur_time(), __func__, ##args)
 #else // NDEBUG
 #define DEBUG_MSG(format, ...)
 #define assert(x)
