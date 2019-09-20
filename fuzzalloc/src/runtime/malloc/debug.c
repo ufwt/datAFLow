@@ -9,6 +9,7 @@
 
 #include "debug.h"
 
+// Adapted from afl-fuzz.c
 uint64_t get_cur_time(void) {
   struct timeval tv;
   struct timezone tz;

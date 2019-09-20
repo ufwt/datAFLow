@@ -147,12 +147,12 @@ static void edit_params(u32 argc, char **argv) {
         alloc_printf("-fuzzalloc-tag-log=%s", fuzzalloc_tag_log);
   }
 
-  /* Instrument pointer dereferences */
+  /* Instrument memory accesses */
 
   if (!maybe_assembler) {
     cc_params[cc_par_cnt++] =
         "-fplugin=" FUZZALLOC_LLVM_DIR
-        "/Transforms/InstrumentDerefs/fuzzalloc-inst-derefs.so";
+        "/Transforms/InstrumentMemAccesses/fuzzalloc-inst-mem-accesses.so";
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
     cc_params[cc_par_cnt++] = "-mllvm";

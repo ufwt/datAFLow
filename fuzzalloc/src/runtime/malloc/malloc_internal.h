@@ -38,24 +38,21 @@ typedef uint8_t bool_t;
 #define RELEASE_MALLOC_GLOBAL_LOCK()
 #endif // defined(FUZZALLOC_USE_LOCKS)
 
-//===-- Allocation pool ---------------------------------------------------===//
+//===-- mspace ------------------------------------------------------------===//
 
-/// An allocation pool is just a ptmalloc mspace
-typedef mspace pool_t;
-
-/// Default pool size (in bytes). Configurable at run-time via an environment
+/// Default mspace size (in bytes). Configurable at run-time via an environment
 /// variable
-#define DEFAULT_POOL_SIZE 500000000UL
+#define DEFAULT_MSPACE_SIZE 500000000UL
 
-/// The pool size environment variable
-#define POOL_SIZE_ENV_VAR "FUZZALLOC_POOL_SIZE"
+/// The mspace size environment variable
+#define MSPACE_SIZE_ENV_VAR "FUZZALLOC_MSPACE_SIZE"
 
-/// Pool alignment. This ensures that the upper \p NUM_TAG_BITS of the pool
-/// address are unique to a single pool
-#define POOL_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
+/// Mspace alignment. This ensures that the upper \p NUM_TAG_BITS of the mspace
+/// address are unique to a single mspace
+#define MSPACE_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
 
-/// Get the allocation pool address from an allocation pool tag
-#define GET_POOL(tag)                                                          \
+/// Get the mspace address from an def site tag
+#define GET_MSPACE(tag)                                                        \
   ((void *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 #endif // MALLOC_INTERNAL_H

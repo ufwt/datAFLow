@@ -1,4 +1,4 @@
-//===-- InstrumentDereferences.cpp - Instrument pointer dereferences ------===//
+//===-- InstrumentMemAccesses.cpp - Instrument memory accesses ------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,8 +8,8 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass instruments pointer dereferences (i.e., \p load instructions) to
-/// discover their allocation site.
+/// This pass instruments memory accesses (i.e., \p load and store instructions)
+/// to discover their def site.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -34,7 +34,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-instrument-derefs"
+#define DEBUG_TYPE "fuzzalloc-inst-mem-accesses"
 
 static cl::opt<bool>
     ClInstrumentWrites("fuzzalloc-instrument-writes",
@@ -50,16 +50,16 @@ static cl::opt<bool>
     ClDebugInstrument("fuzzalloc-debug-instrument",
                       cl::desc("Instrument with debug function"), cl::Hidden);
 
-STATISTIC(NumOfInstrumentedDereferences,
-          "Number of pointer dereferences instrumented.");
+STATISTIC(NumOfInstrumentedMemAccesses,
+          "Number of memory accesses instrumented.");
 
-static const char *const DbgInstrumentName = "__ptr_deref";
-static const char *const AllocSiteMapName = "__pool_to_alloc_site_map_ptr";
+static const char *const DbgInstrumentName = "__mem_access";
+static const char *const AllocSiteMapName = "__mspace_to_def_site_map_ptr";
 static const char *const AFLMapName = "__afl_area_ptr";
 
 namespace {
 
-class InstrumentDereferences : public ModulePass {
+class InstrumentMemAccesses : public ModulePass {
 private:
   IntegerType *Int8Ty;
   IntegerType *Int64Ty;
@@ -73,11 +73,11 @@ private:
   GlobalVariable *AFLMapPtr;
   Function *DbgInstrumentFn;
 
-  void doInstrumentDeref(Instruction *, Value *);
+  void doInstrumentMemAccess(Instruction *, Value *);
 
 public:
   static char ID;
-  InstrumentDereferences() : ModulePass(ID) {}
+  InstrumentMemAccesses() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
   bool doInitialization(Module &) override;
@@ -86,7 +86,7 @@ public:
 
 } // anonymous namespace
 
-char InstrumentDereferences::ID = 0;
+char InstrumentMemAccesses::ID = 0;
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
 static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
@@ -258,9 +258,9 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
   return PtrOperand;
 }
 
-/// Instrument the Instruction `I` that dereferences `Pointer`.
-void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
-  LLVM_DEBUG(dbgs() << "instrumenting " << *Pointer << " in " << *I << '\n');
+/// Instrument the Instruction `I` that accesses the memory at `Ptr`.
+void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
+  LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
 
   auto *M = I->getModule();
   IRBuilder<> IRB(I);
@@ -270,28 +270,28 @@ void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
   I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
                  MDNode::get(C, None));
 
-  // Cast the memory access pointer to an integer and mask out the pool
-  // identifier from the pointer by right-shifting by 32 bits
-  auto *PtrAsInt = IRB.CreatePtrToInt(Pointer, this->Int64Ty);
+  // Cast the memory access pointer to an integer and mask out the mspace tag
+  // from the pointer by right-shifting by 32 bits
+  auto *PtrAsInt = IRB.CreatePtrToInt(Ptr, this->Int64Ty);
   if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
     PtrAsIntInst->setMetadata(M->getMDKindID("nosanitize"),
                               MDNode::get(C, None));
   }
-  auto *PoolId = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
-                               this->TagMask);
-  auto *PoolIdCast =
-      IRB.CreateIntCast(PoolId, this->TagTy, /* isSigned */ false);
+  auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
+                                  this->TagMask);
+  auto *MSpaceTagCast =
+      IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false);
 
   if (ClDebugInstrument) {
     // For debugging
-    IRB.CreateCall(this->DbgInstrumentFn, PoolIdCast);
+    IRB.CreateCall(this->DbgInstrumentFn, MSpaceTagCast);
   } else {
     // Retrieve the allocation (def) site identifier from the appropriate
     // mapping
     auto *AllocSiteMap = IRB.CreateLoad(this->AllocSiteMapPtr);
     AllocSiteMap->setMetadata(M->getMDKindID("nosanitize"),
                               MDNode::get(C, None));
-    auto *AllocSiteMapIdx = IRB.CreateGEP(AllocSiteMap, PoolIdCast);
+    auto *AllocSiteMapIdx = IRB.CreateGEP(AllocSiteMap, MSpaceTagCast);
     auto *AllocSite = IRB.CreateLoad(AllocSiteMapIdx);
     AllocSite->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
@@ -323,14 +323,14 @@ void InstrumentDereferences::doInstrumentDeref(Instruction *I, Value *Pointer) {
                               MDNode::get(C, None));
   }
 
-  NumOfInstrumentedDereferences++;
+  NumOfInstrumentedMemAccesses++;
 }
 
-void InstrumentDereferences::getAnalysisUsage(AnalysisUsage &AU) const {
+void InstrumentMemAccesses::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool InstrumentDereferences::doInitialization(Module &M) {
+bool InstrumentMemAccesses::doInitialization(Module &M) {
   LLVMContext &C = M.getContext();
   const DataLayout &DL = M.getDataLayout();
 
@@ -346,7 +346,7 @@ bool InstrumentDereferences::doInitialization(Module &M) {
   return false;
 }
 
-bool InstrumentDereferences::runOnModule(Module &M) {
+bool InstrumentMemAccesses::runOnModule(Module &M) {
   assert((ClInstrumentReads || ClInstrumentWrites) &&
          "Must instrument either loads or stores");
 
@@ -454,32 +454,31 @@ bool InstrumentDereferences::runOnModule(Module &M) {
           continue;
         }
 
-        doInstrumentDeref(I, Addr);
+        doInstrumentMemAccess(I, Addr);
       } else {
         // TODO instrumentMemIntrinsic
       }
     }
   }
 
-  printStatistic(M, NumOfInstrumentedDereferences);
+  printStatistic(M, NumOfInstrumentedMemAccesses);
 
-  return NumOfInstrumentedDereferences > 0;
+  return NumOfInstrumentedMemAccesses > 0;
 }
 
-static RegisterPass<InstrumentDereferences>
-    X("fuzzalloc-instrument-derefs",
-      "Instrument pointer dereferences to find their allocation site", false,
-      false);
+static RegisterPass<InstrumentMemAccesses>
+    X("fuzzalloc-inst-mem-accesses",
+      "Instrument memory accesses to find their def site", false, false);
 
-static void registerInstrumentDereferencesPass(const PassManagerBuilder &,
-                                               legacy::PassManagerBase &PM) {
-  PM.add(new InstrumentDereferences());
+static void registerInstrumentMemAccessesPass(const PassManagerBuilder &,
+                                              legacy::PassManagerBase &PM) {
+  PM.add(new InstrumentMemAccesses());
 }
 
 static RegisterStandardPasses
-    RegisterInstrumentDereferencesPass(PassManagerBuilder::EP_OptimizerLast,
-                                       registerInstrumentDereferencesPass);
+    RegisterInstrumentMemAccessesPass(PassManagerBuilder::EP_OptimizerLast,
+                                      registerInstrumentMemAccessesPass);
 
-static RegisterStandardPasses RegisterInstrumentDereferencesPass0(
+static RegisterStandardPasses RegisterInstrumentMemAccessesPass0(
     PassManagerBuilder::EP_EnabledOnOptLevel0,
-    registerInstrumentDereferencesPass);
+    registerInstrumentMemAccessesPass);

@@ -29,11 +29,10 @@ extern "C" {
 /// Tag type
 typedef uint16_t tag_t;
 
-/// The default malloc/calloc/realloc tag. Used by default for non-instrumented
-/// code
+/// The default def site tag. Used by default for non-instrumented code
 #define DEFAULT_TAG 0
 
-/// ASan's quarantine region gets its own allocation region
+/// ASan's quarantine region gets its own mspace
 #define QUARANTINE_TAG 1
 
 /// LLVM instrumentation can start using tags starting from this value
@@ -42,8 +41,8 @@ typedef uint16_t tag_t;
 /// The maximum possible tag value
 #define TAG_MAX ((tag_t)~0)
 
-/// Extract the pool tag from the allocated pool
-tag_t get_pool_tag(void *p);
+/// Extract the mspace tag from the mspace pool
+tag_t get_mspace_tag(void *p);
 
 #if defined(__cplusplus)
 }

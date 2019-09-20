@@ -1,4 +1,4 @@
-add_subdirectory(InstrumentDerefs)
+add_subdirectory(InstrumentMemAccesses)
 add_subdirectory(HeapifyObjects)
 add_subdirectory(RewriteNews)
 add_subdirectory(TagDynamicAllocs)
