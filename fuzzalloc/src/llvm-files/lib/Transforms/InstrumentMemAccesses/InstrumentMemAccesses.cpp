@@ -54,7 +54,6 @@ STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
 
 static const char *const DbgInstrumentName = "__mem_access";
-static const char *const AllocSiteMapName = "__mspace_to_def_site_map_ptr";
 static const char *const AFLMapName = "__afl_area_ptr";
 
 namespace {
@@ -69,7 +68,6 @@ private:
   ConstantInt *TagMask;
 
   Value *ReadPCAsm;
-  GlobalVariable *AllocSiteMapPtr;
   GlobalVariable *AFLMapPtr;
   Function *DbgInstrumentFn;
 
@@ -286,15 +284,6 @@ void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
     // For debugging
     IRB.CreateCall(this->DbgInstrumentFn, MSpaceTagCast);
   } else {
-    // Retrieve the allocation (def) site identifier from the appropriate
-    // mapping
-    auto *AllocSiteMap = IRB.CreateLoad(this->AllocSiteMapPtr);
-    AllocSiteMap->setMetadata(M->getMDKindID("nosanitize"),
-                              MDNode::get(C, None));
-    auto *AllocSiteMapIdx = IRB.CreateGEP(AllocSiteMap, MSpaceTagCast);
-    auto *AllocSite = IRB.CreateLoad(AllocSiteMapIdx);
-    AllocSite->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
-
     // Use the PC as the use site identifier
     auto *PC = IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
                                  /* isSigned */ false);
@@ -306,7 +295,8 @@ void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
     // Hash the allocation site and use site to index into the bitmap
     //
     // XXX zext is necessary otherwise we end up using signed indices
-    auto *Hash = IRB.CreateZExt(IRB.CreateXor(AllocSite, PC), IRB.getInt32Ty());
+    auto *Hash =
+        IRB.CreateZExt(IRB.CreateXor(MSpaceTagCast, PC), IRB.getInt32Ty());
     auto *AFLMapIdx = IRB.CreateGEP(AFLMap, Hash);
 
     // Update the bitmap only if the allocation site is non-zero (i.e., the
@@ -314,10 +304,7 @@ void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
     auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
     CounterLoad->setMetadata(M->getMDKindID("nosanitize"),
                              MDNode::get(C, None));
-    auto *IncrAmount = IRB.CreateSelect(
-        IRB.CreateICmpEQ(AllocSite, Constant::getNullValue(this->TagTy)),
-        ConstantInt::get(this->Int8Ty, 0), ConstantInt::get(this->Int8Ty, 1));
-    auto *Incr = IRB.CreateAdd(CounterLoad, IncrAmount);
+    auto *Incr = IRB.CreateAdd(CounterLoad, ConstantInt::get(this->Int8Ty, 1));
     auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
     CounterStore->setMetadata(M->getMDKindID("nosanitize"),
                               MDNode::get(C, None));
@@ -358,10 +345,6 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   this->ReadPCAsm = InlineAsm::get(
       FunctionType::get(this->Int64Ty, /* isVarArg */ false), "leaq (%rip), $0",
       /* Constraints */ "=r", /* hasSideEffects */ false);
-  this->AllocSiteMapPtr =
-      new GlobalVariable(M, PointerType::getUnqual(this->TagTy),
-                         /* isConstant */ false, GlobalValue::ExternalLinkage,
-                         /* Initializer */ nullptr, AllocSiteMapName);
   this->AFLMapPtr = new GlobalVariable(
       M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
       GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
