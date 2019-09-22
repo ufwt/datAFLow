@@ -54,6 +54,7 @@ STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
 
 static const char *const DbgInstrumentName = "__mem_access";
+static const char *const DefSiteMapName = "__mspace_to_def_site_map_ptr";
 static const char *const AFLMapName = "__afl_area_ptr";
 
 namespace {
@@ -61,17 +62,21 @@ namespace {
 class InstrumentMemAccesses : public ModulePass {
 private:
   IntegerType *Int8Ty;
+  IntegerType *Int32Ty;
   IntegerType *Int64Ty;
   IntegerType *TagTy;
 
   ConstantInt *TagShiftSize;
   ConstantInt *TagMask;
+  ConstantInt *AFLInc;
+  ConstantInt *HashMul;
 
   Value *ReadPCAsm;
+  GlobalVariable *DefSiteMapPtr;
   GlobalVariable *AFLMapPtr;
   Function *DbgInstrumentFn;
 
-  void doInstrumentMemAccess(Instruction *, Value *);
+  void doInstrument(Instruction *, Value *);
 
 public:
   static char ID;
@@ -257,7 +262,7 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 }
 
 /// Instrument the Instruction `I` that accesses the memory at `Ptr`.
-void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
+void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
   LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
 
   auto *M = I->getModule();
@@ -284,9 +289,18 @@ void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
     // For debugging
     IRB.CreateCall(this->DbgInstrumentFn, MSpaceTagCast);
   } else {
+    // Retrieve the allocation (def) site identifier from the appropriate
+    // mapping
+    auto *DefSiteMap = IRB.CreateLoad(this->DefSiteMapPtr);
+    DefSiteMap->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+    auto *DefSiteMapIdx = IRB.CreateGEP(DefSiteMap, MSpaceTagCast);
+    auto *DefSite = IRB.CreateLoad(DefSiteMapIdx);
+    DefSite->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+
     // Use the PC as the use site identifier
-    auto *PC = IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
-                                 /* isSigned */ false);
+    auto *UseSite =
+        IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
+                          /* isSigned */ false);
 
     // Load the AFL bitmap
     auto *AFLMap = IRB.CreateLoad(this->AFLMapPtr);
@@ -295,16 +309,17 @@ void InstrumentMemAccesses::doInstrumentMemAccess(Instruction *I, Value *Ptr) {
     // Hash the allocation site and use site to index into the bitmap
     //
     // XXX zext is necessary otherwise we end up using signed indices
-    auto *Hash =
-        IRB.CreateZExt(IRB.CreateXor(MSpaceTagCast, PC), IRB.getInt32Ty());
-    auto *AFLMapIdx = IRB.CreateGEP(AFLMap, Hash);
+    auto *Hash = IRB.CreateSub(
+        IRB.CreateXor(IRB.CreateMul(this->HashMul, DefSite), UseSite), UseSite);
+    auto *AFLMapIdx =
+        IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, this->Int32Ty));
 
     // Update the bitmap only if the allocation site is non-zero (i.e., the
     // pointer dereferenced is a tagged pointer)
     auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
     CounterLoad->setMetadata(M->getMDKindID("nosanitize"),
                              MDNode::get(C, None));
-    auto *Incr = IRB.CreateAdd(CounterLoad, ConstantInt::get(this->Int8Ty, 1));
+    auto *Incr = IRB.CreateAdd(CounterLoad, this->AFLInc);
     auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
     CounterStore->setMetadata(M->getMDKindID("nosanitize"),
                               MDNode::get(C, None));
@@ -324,11 +339,15 @@ bool InstrumentMemAccesses::doInitialization(Module &M) {
   IntegerType *SizeTTy = DL.getIntPtrType(C);
 
   this->Int8Ty = Type::getInt8Ty(C);
+  this->Int32Ty = Type::getInt32Ty(C);
   this->Int64Ty = Type::getInt64Ty(C);
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
+
   this->TagShiftSize =
       ConstantInt::get(SizeTTy, NUM_USABLE_BITS - NUM_TAG_BITS);
   this->TagMask = ConstantInt::get(this->TagTy, (1 << NUM_TAG_BITS) - 1);
+  this->AFLInc = ConstantInt::get(this->Int8Ty, 1);
+  this->HashMul = ConstantInt::get(this->TagTy, 3);
 
   return false;
 }
@@ -345,6 +364,10 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   this->ReadPCAsm = InlineAsm::get(
       FunctionType::get(this->Int64Ty, /* isVarArg */ false), "leaq (%rip), $0",
       /* Constraints */ "=r", /* hasSideEffects */ false);
+  this->DefSiteMapPtr =
+      new GlobalVariable(M, PointerType::getUnqual(this->TagTy),
+                         /* isConstant */ false, GlobalValue::ExternalLinkage,
+                         /* Initializer */ nullptr, DefSiteMapName);
   this->AFLMapPtr = new GlobalVariable(
       M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
       GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
@@ -437,7 +460,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
           continue;
         }
 
-        doInstrumentMemAccess(I, Addr);
+        doInstrument(I, Addr);
       } else {
         // TODO instrumentMemIntrinsic
       }

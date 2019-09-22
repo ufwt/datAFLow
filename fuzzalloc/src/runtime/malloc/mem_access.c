@@ -14,19 +14,26 @@
 #include "types.h" // from afl
 #endif
 
+// Defined in malloc.c
+extern tag_t __mspace_to_def_site_map[TAG_MAX + 1];
+
 #if defined(AFL_INSTRUMENT)
 extern u8 *__afl_area_ptr;
 #endif
 
 void __mem_access(tag_t mspace_id) {
-  DEBUG_MSG("accessing mspace %#x from %p\n", mspace_id,
-            __builtin_return_address(0));
+  tag_t def_site = __mspace_to_def_site_map[mspace_id];
+  (void)def_site;
+
+  DEBUG_MSG("accessing mspace %#x (def site %#x) from %p\n", mspace_id,
+            def_site, __builtin_return_address(0));
 
 #if defined(AFL_INSTRUMENT)
   // Update the AFL bitmap based on the previous location (i.e., the mspace
   // identifier) and the current location (i.e., the address of the memory
   // access)
-  u32 map_idx = mspace_id ^ (u16)__builtin_return_address(0);
+  u16 use_site = (u16)__builtin_return_address(0);
+  u16 map_idx = ((3 * def_site) ^ use_site) - use_site;
 
   DEBUG_MSG("updating AFL bitmap at index %u\n", map_idx);
 

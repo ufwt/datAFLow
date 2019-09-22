@@ -33,6 +33,14 @@ static ptrdiff_t mspace_overhead = -1;
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
+/// Maps mspaces (created during malloc/calloc/reallocs) to def site tags
+/// (inserted during compilation).
+///
+/// The pointer is needed so that we can access the map from LLVM
+/// instrumentation.
+tag_t __mspace_to_def_site_map[TAG_MAX + 1];
+tag_t *__mspace_to_def_site_map_ptr = __mspace_to_def_site_map;
+
 //===-- Public helper functions -------------------------------------------===//
 
 /// Get the mspace tag associated with the given pointer
@@ -154,6 +162,7 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   DEBUG_MSG("mspace %#x (size %lu bytes) created for def site %#x\n",
             mspace_tag, mspace_size, def_site_tag);
   def_site_to_mspace_map[def_site_tag] = mspace_tag;
+  __mspace_to_def_site_map[mspace_tag] = def_site_tag;
 
   return space;
 }
