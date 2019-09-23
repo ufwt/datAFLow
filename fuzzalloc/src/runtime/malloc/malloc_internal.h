@@ -42,7 +42,7 @@ typedef uint8_t bool_t;
 
 /// Default mspace size (in bytes). Configurable at run-time via an environment
 /// variable
-#define DEFAULT_MSPACE_SIZE 500000000UL
+#define MSPACE_DEFAULT_SIZE 500000000UL
 
 /// The mspace size environment variable
 #define MSPACE_SIZE_ENV_VAR "FUZZALLOC_MSPACE_SIZE"
@@ -53,6 +53,6 @@ typedef uint8_t bool_t;
 
 /// Get the mspace address from an def site tag
 #define GET_MSPACE(tag)                                                        \
-  ((void *)((uintptr_t)tag << (NUM_USABLE_BITS - NUM_TAG_BITS)))
+  ((void *)(((uintptr_t)(tag)) << (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 #endif // MALLOC_INTERNAL_H

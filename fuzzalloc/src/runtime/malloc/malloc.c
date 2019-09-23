@@ -22,12 +22,21 @@
 /// mspaces
 static tag_t def_site_to_mspace_map[TAG_MAX + 1];
 
-// XXX should this be a constant?
+/// Page size determined at runtime by `getpagesize`
 static int page_size = 0;
 
+/// Constant determined on first allocation. Maximum size of an mspace,
+/// determined from the `MSPACE_SIZE_ENV_VAR` environment variable
 static size_t max_mspace_size = 0;
 
+/// Constant determined on first allocation. Distance between the `mmap`-ed
+/// memory and and the start of the `mspace` (which has some overhead associated
+/// with it)
 static ptrdiff_t mspace_overhead = -1;
+
+/// Constant determined on first allocation. The initial allocation size of an
+/// mspace (as determined from `mallinfo`)
+static int initial_mspace_uordblks = -1;
 
 #if defined(FUZZALLOC_USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -51,7 +60,7 @@ tag_t get_mspace_tag(void *p) {
 //===-- Private helper functions ------------------------------------------===//
 
 static size_t init_mspace_size(void) {
-  size_t psize = DEFAULT_MSPACE_SIZE;
+  size_t psize = MSPACE_DEFAULT_SIZE;
 
   char *mspace_size_str = getenv(MSPACE_SIZE_ENV_VAR);
   if (mspace_size_str) {
@@ -60,7 +69,7 @@ static size_t init_mspace_size(void) {
     if (psize == 0 || *endptr != '\0' || mspace_size_str == endptr) {
       DEBUG_MSG("unable to read %s environment variable: %s\n",
                 MSPACE_SIZE_ENV_VAR, mspace_size_str);
-      psize = DEFAULT_MSPACE_SIZE;
+      psize = MSPACE_DEFAULT_SIZE;
     }
   } else {
     DEBUG_MSG("%s not set. Using default mspace size\n", MSPACE_SIZE_ENV_VAR);
@@ -94,11 +103,14 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   // Adjust the allocation size so that it is properly aligned
   size_t mspace_size = align(max_mspace_size, MSPACE_ALIGNMENT);
 
-  // mmap the requested amount of memory. Note that the pages mapped will be
-  // inaccessible until we mprotect them
-  DEBUG_MSG("mmap-ing %lu bytes of memory...\n", mspace_size);
-  void *mmap_base =
-      mmap(NULL, mspace_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  // mmap the requested amount of memory at an address such that the upper bits
+  // of the mmap-ed memory match the def site tag
+  void *mmap_base_addr = GET_MSPACE(def_site_tag);
+
+  DEBUG_MSG("mmap-ing %lu bytes of memory at %p...\n", mspace_size,
+            mmap_base_addr);
+  void *mmap_base = mmap(mmap_base_addr, mspace_size, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if (mmap_base == (void *)(-1)) {
     DEBUG_MSG("mmap failed: %s\n", strerror(errno));
     errno = ENOMEM;
@@ -110,48 +122,29 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   }
   DEBUG_MSG("mmap base at %p\n", mmap_base);
 
-  // Adjust the mmap'd memory so that it is aligned with a valid mspace tag. If
-  // necessary, unmap wasted memory between the original mapping and the
-  // aligned mapping. munmap works at a page granularity, meaning all pages
-  // containing a part of the indicated range are unmapped. To prevent
-  // SIGSEGVs by unmapping a page that is partly used, only unmap at the page
-  // level
-  void *mspace_base = (void *)align((uintptr_t)mmap_base, MSPACE_ALIGNMENT);
-
-  ptrdiff_t adjust = (mspace_base - mmap_base) / page_size * page_size;
-  if (adjust > 0) {
-    munmap(mmap_base, adjust);
-    DEBUG_MSG("unmapped %lu bytes before mspace base (new mspace base at %p)\n",
-              adjust, mspace_base);
-
-    mspace_size -= adjust;
-  }
-
-  mspace_size = mspace_size > max_mspace_size ? max_mspace_size : mspace_size;
-
-  // Make the mapped pages accessible
-  if (mprotect(mspace_base, mspace_size, PROT_READ | PROT_WRITE)) {
-    DEBUG_MSG("mprotect failed for mspace at %p (length %lu bytes)\n",
-              mspace_base, mspace_size);
-    abort();
-  }
-
-  DEBUG_MSG("creating mspace with base %p (size %lu bytes)\n", mspace_base,
+  // Create the mspace on the mmap-ed memory
+  DEBUG_MSG("creating mspace with base %p (size %lu bytes)\n", mmap_base,
             mspace_size);
 #if defined(FUZZALLOC_USE_LOCKS)
-  mspace space = create_mspace_with_base(mspace_base, mspace_size, TRUE);
+  mspace space = create_mspace_with_base(mmap_base, mspace_size, TRUE);
 #else
-  mspace space = create_mspace_with_base(mspace_base, mspace_size, FALSE);
+  mspace space = create_mspace_with_base(mmap_base, mspace_size, FALSE);
 #endif
   if (!space) {
     DEBUG_MSG("create_mspace_with_base failed at base %p (size %lu bytes)\n",
-              mspace_base, mspace_size);
+              mmap_base, mspace_size);
     abort();
   }
 
-  // This should also, also only happen once
+  // Setting the initial mspace uordblks and overhead should only ever happen
+  // once
+  if (initial_mspace_uordblks == -1) {
+    initial_mspace_uordblks = mspace_mallinfo(space).uordblks;
+    DEBUG_MSG("mspace initial uordblks is %u bytes\n", initial_mspace_uordblks);
+  }
+
   if (mspace_overhead == -1) {
-    mspace_overhead = space - mspace_base;
+    mspace_overhead = space - mmap_base;
     DEBUG_MSG("mspace overhead is %lu bytes\n", mspace_overhead);
   }
 
@@ -259,5 +252,21 @@ void free(void *ptr) {
   mspace space = GET_MSPACE(mspace_tag) + mspace_overhead;
 
   DEBUG_MSG("mspace_free(%p, %p)\n", space, ptr);
-  return mspace_free(space, ptr);
+  mspace_free(space, ptr);
+
+  // Destroy the mspace when it returns to its original allocation size
+  if (mspace_mallinfo(space).uordblks == initial_mspace_uordblks) {
+    size_t mspace_size = mspace_footprint(space);
+
+    DEBUG_MSG("mspace is empty. Destroying...\n");
+    destroy_mspace(space);
+
+    if (munmap(GET_MSPACE(mspace_tag), mspace_size) == -1) {
+      DEBUG_MSG("munmap failed: %s\n", strerror(errno));
+      abort();
+    }
+
+    tag_t def_site_tag = __mspace_to_def_site_map[mspace_tag];
+    def_site_to_mspace_map[def_site_tag] = 0;
+  }
 }
