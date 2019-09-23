@@ -20,7 +20,7 @@
 
 /// Maps malloc/calloc/realloc def site tags (inserted during compilation) to
 /// mspaces
-static tag_t def_site_to_mspace_map[TAG_MAX + 1];
+static uint8_t mapped_def_sites[TAG_MAX + 1];
 
 /// Page size determined at runtime by `getpagesize`
 static int page_size = 0;
@@ -41,14 +41,6 @@ static int initial_mspace_uordblks = -1;
 #if defined(FUZZALLOC_USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
-
-/// Maps mspaces (created during malloc/calloc/reallocs) to def site tags
-/// (inserted during compilation).
-///
-/// The pointer is needed so that we can access the map from LLVM
-/// instrumentation.
-tag_t __mspace_to_def_site_map[TAG_MAX + 1];
-tag_t *__mspace_to_def_site_map_ptr = __mspace_to_def_site_map;
 
 //===-- Public helper functions -------------------------------------------===//
 
@@ -151,11 +143,9 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   // This is the first memory allocation for this def site, so save the mspace
   // tag into the mspace map (and likewise the def site tag into the def site
   // map)
-  tag_t mspace_tag = get_mspace_tag(space);
-  DEBUG_MSG("mspace %#x (size %lu bytes) created for def site %#x\n",
-            mspace_tag, mspace_size, def_site_tag);
-  def_site_to_mspace_map[def_site_tag] = mspace_tag;
-  __mspace_to_def_site_map[mspace_tag] = def_site_tag;
+  DEBUG_MSG("mspace (size %lu bytes) created for def site %#x\n", mspace_size,
+            def_site_tag);
+  mapped_def_sites[def_site_tag] = TRUE;
 
   return space;
 }
@@ -171,9 +161,8 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
   // Need to ensure that no-one else can update the def site to mspace mapping
   // while we are using it
   ACQUIRE_MALLOC_GLOBAL_LOCK();
-  tag_t mspace_tag = def_site_to_mspace_map[def_site_tag];
 
-  if (mspace_tag == 0) {
+  if (mapped_def_sites[def_site_tag] == FALSE) {
     mspace space = create_fuzzalloc_mspace(def_site_tag);
 
     // Release the global lock - we've updated the def site to mspace mapping
@@ -188,7 +177,7 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
     // Reuse of an existing def site. Try and fit the new memory request into
     // the existing mspace
     assert(mspace_overhead >= 0);
-    mspace space = GET_MSPACE(mspace_tag) + mspace_overhead;
+    mspace space = GET_MSPACE(def_site_tag) + mspace_overhead;
 
     mem = mspace_malloc(space, size);
     DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
@@ -202,12 +191,11 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
             nmemb, size, __builtin_return_address(0));
 
   mspace space;
-  tag_t mspace_tag = def_site_to_mspace_map[def_site_tag];
 
-  if (mspace_tag == 0) {
+  if (mapped_def_sites[def_site_tag] == FALSE) {
     space = create_fuzzalloc_mspace(def_site_tag);
   } else {
-    space = GET_MSPACE(mspace_tag) + mspace_overhead;
+    space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
   void *mem = mspace_calloc(space, nmemb, size);
@@ -266,7 +254,6 @@ void free(void *ptr) {
       abort();
     }
 
-    tag_t def_site_tag = __mspace_to_def_site_map[mspace_tag];
-    def_site_to_mspace_map[def_site_tag] = 0;
+    mapped_def_sites[mspace_tag] = FALSE;
   }
 }

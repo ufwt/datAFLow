@@ -54,7 +54,6 @@ STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
 
 static const char *const DbgInstrumentName = "__mem_access";
-static const char *const DefSiteMapName = "__mspace_to_def_site_map_ptr";
 static const char *const AFLMapName = "__afl_area_ptr";
 
 namespace {
@@ -72,7 +71,6 @@ private:
   ConstantInt *HashMul;
 
   Value *ReadPCAsm;
-  GlobalVariable *DefSiteMapPtr;
   GlobalVariable *AFLMapPtr;
   Function *DbgInstrumentFn;
 
@@ -282,21 +280,13 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
   }
   auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                   this->TagMask);
-  auto *MSpaceTagCast =
+  auto *DefSite =
       IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false);
 
   if (ClDebugInstrument) {
     // For debugging
-    IRB.CreateCall(this->DbgInstrumentFn, MSpaceTagCast);
+    IRB.CreateCall(this->DbgInstrumentFn, DefSite);
   } else {
-    // Retrieve the allocation (def) site identifier from the appropriate
-    // mapping
-    auto *DefSiteMap = IRB.CreateLoad(this->DefSiteMapPtr);
-    DefSiteMap->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
-    auto *DefSiteMapIdx = IRB.CreateGEP(DefSiteMap, MSpaceTagCast);
-    auto *DefSite = IRB.CreateLoad(DefSiteMapIdx);
-    DefSite->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
-
     // Use the PC as the use site identifier
     auto *UseSite =
         IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
@@ -364,10 +354,6 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   this->ReadPCAsm = InlineAsm::get(
       FunctionType::get(this->Int64Ty, /* isVarArg */ false), "leaq (%rip), $0",
       /* Constraints */ "=r", /* hasSideEffects */ false);
-  this->DefSiteMapPtr =
-      new GlobalVariable(M, PointerType::getUnqual(this->TagTy),
-                         /* isConstant */ false, GlobalValue::ExternalLinkage,
-                         /* Initializer */ nullptr, DefSiteMapName);
   this->AFLMapPtr = new GlobalVariable(
       M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
       GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
