@@ -5,7 +5,6 @@
 
 import argparse
 import os
-import sys
 import shlex
 import shutil
 import subprocess
@@ -24,7 +23,7 @@ def ex(cmd):
     raising an exception otherwise."""
 
     p = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+                         stderr=subprocess.PIPE)
     p.wait()
     if p.returncode:
         print("Error while executing command '%s': %d" % (cmd, p.returncode))
@@ -141,17 +140,16 @@ def prelink_libs(libs, outdir, existing_mappings, baseaddr):
 
 def main():
     parser = argparse.ArgumentParser(description="Shrink address space of the "
-            "given binary by prelinking all dependency libraries.")
+                                     "given binary by prelinking all "
+                                     "dependency libraries.")
     parser.add_argument("binary", help="The ELF binary")
     parser.add_argument("--in-place", help="Modify binary in-place",
-            action="store_true", default=False)
-    parser.add_argument("--set-rpath",
-            help="Set RPATH of (new) binary and preload lib to out-dir",
-            action="store_true", default=False)
-    parser.add_argument("--preload-lib", default="libshrink-preload.so",
-            help="Library used via LD_PRELOAD that moves stack and mmap_base")
+                        action="store_true", default=False)
+    parser.add_argument("--set-rpath", action="store_true", default=False,
+                        help="Set RPATH of (new) binary and preload lib to "
+                             "out-dir")
     parser.add_argument("--out-dir", default="",
-            help="Output directory for prelinked libs")
+                        help="Output directory for prelinked libs")
     parser.add_argument("--base-addr", default="0xf0ffffff",
                         help="New base address for libs")
     args = parser.parse_args()
@@ -171,9 +169,7 @@ def main():
     # Determine all dependency libraries
     libs = set()
     libs.update(get_library_deps(args.binary))
-    libs.update(get_library_deps(args.preload_lib))
     libs.add(interp)
-    libs.add(args.preload_lib)
 
     # The magic, construct new addr space by prelinking all dependency libs
     prelink_libs(libs, outdir, binary_mappings, int(args.base_addr, 16))
@@ -191,8 +187,6 @@ def main():
     if args.set_rpath:
         absoutdir = os.path.realpath(outdir)
         ex("patchelf --set-rpath \"%s\" \"%s\"" % (absoutdir, newprog))
-        newpreload = os.path.join(outdir, os.path.basename(args.preload_lib))
-        ex("patchelf --set-rpath \"%s\" \"%s\"" % (absoutdir, newpreload))
 
 if __name__ == '__main__':
     main()
