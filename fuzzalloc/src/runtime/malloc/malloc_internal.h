@@ -51,8 +51,12 @@ typedef uint8_t bool_t;
 /// address are unique to a single mspace
 #define MSPACE_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
 
-/// Get the mspace address from an def site tag
+/// Get the mspace address from a def site tag
 #define GET_MSPACE(tag)                                                        \
   ((void *)(((uintptr_t)(tag)) << (NUM_USABLE_BITS - NUM_TAG_BITS)))
+
+/// Get the def site tag associated with a pointer
+#define GET_DEF_SITE_TAG(p)                                                    \
+  ((tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
 
 #endif // MALLOC_INTERNAL_H

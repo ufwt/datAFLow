@@ -298,9 +298,16 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
 
     // Hash the allocation site and use site to index into the bitmap
     //
+    // Hash algorithm: (3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
+    //
     // XXX zext is necessary otherwise we end up using signed indices
     auto *Hash = IRB.CreateSub(
-        IRB.CreateXor(IRB.CreateMul(this->HashMul, DefSite), UseSite), UseSite);
+        IRB.CreateXor(IRB.CreateMul(this->HashMul,
+                                    IRB.CreateSub(DefSite, ConstantInt::get(
+                                                               this->TagTy,
+                                                               DEFAULT_TAG))),
+                      UseSite),
+        UseSite);
     auto *AFLMapIdx =
         IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, this->Int32Ty));
 

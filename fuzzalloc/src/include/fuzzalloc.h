@@ -44,11 +44,7 @@ typedef uint16_t tag_t;
 #define INST_TAG_START (QUARANTINE_TAG + 1)
 
 /// The maximum possible tag value
-//#define TAG_MAX ((tag_t)(~0))
-#define TAG_MAX ((tag_t)0x7FF)
-
-/// Extract the mspace tag from the mspace pool
-tag_t get_mspace_tag(void *p);
+#define TAG_MAX ((tag_t)0x7FFF)
 
 #if defined(__cplusplus)
 }

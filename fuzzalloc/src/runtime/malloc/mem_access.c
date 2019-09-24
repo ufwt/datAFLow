@@ -19,14 +19,15 @@ extern u8 *__afl_area_ptr;
 #endif
 
 void __mem_access(tag_t def_site) {
-  DEBUG_MSG("accessing def site %#x from %p\n", def_site, __builtin_return_address(0));
+  DEBUG_MSG("accessing def site %#x from %p\n", def_site,
+            __builtin_return_address(0));
 
 #if defined(AFL_INSTRUMENT)
   // Update the AFL bitmap based on the previous location (i.e., the mspace
   // identifier) and the current location (i.e., the address of the memory
   // access)
   u16 use_site = (u16)__builtin_return_address(0);
-  u16 map_idx = ((3 * def_site) ^ use_site) - use_site;
+  u16 map_idx = ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site;
 
   DEBUG_MSG("updating AFL bitmap at index %u\n", map_idx);
 

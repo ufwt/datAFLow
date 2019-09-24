@@ -42,13 +42,6 @@ static int initial_mspace_uordblks = -1;
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-//===-- Public helper functions -------------------------------------------===//
-
-/// Get the mspace tag associated with the given pointer
-tag_t get_mspace_tag(void *p) {
-  return (tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS));
-}
-
 //===-- Private helper functions ------------------------------------------===//
 
 static size_t init_mspace_size(void) {
@@ -156,32 +149,27 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
   DEBUG_MSG("__tagged_malloc(%#x, %lu) called from %p\n", def_site_tag, size,
             __builtin_return_address(0));
 
-  void *mem = NULL;
+  mspace space;
 
-  // Need to ensure that no-one else can update the def site to mspace mapping
-  // while we are using it
+  // Need to ensure that no-one else can update the mapped def sites while we
+  // are doing our own mapping
   ACQUIRE_MALLOC_GLOBAL_LOCK();
 
   if (mapped_def_sites[def_site_tag] == FALSE) {
-    mspace space = create_fuzzalloc_mspace(def_site_tag);
+    space = create_fuzzalloc_mspace(def_site_tag);
 
-    // Release the global lock - we've updated the def site to mspace mapping
+    // Release the global lock - we've updated the def site map
     RELEASE_MALLOC_GLOBAL_LOCK();
-
-    mem = mspace_malloc(space, size);
-    DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
   } else {
     // Don't need the global lock anymore - the mspace lock will take care of it
     RELEASE_MALLOC_GLOBAL_LOCK();
 
-    // Reuse of an existing def site. Try and fit the new memory request into
-    // the existing mspace
     assert(mspace_overhead >= 0);
-    mspace space = GET_MSPACE(def_site_tag) + mspace_overhead;
-
-    mem = mspace_malloc(space, size);
-    DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
+    space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
+
+  void *mem = mspace_malloc(space, size);
+  DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
 
   return mem;
 }
@@ -192,9 +180,20 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
 
   mspace space;
 
+  // Need to ensure that no-one else can update the mapped def sites while we
+  // are doing our own mapping
+  ACQUIRE_MALLOC_GLOBAL_LOCK();
+
   if (mapped_def_sites[def_site_tag] == FALSE) {
     space = create_fuzzalloc_mspace(def_site_tag);
+
+    // Release the global lock - we've updated the def site map
+    RELEASE_MALLOC_GLOBAL_LOCK();
   } else {
+    // Don't need the global lock anymore - the mspace lock will take care of it
+    RELEASE_MALLOC_GLOBAL_LOCK();
+
+    assert(mspace_overhead >= 0);
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
@@ -212,10 +211,17 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
   mspace space;
 
   if (!ptr) {
+    // Need to ensure that no-one else can update the mapped def sites while we
+    // are doing our own mapping
+    ACQUIRE_MALLOC_GLOBAL_LOCK();
+
     space = create_fuzzalloc_mspace(def_site_tag);
+
+    // Release the global lock - we've updated the def site map
+    RELEASE_MALLOC_GLOBAL_LOCK();
   } else {
-    tag_t mspaceag = get_mspace_tag(ptr);
-    space = GET_MSPACE(mspaceag) + mspace_overhead;
+    assert(mspace_overhead >= 0);
+    space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
   void *mem = mspace_realloc(space, ptr, size);
@@ -236,8 +242,11 @@ void *realloc(void *ptr, size_t size) {
 
 void free(void *ptr) {
   DEBUG_MSG("free(%p) called from %p\n", ptr, __builtin_return_address(0));
-  tag_t mspace_tag = get_mspace_tag(ptr);
-  mspace space = GET_MSPACE(mspace_tag) + mspace_overhead;
+
+  tag_t def_site_tag = GET_DEF_SITE_TAG(ptr);
+
+  assert(mspace_overhead >= 0);
+  mspace space = GET_MSPACE(def_site_tag) + mspace_overhead;
 
   DEBUG_MSG("mspace_free(%p, %p)\n", space, ptr);
   mspace_free(space, ptr);
@@ -249,11 +258,11 @@ void free(void *ptr) {
     DEBUG_MSG("mspace is empty. Destroying...\n");
     destroy_mspace(space);
 
-    if (munmap(GET_MSPACE(mspace_tag), mspace_size) == -1) {
+    if (munmap(GET_MSPACE(def_site_tag), mspace_size) == -1) {
       DEBUG_MSG("munmap failed: %s\n", strerror(errno));
       abort();
     }
 
-    mapped_def_sites[mspace_tag] = FALSE;
+    mapped_def_sites[def_site_tag] = FALSE;
   }
 }
