@@ -26,6 +26,7 @@ mkdir -p fuzzalloc-debug && \
 
 # Add helper scripts
 ln -sf ${SRC_DIR}/../scripts fuzzalloc-scripts
+ln -sf ${SRC_DIR}/wrap_prelink.sh
 
 # Add config files and cleanup previous results
 for CONFIG in $(ls ${CONFIG_DIR}); do
