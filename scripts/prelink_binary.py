@@ -15,7 +15,7 @@ from elftools.elf.segments import InterpSegment
 
 
 LDD_REGEX = re.compile(r".*.so.* => (/.*\.so[^ ]*)")
-LDD_NOT_FOUND_REGEX = re.compile(r".*.so.* => not found")
+LDD_NOT_FOUND_REGEX = re.compile(r"(.*.so.*) => not found")
 
 
 def ex(cmd):
@@ -84,8 +84,9 @@ def get_library_deps(library):
     for l in ldd.split("\n"):
         m = LDD_NOT_FOUND_REGEX.search(l)
         if m:
+            missing_lib = m.group(1).strip()
             raise Exception("Could not find %s - check LD_LIBRARY_PATH" %
-                            library)
+                            missing_lib)
 
         m = LDD_REGEX.search(l)
         if not m:
@@ -158,7 +159,7 @@ def main():
     if not args.out_dir:
         outdir = os.path.abspath("prelink-%s" % args.binary.replace("/", "_"))
 
-    print("Using output dir %s" % outdir)
+    print("Using output dir %s for %s" % (outdir, args.binary))
     if os.path.isdir(outdir):
         shutil.rmtree(outdir)
     os.mkdir(outdir)
@@ -176,6 +177,8 @@ def main():
 
     # Update the loader to use our prelinked version
     if args.in_place:
+        # Create a backup of the original binary
+        shutil.copy(args.binary, '%s.bak' % args.binary)
         newprog = args.binary
     else:
         newprog = os.path.join(outdir, os.path.basename(args.binary))
