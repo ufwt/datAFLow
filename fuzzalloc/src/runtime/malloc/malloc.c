@@ -247,6 +247,10 @@ void *realloc(void *ptr, size_t size) {
 void free(void *ptr) {
   DEBUG_MSG("free(%p) called from %p\n", ptr, __builtin_return_address(0));
 
+  if (!ptr) {
+      return;
+  }
+
   tag_t def_site_tag = GET_DEF_SITE_TAG(ptr);
 
   assert(mspace_overhead >= 0);
