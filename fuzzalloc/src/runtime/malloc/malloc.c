@@ -34,10 +34,6 @@ static size_t max_mspace_size = 0;
 /// with it)
 static ptrdiff_t mspace_overhead = -1;
 
-/// Constant determined on first allocation. The initial allocation size of an
-/// mspace (as determined from `mallinfo`)
-static int initial_mspace_uordblks = -1;
-
 #if defined(FUZZALLOC_USE_LOCKS)
 static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -121,13 +117,7 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
     abort();
   }
 
-  // Setting the initial mspace uordblks and overhead should only ever happen
-  // once
-  if (initial_mspace_uordblks == -1) {
-    initial_mspace_uordblks = mspace_mallinfo(space).uordblks;
-    DEBUG_MSG("mspace initial uordblks is %u bytes\n", initial_mspace_uordblks);
-  }
-
+  // Setting the mspace overhead should only ever happen once
   if (mspace_overhead == -1) {
     mspace_overhead = space - mmap_base;
     DEBUG_MSG("mspace overhead is %lu bytes\n", mspace_overhead);
@@ -259,18 +249,5 @@ void free(void *ptr) {
   DEBUG_MSG("mspace_free(%p, %p)\n", space, ptr);
   mspace_free(space, ptr);
 
-  // Destroy the mspace when it returns to its original allocation size
-  if (mspace_mallinfo(space).uordblks == initial_mspace_uordblks) {
-    size_t mspace_size = mspace_footprint(space);
-
-    DEBUG_MSG("mspace is empty. Destroying...\n");
-    destroy_mspace(space);
-
-    if (munmap(GET_MSPACE(def_site_tag), mspace_size) == -1) {
-      DEBUG_MSG("munmap failed: %s\n", strerror(errno));
-      abort();
-    }
-
-    mapped_def_sites[def_site_tag] = FALSE;
-  }
+  // TODO destroy mspace?
 }
