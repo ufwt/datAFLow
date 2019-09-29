@@ -298,9 +298,9 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
 
     // Hash the allocation site and use site to index into the bitmap
     //
-    // Hash algorithm: (3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
+    // zext is necessary otherwise we end up using signed indices
     //
-    // XXX zext is necessary otherwise we end up using signed indices
+    // Hash algorithm: ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
     auto *Hash = IRB.CreateSub(
         IRB.CreateXor(IRB.CreateMul(this->HashMul,
                                     IRB.CreateSub(DefSite, ConstantInt::get(
@@ -311,8 +311,7 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
     auto *AFLMapIdx =
         IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, this->Int32Ty));
 
-    // Update the bitmap only if the allocation site is non-zero (i.e., the
-    // pointer dereferenced is a tagged pointer)
+    // Update the bitmap only if the def site is not the default tag
     auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
     CounterLoad->setMetadata(M->getMDKindID("nosanitize"),
                              MDNode::get(C, None));
