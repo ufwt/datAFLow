@@ -51,5 +51,6 @@ set(SVF_SOURCES
 
 include_directories(${SVF_PATH}/include)
 
-add_llvm_loadable_module(fuzzalloc-svf-analysis ${SVF_SOURCES} SVFAnalysis.cpp
+add_llvm_loadable_module(fuzzalloc-svf-analysis
+                         ${SVF_SOURCES} SVFAnalysis.cpp
                          PLUGIN_TOOL opt)
