@@ -47,10 +47,6 @@ typedef uint8_t bool_t;
 /// The mspace size environment variable
 #define MSPACE_SIZE_ENV_VAR "FUZZALLOC_MSPACE_SIZE"
 
-/// Mspace alignment. This ensures that the upper \p NUM_TAG_BITS of the mspace
-/// address are unique to a single mspace
-#define MSPACE_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
-
 /// Get the mspace address from a def site tag
 #define GET_MSPACE(tag)                                                        \
   ((void *)(((uintptr_t)(tag)) << (NUM_USABLE_BITS - NUM_TAG_BITS)))

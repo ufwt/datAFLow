@@ -82,7 +82,7 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   DEBUG_MSG("creating new mspace\n");
 
   // Adjust the allocation size so that it is properly aligned
-  size_t mspace_size = align(max_mspace_size, MSPACE_ALIGNMENT);
+  size_t mspace_size = align(max_mspace_size, page_size);
 
   // mmap the requested amount of memory at an address such that the upper bits
   // of the mmap-ed memory match the def site tag
