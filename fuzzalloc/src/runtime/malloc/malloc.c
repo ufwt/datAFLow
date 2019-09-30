@@ -25,9 +25,9 @@ static uint8_t mapped_def_sites[TAG_MAX + 1];
 /// Page size determined at runtime by `getpagesize`
 static int page_size = 0;
 
-/// Constant determined on first allocation. Maximum size of an mspace,
-/// determined from the `MSPACE_SIZE_ENV_VAR` environment variable
-static size_t max_mspace_size = 0;
+/// Constant determined on first allocation. Size of an mspace, determined from
+/// the `MSPACE_SIZE_ENV_VAR` environment variable
+static size_t mspace_size = 0;
 
 /// Constant determined on first allocation. Distance between the `mmap`-ed
 /// memory and and the start of the `mspace` (which has some overhead associated
@@ -39,6 +39,10 @@ static pthread_mutex_t malloc_global_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 //===-- Private helper functions ------------------------------------------===//
+
+static inline uintptr_t align(uintptr_t n, size_t alignment) {
+  return (n + alignment - 1) & -alignment;
+}
 
 static size_t init_mspace_size(void) {
   size_t psize = MSPACE_DEFAULT_SIZE;
@@ -56,12 +60,12 @@ static size_t init_mspace_size(void) {
     DEBUG_MSG("%s not set. Using default mspace size\n", MSPACE_SIZE_ENV_VAR);
   }
 
+  // Ensure the mspace size so that it is correctly aligned
+  assert(page_size);
+  psize = align(psize, page_size);
+
   DEBUG_MSG("using mspace size %lu bytes\n", psize);
   return psize;
-}
-
-static inline uintptr_t align(uintptr_t n, size_t alignment) {
-  return (n + alignment - 1) & -alignment;
 }
 
 static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
@@ -74,15 +78,12 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   //
   // XXX When used with ASan and this is first called, environ does not seem
   // to have been initialized yet, so we'll always use the default mspace size
-  if (!max_mspace_size) {
-    max_mspace_size = init_mspace_size();
+  if (!mspace_size) {
+    mspace_size = init_mspace_size();
   }
 
   // This def site has not been used before. Create a new mspace for this site
   DEBUG_MSG("creating new mspace\n");
-
-  // Adjust the allocation size so that it is properly aligned
-  size_t mspace_size = align(max_mspace_size, page_size);
 
   // mmap the requested amount of memory at an address such that the upper bits
   // of the mmap-ed memory match the def site tag
