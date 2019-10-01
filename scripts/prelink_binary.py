@@ -19,7 +19,7 @@ LDD_NOT_FOUND_REGEX = re.compile(r"(.*.so.*) => not found")
 
 
 def ex(cmd):
-    """Execute a given command (string), returning stdout if succesfull and
+    """Execute a given command (string), returning stdout if succesful and
     raising an exception otherwise."""
 
     p = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,
@@ -115,8 +115,6 @@ def prelink_libs(libs, outdir, existing_mappings, baseaddr):
                 size = seg['p_vaddr'] + seg['p_memsz']
 
             baseaddr -= size
-            if baseaddr < 0:
-                raise Exception("Base address for %s has gone negative" % lib)
 
             # Search for a slot that is not overlapping with anything else and
             # aligned properly
@@ -130,13 +128,16 @@ def prelink_libs(libs, outdir, existing_mappings, baseaddr):
                 else:
                     found = True
 
-            print("Found 0x%08x - 0x%08x for %s" % (baseaddr, baseaddr + size,
-                                                    lib))
+            if baseaddr < 0:
+                raise Exception("Invalid base address %#x for %s" % (baseaddr,
+                                lib))
+
+            print("Found %#08x - %#08x for %s" % (baseaddr, baseaddr + size,
+                  lib))
 
             newlib = os.path.join(outdir, os.path.basename(lib))
             shutil.copy(lib, newlib)
-            ex("prelink -r 0x%x \"%s\"" % (baseaddr, newlib))
-
+            ex("prelink -r %#x \"%s\"" % (baseaddr, newlib))
 
 
 def main():
@@ -151,7 +152,7 @@ def main():
                              "out-dir")
     parser.add_argument("--out-dir", default="",
                         help="Output directory for prelinked libs")
-    parser.add_argument("--base-addr", default="0xf0ffffff",
+    parser.add_argument("--base-addr", default="0xffffffff",
                         help="New base address for libs")
     args = parser.parse_args()
 

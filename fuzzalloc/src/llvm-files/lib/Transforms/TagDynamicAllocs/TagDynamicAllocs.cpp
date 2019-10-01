@@ -47,7 +47,7 @@ using namespace llvm;
 #define DEBUG_TYPE "fuzzalloc-tag-dyn-allocs"
 
 // Adapted from http://c-faq.com/lib/randrange.html
-#define RAND(x, y) ((tag_t)(x + random() / (RAND_MAX / (y - x + 1) + 1)))
+#define RAND(x, y) ((tag_t)((x) + random() / (RAND_MAX / ((y) - (x) + 1) + 1)))
 
 static cl::opt<std::string>
     ClLogPath("fuzzalloc-tag-log",
