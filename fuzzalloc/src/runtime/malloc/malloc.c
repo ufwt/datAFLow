@@ -62,24 +62,24 @@ static size_t init_mspace_size(void) {
 
   // Ensure the mspace size so that it is correctly aligned
   assert(page_size);
-  psize = align(psize, page_size);
-
-  DEBUG_MSG("using mspace size %lu bytes\n", psize);
-  return psize;
+  return align(psize, page_size);
 }
 
 static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   // This should only happen once
-  if (!page_size) {
+  if (__builtin_expect(page_size == 0, FALSE)) {
     page_size = getpagesize();
+    DEBUG_MSG("using page size %d bytes\n", page_size);
   }
 
   // This should also only happen once
   //
   // XXX When used with ASan and this is first called, environ does not seem
   // to have been initialized yet, so we'll always use the default mspace size
-  if (!mspace_size) {
+  if (__builtin_expect(mspace_size == 0, FALSE)) {
     mspace_size = init_mspace_size();
+    assert(mspace_size <= MSPACE_ALIGNMENT);
+    DEBUG_MSG("using mspace size %lu bytes\n", mspace_size);
   }
 
   // This def site has not been used before. Create a new mspace for this site
@@ -96,9 +96,6 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   if (mmap_base == (void *)(-1)) {
     DEBUG_MSG("mmap failed: %s\n", strerror(errno));
     errno = ENOMEM;
-
-    // Returning - must release the global lock
-    RELEASE_MALLOC_GLOBAL_LOCK();
 
     return NULL;
   }
@@ -159,6 +156,14 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
+  if (__builtin_expect(size > mspace_size, FALSE)) {
+    DEBUG_MSG("malloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
+              size, mspace_size);
+    errno = ENOMEM;
+
+    return NULL;
+  }
+
   void *mem = mspace_malloc(space, size);
   DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
 
@@ -186,6 +191,14 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
 
     assert(mspace_overhead >= 0);
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
+  }
+
+  if (__builtin_expect(nmemb > mspace_size / size, FALSE)) {
+    DEBUG_MSG("calloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
+              nmemb * size, mspace_size);
+    errno = ENOMEM;
+
+    return NULL;
   }
 
   void *mem = mspace_calloc(space, nmemb, size);
@@ -219,6 +232,14 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
+  if (__builtin_expect(size > mspace_size, FALSE)) {
+    DEBUG_MSG("realloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
+              size, mspace_size);
+    errno = ENOMEM;
+
+    return NULL;
+  }
+
   void *mem = mspace_realloc(space, ptr, size);
   DEBUG_MSG("mspace_realloc(%p, %p, %lu) returned %p\n", space, ptr, size, mem);
 
@@ -239,7 +260,7 @@ void free(void *ptr) {
   DEBUG_MSG("free(%p) called from %p\n", ptr, __builtin_return_address(0));
 
   if (!ptr) {
-      return;
+    return;
   }
 
   tag_t def_site_tag = GET_DEF_SITE_TAG(ptr);
