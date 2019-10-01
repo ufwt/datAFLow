@@ -33,4 +33,7 @@ for CONFIG in $(ls ${CONFIG_DIR}); do
   runspec --config ${CONFIG} --action=scrub all
 done
 
+# Cleanup previous address space shrinkages
+rm -rf prefix-*
+
 echo "Setup complete! Now run runspec --config=fuzzalloc --tune=base --noreportable all_except_fortran"
