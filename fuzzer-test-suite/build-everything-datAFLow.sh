@@ -46,11 +46,24 @@ build_target() {
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
+  # Prelink target
+  RUNDIR="${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}"
+  echo "Prelinking ${TARGET}"
+  (export LD_LIBRARY_PATH=${FUZZALLOC_RELEASE_BUILD_DIR}/src/runtime/malloc;    \
+    ${DIR_NAME}/../fuzzalloc-scripts/prelink_binary.py                          \
+    --set-rpath --in-place                                                      \
+    --out-dir ${RUNDIR}/prelink                                                 \
+    ${RUNDIR}/${TARGET}-${FUZZING_ENGINE})
+
   # Create the empty seed
-  mkdir -p ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}/empty-seed
-  echo "" > ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}/empty-seed/seed
+  mkdir -p ${RUNDIR}/empty-seed
+  echo "" > ${RUNDIR}/empty-seed/seed
 }
 
 export -f build_target
 BENCHMARKS="${ABS_SCRIPT_DIR}/*/"
-parallel build_target ::: ${BENCHMARKS}
+#parallel build_target ::: ${BENCHMARKS}
+
+for BENCHMARK in ${BENCHMARKS}; do
+  build_target ${BENCHMARK}
+done

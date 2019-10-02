@@ -36,9 +36,10 @@ elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
-  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
+  export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
+  export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
   export AFL_PATH=${AFL_SRC}
-  export LD_LIBRARY_PATH="${FUZZALLOC_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
+  export LD_LIBRARY_PATH="${FUZZALLOC_DEBUG_BUILD_DIR}/src/runtime/malloc/:${LD_LIBRARY_PATH}"
 
   if [ -z $FUZZALLOC_TAG_LOG ]; then
     echo "Error: FUZZALLOC_TAG_LOG environment variable not specified" && exit 1
@@ -46,8 +47,8 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
     echo "Error: Invalid tag log file in $FUZZALLOC_TAG_LOG" && exit 1
   fi
 
-  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast"
-  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-clang-fast++"
+  export LLVM_CC_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-clang-fast"
+  export LLVM_CXX_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-clang-fast++"
 
   export CC=${CC:-${LLVM_CC_NAME}}
   export CXX=${CXX:-${LLVM_CXX_NAME}}
@@ -59,9 +60,10 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
   fi
   export CXXFLAGS=${CFLAGS}
-  export LIBS="-L${FUZZALLOC_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
+  export LIBS="-L${FUZZALLOC_DEBUG_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
 elif [[ $FUZZING_ENGINE == "tags" ]]; then
-  export FUZZALLOC_BUILD_DIR=${FUZZALLOC_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
+  export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
+  export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
 
   if [ -f "${SCRIPT_DIR}/whitelist.txt" ]; then
     export FUZZALLOC_WHITELIST="${SCRIPT_DIR}/whitelist.txt"
@@ -74,8 +76,8 @@ elif [[ $FUZZING_ENGINE == "tags" ]]; then
   # Disable parallel build so the tag log doesn't get clobbered
   JOBS="1"
 
-  export LLVM_CC_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
-  export LLVM_CXX_NAME="${FUZZALLOC_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
+  export LLVM_CC_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
+  export LLVM_CXX_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
 
   export CC=${CC:-${LLVM_CC_NAME}}
   export CXX=${CXX:-${LLVM_CXX_NAME}}

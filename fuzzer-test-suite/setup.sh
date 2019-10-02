@@ -72,6 +72,9 @@ mkdir -p fuzzalloc-debug && \
   (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
+# Add scripts
+ln -sf ${SRC_DIR}/../scripts fuzzalloc-scripts
+
 # Replace common.sh with ours (because it supports datAFLow and Angora)
 ln -sf ${SRC_DIR}/common.sh ${FUZZER_TEST_SUITE}/common.sh
 
