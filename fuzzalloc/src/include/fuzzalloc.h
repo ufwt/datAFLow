@@ -44,7 +44,7 @@ typedef uint16_t tag_t;
 #define INST_TAG_START (QUARANTINE_TAG + 1)
 
 /// The maximum possible tag value
-#define TAG_MAX ((tag_t)0x7FFF)
+#define TAG_MAX ((tag_t)0x7FFE)
 
 #if defined(__cplusplus)
 }
