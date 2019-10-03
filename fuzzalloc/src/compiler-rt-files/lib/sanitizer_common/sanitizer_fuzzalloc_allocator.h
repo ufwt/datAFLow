@@ -341,7 +341,7 @@ class CombinedAllocator {
   }
 
   void *Allocate(AllocatorCache *cache, uptr size, uptr alignment,
-                 tag_t alloc_site_tag = 0) {
+                 tag_t alloc_site_tag = DEFAULT_TAG) {
     // Returning 0 on malloc(0) may break a lot of code.
     if (size == 0) {
       size = 1;
@@ -381,7 +381,7 @@ class CombinedAllocator {
   }
 
   void *Reallocate(AllocatorCache *cache, void *p, uptr new_size,
-                   uptr alignment, tag_t alloc_site_tag = 0) {
+                   uptr alignment, tag_t alloc_site_tag = DEFAULT_TAG) {
     if (!p) {
       return Allocate(cache, new_size, alignment, alloc_site_tag);
     }

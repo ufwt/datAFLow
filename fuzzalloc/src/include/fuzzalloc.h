@@ -38,13 +38,17 @@ typedef uint16_t tag_t;
 #define QUARANTINE_TAG (DEFAULT_TAG + 1)
 #else
 #define QUARANTINE_TAG (DEFAULT_TAG)
-#endif
+#endif // FUZZALLOC_ASAN
 
 /// LLVM instrumentation can start using tags starting from this value
 #define INST_TAG_START (QUARANTINE_TAG + 1)
 
 /// The maximum possible tag value
+#if FUZZALLOC_ASAN
+#define TAG_MAX ((tag_t)0x6FFE)
+#else
 #define TAG_MAX ((tag_t)0x7FFE)
+#endif // FUZZALLOC_ASAN
 
 #if defined(__cplusplus)
 }

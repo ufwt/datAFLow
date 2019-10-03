@@ -66,6 +66,9 @@ static size_t init_mspace_size(void) {
 }
 
 static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
+  // Memory address is too low
+  assert(def_site_tag != 0);
+
   // This should only happen once
   if (__builtin_expect(page_size == 0, FALSE)) {
     page_size = getpagesize();
@@ -95,9 +98,7 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if (mmap_base == (void *)(-1)) {
     DEBUG_MSG("mmap failed: %s\n", strerror(errno));
-    errno = ENOMEM;
-
-    return NULL;
+    abort();
   }
   DEBUG_MSG("mmap base at %p\n", mmap_base);
 
