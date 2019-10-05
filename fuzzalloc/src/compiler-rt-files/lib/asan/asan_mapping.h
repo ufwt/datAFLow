@@ -230,7 +230,7 @@ static const u64 kMyriadCacheBitMask32 = 0x40000000ULL;
 #  elif FUZZALLOC_ASAN
 #   include "sanitizer_common/fuzzalloc.h"
 #   define SHADOW_OFFSET \
-      ((uptr)FUZZALLOC_ASAN_TAG_MAX << (NUM_USABLE_BITS - NUM_TAG_BITS))
+      (((uptr)FUZZALLOC_ASAN_TAG_MAX << FUZZALLOC_TAG_SHIFT) + 0x1000)
 #  else
 #   define SHADOW_OFFSET kDefaultShort64bitShadowOffset
 #  endif

@@ -49,14 +49,14 @@ typedef uint8_t bool_t;
 
 /// Mspace alignment. This ensures that the upper \p NUM_TAG_BITS of the mspace
 /// address are unique to a single mspace
-#define MSPACE_ALIGNMENT (1UL << (NUM_USABLE_BITS - NUM_TAG_BITS))
+#define MSPACE_ALIGNMENT (1UL << FUZZALLOC_TAG_SHIFT)
 
 /// Get the mspace address from a def site tag
 #define GET_MSPACE(tag)                                                        \
-  ((void *)(((uintptr_t)(tag)) << (NUM_USABLE_BITS - NUM_TAG_BITS)))
+  ((void *)(((uintptr_t)(tag)) << FUZZALLOC_TAG_SHIFT))
 
 /// Get the def site tag associated with a pointer
 #define GET_DEF_SITE_TAG(p)                                                    \
-  ((tag_t)((uintptr_t)(p) >> (NUM_USABLE_BITS - NUM_TAG_BITS)))
+  ((tag_t)((uintptr_t)(p) >> FUZZALLOC_TAG_SHIFT))
 
 #endif // MALLOC_INTERNAL_H

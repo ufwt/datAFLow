@@ -26,6 +26,9 @@ extern "C" {
 /// Number of bits in a tag
 #define NUM_TAG_BITS 16
 
+/// Tag shift amount
+#define FUZZALLOC_TAG_SHIFT (NUM_USABLE_BITS - NUM_TAG_BITS)
+
 /// Tag type
 typedef uint16_t tag_t;
 
