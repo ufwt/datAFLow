@@ -20,11 +20,11 @@
 // allocated chunks. To be used in memory constrained or not memory hungry cases
 // (currently, 32 bits and internal allocator).
 class LargeMmapAllocatorPtrArrayStatic {
-public:
+ public:
   INLINE void *Init() { return &p_[0]; }
   INLINE void EnsureSpace(uptr n) { CHECK_LT(n, kMaxNumChunks); }
 
-private:
+ private:
   static const int kMaxNumChunks = 1 << 15;
   uptr p_[kMaxNumChunks];
 };
@@ -34,7 +34,7 @@ private:
 // ReservedAddressRange was used instead of just MAP_NORESERVE to achieve the
 // same functionality in Fuchsia case, which does not support MAP_NORESERVE.
 class LargeMmapAllocatorPtrArrayDynamic {
-public:
+ public:
   INLINE void *Init() {
     uptr p = address_range_.Init(kMaxNumChunks * sizeof(uptr),
                                  SecondaryAllocatorName);
@@ -53,7 +53,7 @@ public:
     }
   }
 
-private:
+  private:
   static const int kMaxNumChunks = 1 << 20;
   static const int kChunksBlockCount = 1 << 14;
   ReservedAddressRange address_range_;
@@ -73,7 +73,7 @@ using namespace __fuzzalloc;
 template <class MapUnmapCallback = NoOpMapUnmapCallback,
           class PtrArrayT = DefaultLargeMmapAllocatorPtrArray>
 class LargeMmapAllocator {
-public:
+ public:
   void InitLinkerInitialized() {
     page_size_ = GetPageSizeCached();
     chunks_ = reinterpret_cast<Header **>(ptr_array_.Init());
@@ -289,7 +289,7 @@ public:
     }
   }
 
-private:
+ private:
   struct Header {
     uptr map_beg;
     uptr map_size;
@@ -329,7 +329,7 @@ private:
 template <class PrimaryAllocator, class AllocatorCache,
           class SecondaryAllocator>
 class CombinedAllocator {
-public:
+ public:
   void InitLinkerInitialized(s32 release_to_os_interval_ms) {
     secondary_.InitLinkerInitialized();
     stats_.InitLinkerInitialized();
@@ -447,7 +447,7 @@ public:
     secondary_.ForEachChunk(callback, arg);
   }
 
-private:
+ private:
   SecondaryAllocator secondary_;
   AllocatorGlobalStats stats_;
 };

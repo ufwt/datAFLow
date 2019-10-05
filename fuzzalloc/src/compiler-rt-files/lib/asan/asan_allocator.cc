@@ -183,7 +183,7 @@ struct QuarantineCallback {
 
   void Deallocate(void *p) { get_allocator().Deallocate(cache_, p); }
 
-private:
+ private:
   AllocatorCache *const cache_;
   BufferedStackTrace *const stack_;
 };
