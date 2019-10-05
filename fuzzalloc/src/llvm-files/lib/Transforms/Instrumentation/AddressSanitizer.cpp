@@ -85,6 +85,10 @@
 #include <string>
 #include <tuple>
 
+#if FUZZALLOC_ASAN
+#include "fuzzalloc.h"
+#endif // FUZZALLOC_ASAN
+
 using namespace llvm;
 
 #define DEBUG_TYPE "asan"
@@ -548,8 +552,12 @@ static ShadowMapping getShadowMapping(Triple &TargetTriple, int LongSize,
       if (IsKasan)
         Mapping.Offset = kLinuxKasan_ShadowOffset64;
       else
+#if FUZZALLOC_ASAN
+        Mapping.Offset = (uint64_t)FUZZALLOC_ASAN_TAG_MAX << (NUM_USABLE_BITS - NUM_TAG_BITS);
+#else
         Mapping.Offset = (kSmallX86_64ShadowOffsetBase &
                           (kSmallX86_64ShadowOffsetAlignMask << Mapping.Scale));
+#endif // FUZZALLOC_ASAN
     } else if (IsWindows && IsX86_64) {
       Mapping.Offset = kWindowsShadowOffset64;
     } else if (IsMIPS64)

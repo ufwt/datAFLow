@@ -55,6 +55,7 @@ To build the custom ASan, run the following after running `get_llvm_src.sh` and
 ```bash
 cd llvm
 $FUZZALLOC_SRC/scripts/update_compiler_rt_src.sh
+$FUZZALLOC_SRC/scripts/update_llvm_src.sh
 
 # Build and install LLVM/clang/etc.
 cd build

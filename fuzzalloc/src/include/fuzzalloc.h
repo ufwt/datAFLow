@@ -43,10 +43,10 @@ typedef uint16_t tag_t;
 #define FUZZALLOC_ASAN_TAG_MIN (FUZZALLOC_ASAN_QUARANTINE_TAG + 1)
 
 /// The default maximum tag value
-#define FUZZALLOC_TAG_MAX ((tag_t)0x7FFE)
+#define FUZZALLOC_TAG_MAX 0x7FFE
 
 /// The default maximum tag value when compiling with ASan
-#define FUZZALLOC_ASAN_TAG_MAX ((tag_t)0x6FFE)
+#define FUZZALLOC_ASAN_TAG_MAX 0x6FFE
 
 #if defined(__cplusplus)
 }
