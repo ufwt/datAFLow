@@ -30,25 +30,23 @@ extern "C" {
 typedef uint16_t tag_t;
 
 /// The default def site tag. Used by default for non-instrumented code
-#define DEFAULT_TAG 1
+#define FUZZALLOC_DEFAULT_TAG 1
 
 /// ASan's quarantine region gets its own mspace. Note that the quarantine
 /// region is only defined if we're building with ASan
-#if FUZZALLOC_ASAN
-#define QUARANTINE_TAG (DEFAULT_TAG + 1)
-#else
-#define QUARANTINE_TAG (DEFAULT_TAG)
-#endif // FUZZALLOC_ASAN
+#define FUZZALLOC_ASAN_QUARANTINE_TAG (FUZZALLOC_DEFAULT_TAG + 1)
 
-/// LLVM instrumentation can start using tags starting from this value
-#define INST_TAG_START (QUARANTINE_TAG + 1)
+/// The default minimum tag value
+#define FUZZALLOC_TAG_MIN (FUZZALLOC_DEFAULT_TAG + 1)
 
-/// The maximum possible tag value
-#if FUZZALLOC_ASAN
-#define TAG_MAX ((tag_t)0x6FFE)
-#else
-#define TAG_MAX ((tag_t)0x7FFE)
-#endif // FUZZALLOC_ASAN
+/// The default minimum tag value when compiling with ASan
+#define FUZZALLOC_ASAN_TAG_MIN (FUZZALLOC_ASAN_QUARANTINE_TAG + 1)
+
+/// The default maximum tag value
+#define FUZZALLOC_TAG_MAX ((tag_t)0x7FFE)
+
+/// The default maximum tag value when compiling with ASan
+#define FUZZALLOC_ASAN_TAG_MAX ((tag_t)0x6FFE)
 
 #if defined(__cplusplus)
 }

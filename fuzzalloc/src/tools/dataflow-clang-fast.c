@@ -35,6 +35,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "fuzzalloc.h"
 
 static u8 *obj_path;       /* Path to runtime libraries         */
 static u8 **cc_params;     /* Parameters passed to the real CC  */
@@ -241,6 +242,7 @@ static void edit_params(u32 argc, char **argv) {
       cc_params[cc_par_cnt++] = "-U_FORTIFY_SOURCE";
       cc_params[cc_par_cnt++] = "-fsanitize=address";
 
+      asan_set = 1;
     } else if (getenv("AFL_USE_MSAN")) {
       if (getenv("AFL_USE_ASAN")) {
         FATAL("ASAN and MSAN are mutually exclusive");
@@ -253,6 +255,15 @@ static void edit_params(u32 argc, char **argv) {
       cc_params[cc_par_cnt++] = "-U_FORTIFY_SOURCE";
       cc_params[cc_par_cnt++] = "-fsanitize=memory";
     }
+  }
+
+  if (asan_set) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] =
+        alloc_printf("-fuzzalloc-tag-min=%d", FUZZALLOC_ASAN_TAG_MIN);
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] =
+        alloc_printf("-fuzzalloc-tag-max=%d", FUZZALLOC_ASAN_TAG_MAX);
   }
 
   if (!getenv("AFL_DONT_OPTIMIZE")) {

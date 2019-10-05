@@ -20,7 +20,7 @@
 
 /// Maps malloc/calloc/realloc def site tags (inserted during compilation) to
 /// mspaces
-static uint8_t mapped_def_sites[TAG_MAX + 1];
+static uint8_t mapped_def_sites[FUZZALLOC_TAG_MAX + 1];
 
 /// Page size determined at runtime by `getpagesize`
 static int page_size = 0;
@@ -247,14 +247,16 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
   return mem;
 }
 
-void *malloc(size_t size) { return __tagged_malloc(DEFAULT_TAG, size); }
+void *malloc(size_t size) {
+  return __tagged_malloc(FUZZALLOC_DEFAULT_TAG, size);
+}
 
 void *calloc(size_t nmemb, size_t size) {
-  return __tagged_calloc(DEFAULT_TAG, nmemb, size);
+  return __tagged_calloc(FUZZALLOC_DEFAULT_TAG, nmemb, size);
 }
 
 void *realloc(void *ptr, size_t size) {
-  return __tagged_realloc(DEFAULT_TAG, ptr, size);
+  return __tagged_realloc(FUZZALLOC_DEFAULT_TAG, ptr, size);
 }
 
 void free(void *ptr) {

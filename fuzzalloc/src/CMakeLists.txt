@@ -20,7 +20,6 @@ else()
 endif()
 
 include_directories(${AFL_PATH})
-
 include_directories(include)
 
 add_subdirectory(llvm-files)

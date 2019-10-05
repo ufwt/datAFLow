@@ -170,7 +170,8 @@ struct QuarantineCallback {
 
   void *Allocate(uptr size) {
 #if FUZZALLOC_ASAN
-    void *res = get_allocator().Allocate(cache_, size, 1, QUARANTINE_TAG);
+    void *res = get_allocator().Allocate(cache_, size, 1,
+                                         FUZZALLOC_ASAN_QUARANTINE_TAG);
 #else
     void *res = get_allocator().Allocate(cache_, size, 1);
 #endif // FUZZALLOC_ASAN
@@ -182,7 +183,7 @@ struct QuarantineCallback {
 
   void Deallocate(void *p) { get_allocator().Deallocate(cache_, p); }
 
- private:
+private:
   AllocatorCache *const cache_;
   BufferedStackTrace *const stack_;
 };

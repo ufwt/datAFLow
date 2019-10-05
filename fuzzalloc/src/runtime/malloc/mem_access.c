@@ -27,7 +27,8 @@ void __mem_access(tag_t def_site) {
   // identifier) and the current location (i.e., the address of the memory
   // access)
   u16 use_site = (u16)__builtin_return_address(0);
-  u16 map_idx = ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site;
+  u16 map_idx =
+      ((3 * (def_site - FUZZALLOC_DEFAULT_TAG)) ^ use_site) - use_site;
 
   DEBUG_MSG("updating AFL bitmap at index %u\n", map_idx);
 
