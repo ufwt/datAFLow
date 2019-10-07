@@ -16,7 +16,7 @@ import sys
 from tabulate import tabulate
 
 
-FUZZALLOC_DEREF_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfInstrumentedDereferences')
+FUZZALLOC_MEM_ACCESSES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfInstrumentedMemAccesses')
 FUZZALLOC_HEAPIFY_ALLOCA_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfAllocaArrayHeapification')
 FUZZALLOC_HEAPIFY_GLOBAL_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfGlobalVariableArrayHeapification')
 FUZZALLOC_TAG_DIRECT_CALLS_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfTaggedDirectCalls')
@@ -27,7 +27,7 @@ FUZZALLOC_DELETE_REWRITES_RE = re.compile(r'\[([a-zA-Z0-9./_-]+)\] (\d+) NumOfDe
 
 class ModuleStats(object):
     def __init__(self):
-        self._derefs = 0
+        self._mem_accesses = 0
         self._alloca_heapifys = 0
         self._global_heapifys = 0
         self._tagged_direct_calls = 0
@@ -36,12 +36,12 @@ class ModuleStats(object):
         self._delete_rewrites = 0
 
     @property
-    def derefs(self):
-        return self._derefs
+    def mem_accesses(self):
+        return self._mem_accesses
 
-    @derefs.setter
-    def derefs(self, count):
-        self._derefs = count
+    @mem_accesses.setter
+    def mem_accesses(self, count):
+        self._mem_accesses = count
 
     @property
     def alloca_heapifys(self):
@@ -98,11 +98,11 @@ inst_stats = defaultdict(ModuleStats)
 def parse_line(line):
     global inst_stats
 
-    match = FUZZALLOC_DEREF_RE.search(line)
+    match = FUZZALLOC_MEM_ACCESSES_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
-        inst_stats[module].derefs = count
+        inst_stats[module].mem_accesses = count
         return
 
     match = FUZZALLOC_HEAPIFY_ALLOCA_RE.search(line)
@@ -178,7 +178,7 @@ def main():
     stats_table = [(mod, stats.new_rewrites, stats.delete_rewrites,
                     stats.alloca_heapifys, stats.global_heapifys,
                     stats.tagged_direct_calls, stats.tagged_indirect_calls,
-                    stats.derefs) for mod, stats in inst_stats.items()]
+                    stats.mem_accesses) for mod, stats in inst_stats.items()]
 
     print('\ndatAFLow instrumentation stats\n')
     print(tabulate(sorted(stats_table, key=lambda x: x[0]) +
@@ -189,11 +189,11 @@ def main():
                      sum(stats.global_heapifys for stats in inst_stats.values()),
                      sum(stats.tagged_direct_calls for stats in inst_stats.values()),
                      sum(stats.tagged_indirect_calls for stats in inst_stats.values()),
-                     sum(stats.derefs for stats in inst_stats.values()))],
+                     sum(stats.mem_accesses for stats in inst_stats.values()))],
                    headers=['Module', 'New rewrites', 'Delete rewrites',
                             'Alloca Heapifications', 'Global Heapifications',
                             'Tagged direct calls', 'Tagged indirect calls',
-                            'Derefs'],
+                            'Memory Accesses'],
                    tablefmt='psql'))
 
     csv_path = args.csv
@@ -204,7 +204,7 @@ def main():
             csv_writer.writerow(['module', 'new rewrites', 'delete rewrites',
                                  'alloca heapifications',
                                  'global heapifications', 'tagged direct calls',
-                                 'tagged indirect calls', 'derefs'])
+                                 'tagged indirect calls', 'mem_accesses'])
             csv_writer.writerows(stats_table)
 
     return 0
