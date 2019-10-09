@@ -45,6 +45,9 @@ typedef uint16_t tag_t;
 /// The default minimum tag value when compiling with ASan
 #define FUZZALLOC_ASAN_TAG_MIN (FUZZALLOC_ASAN_QUARANTINE_TAG + 1)
 
+/// Tag mask
+#define FUZZALLOC_TAG_MASK ((1UL << NUM_TAG_BITS) - 1)
+
 /// The default maximum tag value
 #define FUZZALLOC_TAG_MAX 0x7FFE
 

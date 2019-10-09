@@ -341,7 +341,7 @@ bool InstrumentMemAccesses::doInitialization(Module &M) {
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
 
   this->TagShiftSize = ConstantInt::get(SizeTTy, FUZZALLOC_TAG_SHIFT);
-  this->TagMask = ConstantInt::get(this->TagTy, (1 << NUM_TAG_BITS) - 1);
+  this->TagMask = ConstantInt::get(this->TagTy, FUZZALLOC_TAG_MASK);
   this->AFLInc = ConstantInt::get(this->Int8Ty, 1);
   this->HashMul = ConstantInt::get(this->TagTy, 3);
 
