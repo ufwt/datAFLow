@@ -84,6 +84,7 @@ ln -sf ${SRC_DIR}/build-everything-afl.sh ${FUZZER_TEST_SUITE}/build-everything-
 ln -sf ${SRC_DIR}/build-everything-angora.sh ${FUZZER_TEST_SUITE}/build-everything-angora.sh
 ln -sf ${SRC_DIR}/build-everything-clang.sh ${FUZZER_TEST_SUITE}/build-everything-clang.sh
 ln -sf ${SRC_DIR}/build-everything-datAFLow.sh ${FUZZER_TEST_SUITE}/build-everything-datAFLow.sh
+ln -sf ${SRC_DIR}/def-use-chains.sh ${FUZZER_TEST_SUITE}/def-use-chains.sh
 
 # Add Angora driver
 ln -sf ${SRC_DIR}/angora/angora_driver.c angora_driver.c
