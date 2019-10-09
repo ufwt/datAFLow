@@ -63,9 +63,9 @@ public:
   static char ID;
   HeapifyAllocas() : ModulePass(ID) {}
 
-  bool doInitialization(Module &M) override;
+  bool doInitialization(Module &) override;
   bool doFinalization(Module &) override;
-  bool runOnModule(Module &M) override;
+  bool runOnModule(Module &) override;
 };
 
 } // end anonymous namespace
@@ -153,18 +153,20 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   // If there are lifetime.start intrinsics, then we must allocate memory at
   // these intrinsics. Otherwise, we can just perform the allocation after the
   // alloca instruction.
-  if (LifetimeStarts.empty()) {
-    insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
-  } else {
-    for (auto *LifetimeStart : LifetimeStarts) {
-      if (GetUnderlyingObjectThroughLoads(LifetimeStart->getOperand(1),
-                                          *this->DL) == Alloca) {
-        auto *Ptr = LifetimeStart->getOperand(1);
-        assert(isa<Instruction>(Ptr));
+  bool FoundLifetimeStart = false;
+  for (auto *LifetimeStart : LifetimeStarts) {
+    if (GetUnderlyingObjectThroughLoads(LifetimeStart->getOperand(1),
+                                        *this->DL) == Alloca) {
+      auto *Ptr = LifetimeStart->getOperand(1);
+      assert(isa<Instruction>(Ptr));
 
-        insertMalloc(Alloca, NewAlloca, cast<Instruction>(Ptr));
-      }
+      insertMalloc(Alloca, NewAlloca, cast<Instruction>(Ptr));
+      FoundLifetimeStart = true;
     }
+  }
+
+  if (!FoundLifetimeStart) {
+    insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
   }
 
   // Update all the users of the original array to use the dynamically
