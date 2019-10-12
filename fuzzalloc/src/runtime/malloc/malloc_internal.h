@@ -42,7 +42,7 @@ typedef uint8_t bool_t;
 
 /// Default mspace size (in bytes). Configurable at run-time via an environment
 /// variable
-#define MSPACE_DEFAULT_SIZE 500000000UL
+#define MSPACE_DEFAULT_SIZE 0x100000000UL
 
 /// The mspace size environment variable
 #define MSPACE_SIZE_ENV_VAR "FUZZALLOC_MSPACE_SIZE"
@@ -52,11 +52,9 @@ typedef uint8_t bool_t;
 #define MSPACE_ALIGNMENT (1UL << FUZZALLOC_TAG_SHIFT)
 
 /// Get the mspace address from a def site tag
-#define GET_MSPACE(tag)                                                        \
-  ((void *)(((uintptr_t)(tag)) << FUZZALLOC_TAG_SHIFT))
+#define GET_MSPACE(tag) ((void *)(((uintptr_t)(tag)) << FUZZALLOC_TAG_SHIFT))
 
 /// Get the def site tag associated with a pointer
-#define GET_DEF_SITE_TAG(p)                                                    \
-  ((tag_t)((uintptr_t)(p) >> FUZZALLOC_TAG_SHIFT))
+#define GET_DEF_SITE_TAG(p) ((tag_t)((uintptr_t)(p) >> FUZZALLOC_TAG_SHIFT))
 
 #endif // MALLOC_INTERNAL_H

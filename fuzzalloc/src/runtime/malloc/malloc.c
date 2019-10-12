@@ -157,6 +157,8 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
+  // Note that this doesn't look at previously-allocated memory in this mspace
+  // (because that would be too expensive)
   if (__builtin_expect(size > mspace_size, FALSE)) {
     DEBUG_MSG("malloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
               size, mspace_size);
@@ -167,6 +169,7 @@ void *__tagged_malloc(tag_t def_site_tag, size_t size) {
 
   void *mem = mspace_malloc(space, size);
   DEBUG_MSG("mspace_malloc(%p, %lu) returned %p\n", space, size, mem);
+  assert(mem > space && mem < (space + mspace_size));
 
   return mem;
 }
@@ -194,6 +197,8 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
+  // Note that this doesn't look at previously-allocated memory in this mspace
+  // (because that would be too expensive)
   if (__builtin_expect(nmemb > mspace_size / size, FALSE)) {
     DEBUG_MSG("calloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
               nmemb * size, mspace_size);
@@ -205,6 +210,7 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
   void *mem = mspace_calloc(space, nmemb, size);
   DEBUG_MSG("mspace_calloc(%p, %lu, %lu) returned %p\n", space, nmemb, size,
             mem);
+  assert(mem > space && mem < (space + mspace_size));
 
   return mem;
 }
@@ -233,6 +239,8 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
+  // Note that this doesn't look at previously-allocated memory in this mspace
+  // (because that would be too expensive)
   if (__builtin_expect(size > mspace_size, FALSE)) {
     DEBUG_MSG("realloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
               size, mspace_size);
@@ -243,6 +251,7 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
 
   void *mem = mspace_realloc(space, ptr, size);
   DEBUG_MSG("mspace_realloc(%p, %p, %lu) returned %p\n", space, ptr, size, mem);
+  assert(mem > space && mem < (space + mspace_size));
 
   return mem;
 }
