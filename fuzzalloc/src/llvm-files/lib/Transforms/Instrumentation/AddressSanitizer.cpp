@@ -553,8 +553,7 @@ static ShadowMapping getShadowMapping(Triple &TargetTriple, int LongSize,
         Mapping.Offset = kLinuxKasan_ShadowOffset64;
       else
 #if FUZZALLOC_ASAN
-        Mapping.Offset =
-            (uint64_t)FUZZALLOC_ASAN_TAG_MAX << FUZZALLOC_TAG_SHIFT;
+        Mapping.Offset = FUZZALLOC_ASAN_SHADOW_OFFSET;
 #else
         Mapping.Offset = (kSmallX86_64ShadowOffsetBase &
                           (kSmallX86_64ShadowOffsetAlignMask << Mapping.Scale));

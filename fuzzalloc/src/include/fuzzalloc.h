@@ -49,10 +49,16 @@ typedef uint16_t tag_t;
 #define FUZZALLOC_TAG_MASK ((1UL << NUM_TAG_BITS) - 1)
 
 /// The default maximum tag value
-#define FUZZALLOC_TAG_MAX 0x7FFE
+#define FUZZALLOC_TAG_MAX 0x7FFEUL
 
 /// The default maximum tag value when compiling with ASan
-#define FUZZALLOC_ASAN_TAG_MAX 0x6FFE
+#define FUZZALLOC_ASAN_TAG_MAX 0x6FFDUL
+
+/// The ASan shadow memory offset when using fuzzalloc. Ensure that it is far
+/// enough from the maximum fuzzalloc tag so that an mspace doesn't get
+/// allocated in the ASan shadow memory
+#define FUZZALLOC_ASAN_SHADOW_OFFSET                                           \
+  ((FUZZALLOC_ASAN_TAG_MAX + 2) << FUZZALLOC_TAG_SHIFT)
 
 #if defined(__cplusplus)
 }
