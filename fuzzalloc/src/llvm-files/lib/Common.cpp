@@ -26,6 +26,13 @@
 
 using namespace llvm;
 
+void setNoSanitizeMetadata(Instruction *I) {
+  Module *M = I->getModule();
+  LLVMContext &C = M->getContext();
+
+  I->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+}
+
 void printStatistic(const Module &M, const Statistic &Stat) {
   if (Stat > 0) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(), Stat.getValue(),

@@ -37,6 +37,9 @@ const std::string FunctionArgLogPrefix = "fun_arg";
 /// A struct type and the offset of an element in that struct
 using StructOffset = std::pair<const llvm::StructType *, unsigned>;
 
+/// Set `nosanitize` metadata on an instruction
+void setNoSanitizeMetadata(llvm::Instruction *);
+
 /// Print the statistic using AFL's `OKF`
 void printStatistic(const llvm::Module &, const llvm::Statistic &);
 

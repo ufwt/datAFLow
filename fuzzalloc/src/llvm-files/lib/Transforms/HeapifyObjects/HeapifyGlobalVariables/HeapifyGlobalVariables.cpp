@@ -102,7 +102,7 @@ static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
     auto *LoadGV = IRB.CreateLoad(GV);
     LoadGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                         MDNode::get(C, None));
-    LoadGV->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+    setNoSanitizeMetadata(LoadGV);
 
     // Check if the global variable has already been allocated
     auto *AllocCheck =
@@ -156,7 +156,7 @@ static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
     auto *LoadGV = IRB.CreateLoad(GV);
     LoadGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                         MDNode::get(C, None));
-    LoadGV->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+    setNoSanitizeMetadata(LoadGV);
 
     // Check if the global variable has already been freed
     auto *FreeCheck =
@@ -224,8 +224,7 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
             IRB.CreateConstInBoundsGEP1_32(nullptr, MallocCall, I));
         StoreToNewGV->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                                   MDNode::get(C, None));
-        StoreToNewGV->setMetadata(M->getMDKindID("nosanitize"),
-                                  MDNode::get(C, None));
+        setNoSanitizeMetadata(StoreToNewGV);
       }
     } else if (isa<ConstantArray>(OrigGV->getInitializer())) {
       assert(false && "Constant array initializers should already be expanded");
@@ -237,7 +236,7 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
   auto *MallocStore = IRB.CreateStore(MallocCall, NewGV);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
-  MallocStore->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
+  setNoSanitizeMetadata(MallocStore);
 }
 
 void HeapifyGlobalVariables::expandConstantExpression(ConstantExpr *ConstExpr) {
