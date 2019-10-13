@@ -26,6 +26,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
 #include "Common.h"
@@ -50,19 +51,34 @@ static cl::opt<bool>
     ClDebugInstrument("fuzzalloc-debug-instrument",
                       cl::desc("Instrument with debug function"), cl::Hidden);
 
+static cl::opt<bool> ClLibFuzzerInstrument("fuzzalloc-libfuzzer",
+                                           cl::desc("Instrument for libFuzzer"),
+                                           cl::Hidden);
+
 STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
 
+// AFL-style fuzzing
 static const char *const DbgInstrumentName = "__mem_access";
 static const char *const AFLMapName = "__afl_area_ptr";
+
+// libFuzzer-style fuzzing
+static const char *const SanCovModuleCtorName = "sancov.module_ctor";
+static const char *const SanCov8bitCountersInitName =
+    "__sanitizer_cov_8bit_counters_init";
+static const char *const SanCovCountersSectionName = "sancov_cntrs";
+static const uint64_t SanCtorAndDtorPriority = 2;
 
 namespace {
 
 class InstrumentMemAccesses : public ModulePass {
 private:
+  DataLayout *DL;
+  Triple TargetTriple;
+
   IntegerType *Int8Ty;
-  IntegerType *Int32Ty;
   IntegerType *Int64Ty;
+  IntegerType *IntPtrTy;
   IntegerType *TagTy;
 
   ConstantInt *TagShiftSize;
@@ -74,7 +90,8 @@ private:
   GlobalVariable *AFLMapPtr;
   Function *DbgInstrumentFn;
 
-  void doInstrument(Instruction *, Value *);
+  Value *isInterestingMemoryAccess(Instruction *, bool *, uint64_t *,
+                                   unsigned *, Value **);
 
 public:
   static char ID;
@@ -83,6 +100,34 @@ public:
   void getAnalysisUsage(AnalysisUsage &) const override;
   bool doInitialization(Module &) override;
   bool runOnModule(Module &) override;
+
+private:
+  //
+  // AFL-style fuzzing
+  //
+
+  void doAFLInstrument(Instruction *, Value *);
+
+  //
+  // libFuzzer-style fuzzing
+  //
+
+  GlobalVariable *Function8bitCounterArray;
+  SmallVector<GlobalValue *, 20> GlobalsToAppendToCompilerUsed;
+
+  std::string getSectionName(const std::string &) const;
+  std::string getSectionStart(const std::string &) const;
+  std::string getSectionEnd(const std::string &) const;
+
+  Function *createInitCallsForSections(Module &, const char *, Type *,
+                                       const char *);
+  GlobalVariable *createFunctionLocalArrayInSection(size_t, Function &, Type *,
+                                                    const char *);
+  std::pair<GlobalVariable *, GlobalVariable *>
+  createSecStartEnd(Module &, const char *, Type *);
+
+  void initializeLibFuzzer(Module &);
+  void doLibFuzzerInstrument(Instruction *, Value *);
 };
 
 } // anonymous namespace
@@ -154,11 +199,10 @@ static bool isInterestingAlloca(const AllocaInst &AI) {
 }
 
 // Adapted from llvm::AddressSanitizer::isInterestingMemoryAccess
-static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
-                                        uint64_t *TypeSize, unsigned *Alignment,
-                                        Value **MaybeMask = nullptr) {
+Value *InstrumentMemAccesses::isInterestingMemoryAccess(
+    Instruction *I, bool *IsWrite, uint64_t *TypeSize, unsigned *Alignment,
+    Value **MaybeMask = nullptr) {
   Value *PtrOperand = nullptr;
-  const DataLayout &DL = I->getModule()->getDataLayout();
 
   if (auto *LI = dyn_cast<LoadInst>(I)) {
     if (!ClInstrumentReads) {
@@ -166,7 +210,7 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
     }
 
     *IsWrite = false;
-    *TypeSize = DL.getTypeStoreSizeInBits(LI->getType());
+    *TypeSize = this->DL->getTypeStoreSizeInBits(LI->getType());
     *Alignment = LI->getAlignment();
     PtrOperand = LI->getPointerOperand();
   } else if (auto *SI = dyn_cast<StoreInst>(I)) {
@@ -175,7 +219,8 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
     }
 
     *IsWrite = true;
-    *TypeSize = DL.getTypeStoreSizeInBits(SI->getValueOperand()->getType());
+    *TypeSize =
+        this->DL->getTypeStoreSizeInBits(SI->getValueOperand()->getType());
     *Alignment = SI->getAlignment();
     PtrOperand = SI->getPointerOperand();
   } else if (auto *RMW = dyn_cast<AtomicRMWInst>(I)) {
@@ -184,7 +229,8 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
     }
 
     *IsWrite = true;
-    *TypeSize = DL.getTypeStoreSizeInBits(RMW->getValOperand()->getType());
+    *TypeSize =
+        this->DL->getTypeStoreSizeInBits(RMW->getValOperand()->getType());
     *Alignment = 0;
     PtrOperand = RMW->getPointerOperand();
   } else if (auto *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
@@ -193,7 +239,8 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
     }
 
     *IsWrite = true;
-    *TypeSize = DL.getTypeStoreSizeInBits(XCHG->getCompareOperand()->getType());
+    *TypeSize =
+        this->DL->getTypeStoreSizeInBits(XCHG->getCompareOperand()->getType());
     *Alignment = 0;
     PtrOperand = XCHG->getPointerOperand();
   } else if (auto *CI = dyn_cast<CallInst>(I)) {
@@ -220,7 +267,7 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 
       auto *BasePtr = CI->getOperand(0 + OpOffset);
       auto *Ty = cast<PointerType>(BasePtr->getType())->getElementType();
-      *TypeSize = DL.getTypeStoreSizeInBits(Ty);
+      *TypeSize = this->DL->getTypeStoreSizeInBits(Ty);
 
       if (auto *AlignmentConstant =
               dyn_cast<ConstantInt>(CI->getOperand(1 + OpOffset))) {
@@ -260,7 +307,7 @@ static Value *isInterestingMemoryAccess(Instruction *I, bool *IsWrite,
 }
 
 /// Instrument the Instruction `I` that accesses the memory at `Ptr`.
-void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
+void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) {
   LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
 
   auto *M = I->getModule();
@@ -275,8 +322,7 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
   // from the pointer by right-shifting by 32 bits
   auto *PtrAsInt = IRB.CreatePtrToInt(Ptr, this->Int64Ty);
   if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
-    PtrAsIntInst->setMetadata(M->getMDKindID("nosanitize"),
-                              MDNode::get(C, None));
+    setNoSanitizeMetadata(PtrAsIntInst);
   }
   auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                   this->TagMask);
@@ -294,7 +340,6 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
 
     // Load the AFL bitmap
     auto *AFLMap = IRB.CreateLoad(this->AFLMapPtr);
-    AFLMap->setMetadata(M->getMDKindID("nosanitize"), MDNode::get(C, None));
 
     // Hash the allocation site and use site to index into the bitmap
     //
@@ -310,16 +355,16 @@ void InstrumentMemAccesses::doInstrument(Instruction *I, Value *Ptr) {
             UseSite),
         UseSite);
     auto *AFLMapIdx =
-        IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, this->Int32Ty));
+        IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, IRB.getInt32Ty()));
 
     // Update the bitmap only if the def site is not the default tag
     auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
-    CounterLoad->setMetadata(M->getMDKindID("nosanitize"),
-                             MDNode::get(C, None));
     auto *Incr = IRB.CreateAdd(CounterLoad, this->AFLInc);
     auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
-    CounterStore->setMetadata(M->getMDKindID("nosanitize"),
-                              MDNode::get(C, None));
+
+    setNoSanitizeMetadata(AFLMap);
+    setNoSanitizeMetadata(CounterLoad);
+    setNoSanitizeMetadata(CounterStore);
   }
 
   NumOfInstrumentedMemAccesses++;
@@ -330,20 +375,23 @@ void InstrumentMemAccesses::getAnalysisUsage(AnalysisUsage &AU) const {
 }
 
 bool InstrumentMemAccesses::doInitialization(Module &M) {
-  LLVMContext &C = M.getContext();
-  const DataLayout &DL = M.getDataLayout();
+  this->DL = new DataLayout(M.getDataLayout());
+  this->TargetTriple = Triple(M.getTargetTriple());
 
-  IntegerType *SizeTTy = DL.getIntPtrType(C);
+  LLVMContext &C = M.getContext();
+  IntegerType *SizeTTy = this->DL->getIntPtrType(C);
 
   this->Int8Ty = Type::getInt8Ty(C);
-  this->Int32Ty = Type::getInt32Ty(C);
   this->Int64Ty = Type::getInt64Ty(C);
+  this->IntPtrTy = Type::getIntNTy(C, this->DL->getPointerSizeInBits());
   this->TagTy = Type::getIntNTy(C, NUM_TAG_BITS);
 
   this->TagShiftSize = ConstantInt::get(SizeTTy, FUZZALLOC_TAG_SHIFT);
   this->TagMask = ConstantInt::get(this->TagTy, FUZZALLOC_TAG_MASK);
   this->AFLInc = ConstantInt::get(this->Int8Ty, 1);
   this->HashMul = ConstantInt::get(this->TagTy, 3);
+
+  this->Function8bitCounterArray = nullptr;
 
   return false;
 }
@@ -353,7 +401,6 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
          "Must instrument either loads or stores");
 
   LLVMContext &C = M.getContext();
-  const DataLayout &DL = M.getDataLayout();
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
@@ -364,13 +411,15 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
       M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
       GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
 
-  this->DbgInstrumentFn = checkInstrumentationFunc(M.getOrInsertFunction(
-      DbgInstrumentName, Type::getVoidTy(C), this->TagTy));
+  if (ClDebugInstrument) {
+    this->DbgInstrumentFn = checkInstrumentationFunc(M.getOrInsertFunction(
+        DbgInstrumentName, Type::getVoidTy(C), this->TagTy));
+  }
 
   // For determining whether to instrument a memory dereference
   ObjectSizeOpts ObjSizeOpts;
   ObjSizeOpts.RoundToAlign = true;
-  ObjectSizeOffsetVisitor ObjSizeVis(DL, TLI, C, ObjSizeOpts);
+  ObjectSizeOffsetVisitor ObjSizeVis(*this->DL, TLI, C, ObjSizeOpts);
 
   for (auto &F : M.functions()) {
     // Don't instrument our own constructors/destructors
@@ -396,7 +445,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
 
         if (Value *Addr = isInterestingMemoryAccess(&Inst, &IsWrite, &TypeSize,
                                                     &Alignment, &MaybeMask)) {
-          Value *Obj = GetUnderlyingObject(Addr, DL);
+          Value *Obj = GetUnderlyingObject(Addr, *this->DL);
 
           // If we have a mask, skip instrumentation if we've already
           // instrumented the full object. But don't add to TempsToInstrument
@@ -442,27 +491,201 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
       }
     }
 
+    // Nothing to instrument in this function
+    if (ToInstrument.empty()) {
+      continue;
+    }
+
+    // Adapted from llvm::SanitizerCoverage::CreateFunctionLocalArrays
+    if (ClLibFuzzerInstrument) {
+      this->Function8bitCounterArray = createFunctionLocalArrayInSection(
+          ToInstrument.size(), F, this->Int8Ty, SanCovCountersSectionName);
+      GlobalsToAppendToCompilerUsed.push_back(this->Function8bitCounterArray);
+      MDNode *MD = MDNode::get(F.getContext(), ValueAsMetadata::get(&F));
+      this->Function8bitCounterArray->addMetadata(LLVMContext::MD_associated,
+                                                  *MD);
+    }
+
     // Instrument memory operations
     for (auto *I : ToInstrument) {
       if (Value *Addr =
               isInterestingMemoryAccess(I, &IsWrite, &TypeSize, &Alignment)) {
         // A direct inbounds access to a stack variable is always valid
-        if (isa<AllocaInst>(GetUnderlyingObject(Addr, DL)) &&
+        if (isa<AllocaInst>(GetUnderlyingObject(Addr, *this->DL)) &&
             isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
           continue;
         }
 
-        doInstrument(I, Addr);
+        if (ClLibFuzzerInstrument) {
+          doLibFuzzerInstrument(I, Addr);
+        } else {
+          doAFLInstrument(I, Addr);
+        }
       } else {
         // TODO instrumentMemIntrinsic
       }
     }
   }
 
+  if (ClLibFuzzerInstrument) {
+    initializeLibFuzzer(M);
+  }
+
   printStatistic(M, NumOfInstrumentedMemAccesses);
 
   return NumOfInstrumentedMemAccesses > 0;
 }
+
+//===----------------------------------------------------------------------===//
+//
+// libFuzzer-style fuzzing
+//
+//===----------------------------------------------------------------------===//
+
+// Adapted from llvm::SanitizerCoverageModule::getSectionName
+std::string
+InstrumentMemAccesses::getSectionName(const std::string &Section) const {
+  if (this->TargetTriple.getObjectFormat() == Triple::COFF) {
+    return ".SCOV$M";
+  }
+  if (this->TargetTriple.isOSBinFormatMachO()) {
+    return "__DATA,__" + Section;
+  }
+
+  return "__" + Section;
+}
+
+std::string
+InstrumentMemAccesses::getSectionStart(const std::string &Section) const {
+  if (this->TargetTriple.isOSBinFormatMachO()) {
+    return "\1section$start$__DATA$__" + Section;
+  }
+
+  return "__start___" + Section;
+}
+
+std::string
+InstrumentMemAccesses::getSectionEnd(const std::string &Section) const {
+  if (this->TargetTriple.isOSBinFormatMachO()) {
+    return "\1section$end$__DATA$__" + Section;
+  }
+
+  return "__stop___" + Section;
+}
+
+// Adapted from llvm::SanitizerCoverageModule::CreateSecStartEnd
+std::pair<GlobalVariable *, GlobalVariable *>
+InstrumentMemAccesses::createSecStartEnd(Module &M, const char *Section,
+                                         Type *Ty) {
+  GlobalVariable *SecStart = new GlobalVariable(
+      M, Ty, /* isConstant */ false, GlobalVariable::ExternalLinkage,
+      /* Initializer */ nullptr, getSectionStart(Section));
+  SecStart->setVisibility(GlobalValue::HiddenVisibility);
+  GlobalVariable *SecEnd = new GlobalVariable(
+      M, Ty, /* isConstant */ false, GlobalVariable::ExternalLinkage,
+      /* Initializer */ nullptr, getSectionEnd(Section));
+  SecEnd->setVisibility(GlobalValue::HiddenVisibility);
+
+  return std::make_pair(SecStart, SecEnd);
+}
+
+// Adapted from llvm::SanitizerCoverageModule::CreateFunctionLocalArrayInSection
+GlobalVariable *InstrumentMemAccesses::createFunctionLocalArrayInSection(
+    size_t NumElements, Function &F, Type *Ty, const char *Section) {
+  Module *M = F.getParent();
+  ArrayType *ArrayTy = ArrayType::get(Ty, NumElements);
+  auto Array = new GlobalVariable(
+      *M, ArrayTy, /* isConstant */ false, GlobalVariable::PrivateLinkage,
+      Constant::getNullValue(ArrayTy), "__sancov_gen");
+  if (auto Comdat = F.getComdat()) {
+    Array->setComdat(Comdat);
+  }
+  Array->setSection(getSectionName(Section));
+  Array->setAlignment(Ty->isPointerTy() ? this->DL->getPointerSize()
+                                        : Ty->getPrimitiveSizeInBits() / 8);
+
+  return Array;
+}
+
+// Adapted from llvm::SanitizerCoverageModule::CreateInitCallsForSections
+Function *InstrumentMemAccesses::createInitCallsForSections(
+    Module &M, const char *InitFunctionName, Type *Ty, const char *Section) {
+  IRBuilder<> IRB(M.getContext());
+  auto SecStartEnd = createSecStartEnd(M, Section, Ty);
+  auto SecStart = SecStartEnd.first;
+  auto SecEnd = SecStartEnd.second;
+  Function *CtorFunc;
+  std::tie(CtorFunc, std::ignore) = createSanitizerCtorAndInitFunctions(
+      M, SanCovModuleCtorName, InitFunctionName, {Ty, Ty},
+      {IRB.CreatePointerCast(SecStart, Ty), IRB.CreatePointerCast(SecEnd, Ty)});
+
+  if (TargetTriple.supportsCOMDAT()) {
+    // Use comdat to dedup CtorFunc
+    CtorFunc->setComdat(M.getOrInsertComdat(SanCovModuleCtorName));
+    appendToGlobalCtors(M, CtorFunc, SanCtorAndDtorPriority, CtorFunc);
+  } else {
+    appendToGlobalCtors(M, CtorFunc, SanCtorAndDtorPriority);
+  }
+
+  return CtorFunc;
+}
+
+// Adapted from llvm::SanitizerCoverageModule::runOnModule
+void InstrumentMemAccesses::initializeLibFuzzer(Module &M) {
+  Function *Ctor = nullptr;
+
+  if (this->Function8bitCounterArray) {
+    Ctor = createInitCallsForSections(M, SanCov8bitCountersInitName,
+                                      this->Int8Ty->getPointerTo(),
+                                      SanCovCountersSectionName);
+  }
+
+  // We don't reference these arrays directly in any of our runtime functions,
+  // so we need to prevent them from being dead stripped
+  appendToCompilerUsed(M, this->GlobalsToAppendToCompilerUsed);
+}
+
+// Adapted from llvm::SanitizerCoverageModule::InjectCoverageAtBlock
+void InstrumentMemAccesses::doLibFuzzerInstrument(Instruction *I, Value *Ptr) {
+  LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
+
+  auto *M = I->getModule();
+  IRBuilder<> IRB(I);
+  LLVMContext &C = IRB.getContext();
+
+  // This metadata can be used by the static pointer analysis
+  I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
+                 MDNode::get(C, None));
+
+  // Cast the memory access pointer to an integer and mask out the mspace tag
+  // from the pointer by right-shifting by 32 bits
+  auto *PtrAsInt = IRB.CreatePtrToInt(Ptr, this->Int64Ty);
+  if (auto PtrAsIntInst = dyn_cast<Instruction>(PtrAsInt)) {
+    setNoSanitizeMetadata(PtrAsIntInst);
+  }
+  auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
+                                  this->TagMask);
+  auto *DefSite =
+      IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false);
+  (void)DefSite;
+
+  // Adapted from llvm::SanitizerCoverageModule::InjectCoverateAtBlock
+
+  auto *CounterPtr =
+      IRB.CreateGEP(this->Function8bitCounterArray,
+                    {ConstantInt::get(this->IntPtrTy, 0),
+                     ConstantInt::get(this->IntPtrTy, /* FIXME */ 0)});
+  auto *Load = IRB.CreateLoad(CounterPtr);
+  auto *Inc = IRB.CreateAdd(Load, ConstantInt::get(this->Int8Ty, 1));
+  auto Store = IRB.CreateStore(Inc, CounterPtr);
+
+  setNoSanitizeMetadata(Load);
+  setNoSanitizeMetadata(Store);
+
+  NumOfInstrumentedMemAccesses++;
+}
+
+//===----------------------------------------------------------------------===//
 
 static RegisterPass<InstrumentMemAccesses>
     X("fuzzalloc-inst-mem-accesses",
