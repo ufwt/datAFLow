@@ -6,11 +6,11 @@ set_property(SOURCE ptmalloc3.c
 if(FUZZALLOC_USE_LOCKS)
   set_property(SOURCE malloc.c
                PROPERTY COMPILE_DEFINITIONS
-               USE_TSD_DATA_HACK ONLY_MSPACES USE_LOCKS=1)
+               USE_TSD_DATA_HACK ONLY_MSPACES USE_LOCKS=1 MALLOC_ALIGNMENT=16)
 else()
   set_property(SOURCE malloc.c
                PROPERTY COMPILE_DEFINITIONS
-               USE_TSD_DATA_HACK ONLY_MSPACES)
+               USE_TSD_DATA_HACK ONLY_MSPACES MALLOC_ALIGNMENT=16)
 endif()
 if(CMAKE_BUILD_TYPE MATCHES DEBUG)
   set_property(SOURCE malloc.c

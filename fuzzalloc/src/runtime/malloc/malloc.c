@@ -132,7 +132,7 @@ static mspace create_fuzzalloc_mspace(tag_t def_site_tag) {
   return space;
 }
 
-//===-- malloc interface --------------------------------------------------===//
+//===-- tagged malloc interface -------------------------------------------===//
 
 void *__tagged_malloc(tag_t def_site_tag, size_t size) {
   DEBUG_MSG("__tagged_malloc(%#x, %lu) called from %p\n", def_site_tag, size,
@@ -255,6 +255,8 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
 
   return mem;
 }
+
+//===-- malloc interface --------------------------------------------------===//
 
 void *malloc(size_t size) {
   return __tagged_malloc(FUZZALLOC_DEFAULT_TAG, size);
