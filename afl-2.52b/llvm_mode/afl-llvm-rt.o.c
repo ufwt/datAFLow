@@ -264,6 +264,8 @@ __attribute__((constructor(CONST_PRIO))) void __afl_auto_init(void) {
    The first function (__sanitizer_cov_trace_pc_guard) is called back on every
    edge (as opposed to every basic block). */
 
+#ifdef LIBFUZZER_POSIX
+
 void __sanitizer_cov_trace_pc_guard(uint32_t* guard) {
   __afl_area_ptr[*guard]++;
 }
@@ -304,3 +306,5 @@ void __sanitizer_cov_trace_pc_guard_init(uint32_t* start, uint32_t* stop) {
   }
 
 }
+
+#endif

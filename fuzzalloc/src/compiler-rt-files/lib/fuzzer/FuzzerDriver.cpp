@@ -586,6 +586,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.UseMemmem = Flags.use_memmem;
   Options.UseCmp = Flags.use_cmp;
   Options.UseValueProfile = Flags.use_value_profile;
+  Options.UseDataFlow = Flags.use_dataflow;
   Options.Shrink = Flags.shrink;
   Options.ReduceInputs = Flags.reduce_inputs;
   Options.ShuffleAtStartUp = Flags.shuffle;
@@ -595,7 +596,9 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.DetectLeaks = Flags.detect_leaks;
   Options.PurgeAllocatorIntervalSec = Flags.purge_allocator_interval;
   Options.TraceMalloc = Flags.trace_malloc;
-  Options.RssLimitMb = Flags.rss_limit_mb;
+  if (!Options.UseDataFlow) {
+    Options.RssLimitMb = Flags.rss_limit_mb;
+  }
   Options.MallocLimitMb = Flags.malloc_limit_mb;
   if (!Options.MallocLimitMb)
     Options.MallocLimitMb = Options.RssLimitMb;
@@ -653,7 +656,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
     if (U.size() <= Word::GetMaxSize())
       MD->AddWordToManualDictionary(Word(U.data(), U.size()));
 
-  StartRssThread(F, Flags.rss_limit_mb);
+  StartRssThread(F, Options.RssLimitMb);
 
   Options.HandleAbrt = Flags.handle_abrt;
   Options.HandleBus = Flags.handle_bus;

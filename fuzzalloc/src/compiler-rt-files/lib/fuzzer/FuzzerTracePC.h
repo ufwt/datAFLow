@@ -16,6 +16,8 @@
 #include "FuzzerDictionary.h"
 #include "FuzzerValueBitMap.h"
 
+#include "fuzzalloc.h"
+
 #include <set>
 #include <unordered_map>
 
@@ -84,9 +86,11 @@ public:
   void HandlePCsInit(const uintptr_t *Start, const uintptr_t *Stop);
   void HandleCallerCallee(uintptr_t Caller, uintptr_t Callee);
   template <class T> void HandleCmp(uintptr_t PC, T Arg1, T Arg2);
+  void HandleDataFlow(tag_t DefSite, uintptr_t UseSite);
   size_t GetTotalPCCoverage();
   void SetUseCounters(bool UC) { UseCounters = UC; }
   void SetUseValueProfileMask(uint32_t VPMask) { UseValueProfileMask = VPMask; }
+  void SetUseDataFlow(bool UDF) { UseDataFlow = UDF; }
   void SetPrintNewPCs(bool P) { DoPrintNewPCs = P; }
   void SetPrintNewFuncs(size_t P) { NumPrintNewFuncs = P; }
   void UpdateObservedPCs();
@@ -94,6 +98,7 @@ public:
 
   void ResetMaps() {
     ValueProfileMap.Reset();
+    DataFlowMap.Reset();
     if (NumModules)
       memset(Counters(), 0, GetNumPCs());
     ClearExtraCounters();
@@ -154,6 +159,7 @@ private:
 
   bool UseCounters = false;
   uint32_t UseValueProfileMask = false;
+  bool UseDataFlow = false;
   bool DoPrintNewPCs = false;
   size_t NumPrintNewFuncs = 0;
 
@@ -192,6 +198,7 @@ private:
   std::pair<size_t, size_t> FocusFunction = {-1, -1}; // Module and PC IDs.
 
   ValueBitMap ValueProfileMap;
+  ValueBitMap DataFlowMap;
   uintptr_t InitialStack;
 };
 
@@ -290,6 +297,12 @@ TracePC::CollectFeatures(Callback HandleFeature) const {
     ValueProfileMap.ForEach(
         [&](size_t Idx) { HandleFeature(FirstFeature + Idx); });
     FirstFeature += ValueProfileMap.SizeInBits();
+  }
+
+  if (UseDataFlow) {
+    DataFlowMap.ForEach(
+        [&](size_t Idx) { HandleFeature(FirstFeature + Idx); });
+    FirstFeature += DataFlowMap.SizeInBits();
   }
 
   // Step function, grows similar to 8 * Log_2(A).

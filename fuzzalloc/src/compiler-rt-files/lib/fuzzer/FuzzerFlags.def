@@ -74,6 +74,8 @@ FUZZER_FLAG_INT(use_memmem, 1,
 FUZZER_FLAG_INT(use_value_profile, 0,
                 "Experimental. Use value profile to guide fuzzing.")
 FUZZER_FLAG_INT(use_cmp, 1, "Use CMP traces to guide mutations")
+FUZZER_FLAG_INT(use_dataflow, 0,
+                "Experimental. Use dataflow coverage to guide fuzzing.")
 FUZZER_FLAG_INT(shrink, 0, "Experimental. Try to shrink corpus inputs.")
 FUZZER_FLAG_INT(reduce_inputs, 1,
   "Try to reduce the size of inputs while preserving their full feature sets")

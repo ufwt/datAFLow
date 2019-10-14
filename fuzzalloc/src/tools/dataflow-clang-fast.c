@@ -86,8 +86,8 @@ static void find_obj(u8 *argv0) {
 /* Copy argv to cc_params, making the necessary edits. */
 
 static void edit_params(u32 argc, char **argv) {
-  u8 fortify_set = 0, asan_set = 0, x_set = 0, maybe_linking = 1, bit_mode = 0,
-     maybe_assembler = 0;
+  u8 fortify_set = 0, asan_set = 0, x_set = 0, libfuzzer_set = 0,
+     maybe_linking = 1, bit_mode = 0, maybe_assembler = 0;
   u8 *name;
 
   cc_params = ck_alloc((argc + 512) * sizeof(u8 *));
@@ -206,6 +206,10 @@ static void edit_params(u32 argc, char **argv) {
       asan_set = 1;
     }
 
+    if (!strcmp(cur, "-fsanitize=fuzzer")) {
+      libfuzzer_set = 1;
+    }
+
     if (strstr(cur, "FORTIFY_SOURCE")) {
       fortify_set = 1;
     }
@@ -264,6 +268,11 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
         alloc_printf("-fuzzalloc-tag-max=%d", FUZZALLOC_ASAN_TAG_MAX);
+  }
+
+  if (libfuzzer_set && !maybe_assembler) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-fuzzalloc-libfuzzer";
   }
 
   if (!getenv("AFL_DONT_OPTIMIZE")) {

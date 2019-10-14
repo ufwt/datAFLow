@@ -420,6 +420,15 @@ TracePC::HandleCmp(uintptr_t PC, T Arg1, T Arg2) {
     ValueProfileMap.AddValue(PC * 64 + ArgDistance);
 }
 
+ATTRIBUTE_NO_SANITIZE_ALL void TracePC::HandleDataFlow(tag_t DefSite,
+                                                       uintptr_t UseSite) {
+  const uintptr_t kBits = 12;
+  const uintptr_t kMask = (1 << kBits) - 1;
+  uintptr_t Idx = (UseSite & kMask) |
+                  (((DefSite - FUZZALLOC_DEFAULT_TAG) & kMask) << kBits);
+  DataFlowMap.AddValueModPrime(Idx);
+}
+
 static size_t InternalStrnlen(const char *S, size_t MaxLen) {
   size_t Len = 0;
   for (; Len < MaxLen && S[Len]; Len++) {
@@ -616,6 +625,13 @@ ATTRIBUTE_TARGET_POPCNT
 void __sanitizer_cov_trace_gep(uintptr_t Idx) {
   uintptr_t PC = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
   fuzzer::TPC.HandleCmp(PC, Idx, (uintptr_t)0);
+}
+
+ATTRIBUTE_INTERFACE
+ATTRIBUTE_NO_SANITIZE_ALL
+void __sanitizer_cov_trace_dataflow(tag_t DefSite) {
+  uintptr_t UseSite = reinterpret_cast<uintptr_t>(__builtin_return_address(0));
+  fuzzer::TPC.HandleDataFlow(DefSite, UseSite);
 }
 
 ATTRIBUTE_INTERFACE ATTRIBUTE_NO_SANITIZE_MEMORY void

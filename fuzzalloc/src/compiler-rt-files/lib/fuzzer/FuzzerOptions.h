@@ -32,6 +32,7 @@ struct FuzzingOptions {
   bool UseMemmem = true;
   bool UseCmp = false;
   int UseValueProfile = false;
+  bool UseDataFlow = false;
   bool Shrink = false;
   bool ReduceInputs = false;
   int ReloadIntervalSec = 1;

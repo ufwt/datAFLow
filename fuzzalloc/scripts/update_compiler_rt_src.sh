@@ -27,4 +27,12 @@ ln -sf ${RT_SRC}/test/asan/CMakeLists.txt ${RT_DEST}/test/asan/CMakeLists.txt
 ln -sf ${RT_SRC}/test/asan/lit.site.cfg.in ${RT_DEST}/test/asan/lit.site.cfg.in
 ln -sf ${RT_SRC}/test/asan/lit.cfg ${RT_DEST}/test/asan/lit.cfg
 
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerDriver.cpp ${RT_DEST}/lib/fuzzer/FuzzerDriver.cpp
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerFlags.def ${RT_DEST}/lib/fuzzer/FuzzerFlags.def
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerLoop.cpp ${RT_DEST}/lib/fuzzer/FuzzerLoop.cpp
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerOptions.h ${RT_DEST}/lib/fuzzer/FuzzerOptions.h
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerTracePC.cpp ${RT_DEST}/lib/fuzzer/FuzzerTracePC.cpp
+ln -sf ${RT_SRC}/lib/fuzzer/FuzzerTracePC.h ${RT_DEST}/lib/fuzzer/FuzzerTracePC.h
+
 ln -sf ${INC}/fuzzalloc.h ${RT_DEST}/lib/sanitizer_common/fuzzalloc.h
+ln -sf ${INC}/fuzzalloc.h ${RT_DEST}/lib/fuzzer/fuzzalloc.h
