@@ -9,6 +9,10 @@
 
 #include "common.h"
 
+u8 prefix(const char *str, const char *pre) {
+  return strncmp(pre, str, strlen(pre)) == 0;
+}
+
 u8 check_if_assembler(u32 argc, const char **argv) {
   while (--argc) {
     u8 *cur = *(++argv);

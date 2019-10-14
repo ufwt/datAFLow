@@ -201,13 +201,13 @@ static void edit_params(u32 argc, char **argv) {
       maybe_linking = 0;
     }
 
-    if (!strcmp(cur, "-fsanitize=address") ||
-        !strcmp(cur, "-fsanitize=memory")) {
-      asan_set = 1;
-    }
-
-    if (!strcmp(cur, "-fsanitize=fuzzer")) {
-      libfuzzer_set = 1;
+    if (prefix(cur, "-fsanitize=")) {
+      if (strstr(cur, "address") || strstr(cur, "memory")) {
+        asan_set = 1;
+      }
+      if (strstr(cur, "fuzzer")) {
+        libfuzzer_set = 1;
+      }
     }
 
     if (strstr(cur, "FORTIFY_SOURCE")) {
