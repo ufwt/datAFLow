@@ -259,7 +259,8 @@ void Fuzzer::ExitCallback() {
 }
 
 void Fuzzer::MaybeExitGracefully() {
-  if (!GracefulExitRequested) return;
+  if (!GracefulExitRequested)
+    return;
   Printf("==%lu== INFO: libFuzzer: exiting as requested\n", GetPid());
   PrintFinalStats();
   _Exit(0);
@@ -360,7 +361,8 @@ void Fuzzer::PrintFinalStats() {
     TPC.DumpCoverage();
   if (Options.PrintCorpusStats)
     Corpus.PrintStats();
-  if (Options.PrintMutationStats) MD.PrintMutationStats();
+  if (Options.PrintMutationStats)
+    MD.PrintMutationStats();
   if (!Options.PrintFinalStats)
     return;
   size_t ExecPerSec = execPerSec();
@@ -716,10 +718,10 @@ void Fuzzer::MutateAndTestOne() {
                             /*DuringInitialCorpusExecution*/ false);
     if (NewCov) {
       ReportNewCoverage(&II, {CurrentUnitData, CurrentUnitData + Size});
-      break;  // We will mutate this input more in the next rounds.
+      break; // We will mutate this input more in the next rounds.
     }
     if (Options.ReduceDepth && !FoundUniqFeatures)
-        break;
+      break;
   }
 }
 
@@ -809,7 +811,7 @@ void Fuzzer::ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs) {
 
 void Fuzzer::Loop(const Vector<std::string> &CorpusDirs) {
   ReadAndExecuteSeedCorpora(CorpusDirs);
-  DFT.Clear();  // No need for DFT any more.
+  DFT.Clear(); // No need for DFT any more.
   TPC.SetPrintNewPCs(Options.PrintNewCovPcs);
   TPC.SetPrintNewFuncs(Options.PrintNewCovFuncs);
   system_clock::time_point LastCorpusReload = system_clock::now();

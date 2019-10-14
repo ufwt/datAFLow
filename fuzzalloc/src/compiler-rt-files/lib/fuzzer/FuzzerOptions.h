@@ -60,7 +60,7 @@ struct FuzzingOptions {
   bool DumpCoverage = false;
   bool DetectLeaks = true;
   int PurgeAllocatorIntervalSec = 1;
-  int  TraceMalloc = 0;
+  int TraceMalloc = 0;
   bool HandleAbrt = false;
   bool HandleBus = false;
   bool HandleFpe = false;
@@ -73,6 +73,6 @@ struct FuzzingOptions {
   bool HandleUsr2 = false;
 };
 
-}  // namespace fuzzer
+} // namespace fuzzer
 
-#endif  // LLVM_FUZZER_OPTIONS_H
+#endif // LLVM_FUZZER_OPTIONS_H
