@@ -237,15 +237,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
   // before them
   SmallVector<IntrinsicInst *, 4> LifetimeEnds;
 
-  // Load instructions that may require realignment
-  SmallVector<LoadInst *, 4> Loads;
-
-  // Store instructions that may require realignment
-  SmallVector<StoreInst *, 4> Stores;
-
-  // llvm.mem* intrinsics that may require realignment
-  SmallVector<MemIntrinsic *, 4> MemIntrinsics;
-
   // Return instructions that may require calls to free to be inserted before
   // them
   SmallVector<ReturnInst *, 4> Returns;
@@ -254,9 +245,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
     AllocasToHeapify.clear();
     LifetimeStarts.clear();
     LifetimeEnds.clear();
-    MemIntrinsics.clear();
-    Loads.clear();
-    Stores.clear();
     Returns.clear();
 
     // Collect all the things!
@@ -265,12 +253,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
         if (isHeapifiableType(Alloca->getAllocatedType())) {
           AllocasToHeapify.push_back(Alloca);
         }
-      } else if (auto *Load = dyn_cast<LoadInst>(&*I)) {
-        Loads.push_back(Load);
-      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
-        Stores.push_back(Store);
-      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
-        MemIntrinsics.push_back(MemI);
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
         if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_start) {
           LifetimeStarts.push_back(Intrinsic);
@@ -309,31 +291,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
             insertFree(NewAlloca, LifetimeEnd);
             NumOfFreeInsert++;
           }
-        }
-      }
-
-      // Loads and stores to the newly-heapified allocas may not be aligned
-      // correctly for memory on the heap. To be safe we set the alignment to 1,
-      // which is "always safe" (according to the LLVM docs)
-
-      for (auto *Load : Loads) {
-        if (GetUnderlyingObjectThroughLoads(Load->getPointerOperand(),
-                                            *this->DL) == NewAlloca) {
-          Load->setAlignment(1);
-        }
-      }
-
-      for (auto *Store : Stores) {
-        if (GetUnderlyingObjectThroughLoads(Store->getPointerOperand(),
-                                            *this->DL) == NewAlloca) {
-          Store->setAlignment(1);
-        }
-      }
-
-      for (auto *MemI : MemIntrinsics) {
-        if (GetUnderlyingObjectThroughLoads(MemI->getDest(), *this->DL) ==
-            NewAlloca) {
-          MemI->setDestAlignment(1);
         }
       }
 

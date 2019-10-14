@@ -376,8 +376,6 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
 }
 
 bool HeapifyGlobalVariables::runOnModule(Module &M) {
-  const DataLayout &DL = M.getDataLayout();
-
   // Global variables to heapify
   SmallPtrSet<GlobalVariable *, 8> GVsToHeapify;
 
@@ -412,32 +410,6 @@ bool HeapifyGlobalVariables::runOnModule(Module &M) {
     for (auto *GV : GVsToHeapify) {
       auto *HeapifiedGV = heapifyGlobalVariable(GV);
       HeapifiedGVs.insert(HeapifiedGV);
-    }
-  }
-
-  // Loads and stores to the newly-heapified global variables may not be aligned
-  // correctly for memory on the heap. To be safe we set the alignment to 1,
-  // which is "always safe" (according to the LLVM docs)
-  for (auto &F : M.functions()) {
-    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (auto *Load = dyn_cast<LoadInst>(&*I)) {
-        auto *Obj =
-            GetUnderlyingObjectThroughLoads(Load->getPointerOperand(), DL);
-        if (HeapifiedGVs.count(Obj) > 0) {
-          Load->setAlignment(1);
-        }
-      } else if (auto *Store = dyn_cast<StoreInst>(&*I)) {
-        auto *Obj =
-            GetUnderlyingObjectThroughLoads(Store->getPointerOperand(), DL);
-        if (HeapifiedGVs.count(Obj) > 0) {
-          Store->setAlignment(1);
-        }
-      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
-        auto *Obj = GetUnderlyingObjectThroughLoads(MemI->getDest(), DL);
-        if (HeapifiedGVs.count(Obj) > 0) {
-          MemI->setDestAlignment(1);
-        }
-      }
     }
   }
 
