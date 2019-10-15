@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow tags clang angora_fast angora_track"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow datAFLow_libfuzzer tags clang angora_fast angora_track"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -35,7 +35,7 @@ elif [[ $FUZZING_ENGINE == "honggfuzz" ]]; then
 elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
-elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
+elif [[ $FUZZING_ENGINE == "datAFLow" || $FUZZING_ENGINE == "datAFLow_libfuzzer" ]]; then
   export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
   export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
   export AFL_PATH=${AFL_SRC}
@@ -58,6 +58,9 @@ elif [[ $FUZZING_ENGINE == "datAFLow" ]]; then
     echo "ASan enabled"
     export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
     export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
+  fi
+  if [[ $FUZZING_ENGINE == "datAFLow_libfuzzer" ]]; then
+    export CFLAGS="$CFLAGS -fsanitize=fuzzer-no-link"
   fi
   export CXXFLAGS=${CFLAGS}
   export LIBS="-L${FUZZALLOC_DEBUG_BUILD_DIR}/src/runtime/malloc -lfuzzalloc"
@@ -231,6 +234,10 @@ build_honggfuzz() {
 
 # Uses the capability for "fsanitize=fuzzer" in the current clang
 build_fsanitize_fuzzer() {
+  LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
+}
+
+build_datAFLow_libfuzzer() {
   LIB_FUZZING_ENGINE="-fsanitize=fuzzer"
 }
 
