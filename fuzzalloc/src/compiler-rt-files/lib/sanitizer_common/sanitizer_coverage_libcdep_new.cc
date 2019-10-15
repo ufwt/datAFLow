@@ -28,7 +28,7 @@ static const u64 Magic64 = 0xC0BFFFFFFFFFFF64ULL;
 static const u64 Magic32 = 0xC0BFFFFFFFFFFF32ULL;
 static const u64 Magic = SANITIZER_WORDSIZE == 64 ? Magic64 : Magic32;
 
-static fd_t OpenFile(const char* path) {
+static fd_t OpenFile(const char *path) {
   error_t err;
   fd_t fd = OpenFile(path, WrOnly, &err);
   if (fd == kInvalidFd)
@@ -37,16 +37,16 @@ static fd_t OpenFile(const char* path) {
   return fd;
 }
 
-static void GetCoverageFilename(char* path, const char* name,
-                                const char* extension) {
+static void GetCoverageFilename(char *path, const char *name,
+                                const char *extension) {
   CHECK(name);
   internal_snprintf(path, kMaxPathLength, "%s/%s.%zd.%s",
                     common_flags()->coverage_dir, name, internal_getpid(),
                     extension);
 }
 
-static void WriteModuleCoverage(char* file_path, const char* module_name,
-                                const uptr* pcs, uptr len) {
+static void WriteModuleCoverage(char *file_path, const char *module_name,
+                                const uptr *pcs, uptr len) {
   GetCoverageFilename(file_path, StripModuleName(module_name), "sancov");
   fd_t fd = OpenFile(file_path);
   WriteToFile(fd, &Magic, sizeof(Magic));
@@ -55,12 +55,13 @@ static void WriteModuleCoverage(char* file_path, const char* module_name,
   Printf("SanitizerCoverage: %s: %zd PCs written\n", file_path, len);
 }
 
-static void SanitizerDumpCoverage(const uptr* unsorted_pcs, uptr len) {
-  if (!len) return;
+static void SanitizerDumpCoverage(const uptr *unsorted_pcs, uptr len) {
+  if (!len)
+    return;
 
-  char* file_path = static_cast<char*>(InternalAlloc(kMaxPathLength));
-  char* module_name = static_cast<char*>(InternalAlloc(kMaxPathLength));
-  uptr* pcs = static_cast<uptr*>(InternalAlloc(len * sizeof(uptr)));
+  char *file_path = static_cast<char *>(InternalAlloc(kMaxPathLength));
+  char *module_name = static_cast<char *>(InternalAlloc(kMaxPathLength));
+  uptr *pcs = static_cast<uptr *>(InternalAlloc(len * sizeof(uptr)));
 
   internal_memcpy(pcs, unsorted_pcs, len * sizeof(uptr));
   Sort(pcs, len);
@@ -71,7 +72,8 @@ static void SanitizerDumpCoverage(const uptr* unsorted_pcs, uptr len) {
 
   for (uptr i = 0; i < len; ++i) {
     const uptr pc = pcs[i];
-    if (!pc) continue;
+    if (!pc)
+      continue;
 
     if (!__sanitizer_get_module_and_offset_for_pc(pc, nullptr, 0, &pcs[i])) {
       Printf("ERROR: unknown pc 0x%x (may happen if dlclose is used)\n", pc);
@@ -106,7 +108,7 @@ static void SanitizerDumpCoverage(const uptr* unsorted_pcs, uptr len) {
 // Collects trace-pc guard coverage.
 // This class relies on zero-initialization.
 class TracePcGuardController {
- public:
+public:
   void Initialize() {
     CHECK(!initialized);
 
@@ -116,22 +118,25 @@ class TracePcGuardController {
     pc_vector.Initialize(0);
   }
 
-  void InitTracePcGuard(u32* start, u32* end) {
-    if (!initialized) Initialize();
+  void InitTracePcGuard(u32 *start, u32 *end) {
+    if (!initialized)
+      Initialize();
     CHECK(!*start);
     CHECK_NE(start, end);
 
     u32 i = pc_vector.size();
-    for (u32* p = start; p < end; p++) *p = ++i;
+    for (u32 *p = start; p < end; p++)
+      *p = ++i;
     pc_vector.resize(i);
   }
 
-  void TracePcGuard(u32* guard, uptr pc) {
+  void TracePcGuard(u32 *guard, uptr pc) {
     u32 idx = *guard;
-    if (!idx) return;
+    if (!idx)
+      return;
     // we start indices from 1.
-    atomic_uintptr_t* pc_ptr =
-        reinterpret_cast<atomic_uintptr_t*>(&pc_vector[idx - 1]);
+    atomic_uintptr_t *pc_ptr =
+        reinterpret_cast<atomic_uintptr_t *>(&pc_vector[idx - 1]);
     if (atomic_load(pc_ptr, memory_order_relaxed) == 0)
       atomic_store(pc_ptr, pc, memory_order_relaxed);
   }
@@ -141,25 +146,26 @@ class TracePcGuardController {
   }
 
   void Dump() {
-    if (!initialized || !common_flags()->coverage) return;
+    if (!initialized || !common_flags()->coverage)
+      return;
     __sanitizer_dump_coverage(pc_vector.data(), pc_vector.size());
   }
 
- private:
+private:
   bool initialized;
   InternalMmapVectorNoCtor<uptr> pc_vector;
 };
 
 static TracePcGuardController pc_guard_controller;
 
-}  // namespace
-}  // namespace __sancov
+} // namespace
+} // namespace __sancov
 
 namespace __sanitizer {
 void InitializeCoverage(bool enabled, const char *dir) {
   static bool coverage_enabled = false;
   if (coverage_enabled)
-    return;  // May happen if two sanitizer enable coverage in the same process.
+    return; // May happen if two sanitizer enable coverage in the same process.
   coverage_enabled = enabled;
   Atexit(__sanitizer_cov_dump);
   AddDieCallback(__sanitizer_cov_dump);
@@ -167,19 +173,21 @@ void InitializeCoverage(bool enabled, const char *dir) {
 } // namespace __sanitizer
 
 extern "C" {
-SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_dump_coverage(  // NOLINT
-    const uptr* pcs, uptr len) {
+SANITIZER_INTERFACE_ATTRIBUTE void __sanitizer_dump_coverage( // NOLINT
+    const uptr *pcs, uptr len) {
   return __sancov::SanitizerDumpCoverage(pcs, len);
 }
 
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_trace_pc_guard, u32* guard) {
-  if (!*guard) return;
+SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_trace_pc_guard, u32 *guard) {
+  if (!*guard)
+    return;
   __sancov::pc_guard_controller.TracePcGuard(guard, GET_CALLER_PC() - 1);
 }
 
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_trace_pc_guard_init,
-                             u32* start, u32* end) {
-  if (start == end || *start) return;
+                             u32 *start, u32 *end) {
+  if (start == end || *start)
+    return;
   __sancov::pc_guard_controller.InitTracePcGuard(start, end);
 }
 
@@ -209,11 +217,11 @@ SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_trace_gep, void) {}
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_trace_pc_indir, void) {}
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_8bit_counters_init, void) {}
 SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_cov_pcs_init, void) {}
-}  // extern "C"
+} // extern "C"
 // Weak definition for code instrumented with -fsanitize-coverage=stack-depth
 // and later linked with code containing a strong definition.
 // E.g., -fsanitize=fuzzer-no-link
 SANITIZER_INTERFACE_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
-SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE uptr __sancov_lowest_stack;
+    SANITIZER_TLS_INITIAL_EXEC_ATTRIBUTE uptr __sancov_lowest_stack;
 
-#endif  // !SANITIZER_FUCHSIA
+#endif // !SANITIZER_FUCHSIA
