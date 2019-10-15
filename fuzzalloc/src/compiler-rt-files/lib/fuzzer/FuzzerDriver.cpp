@@ -596,7 +596,10 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.DetectLeaks = Flags.detect_leaks;
   Options.PurgeAllocatorIntervalSec = Flags.purge_allocator_interval;
   Options.TraceMalloc = Flags.trace_malloc;
-  if (!Options.UseDataFlow) {
+  if (Options.UseDataFlow) {
+    Options.RssLimitMb = 0;
+    Options.DetectLeaks = false;
+  } else {
     Options.RssLimitMb = Flags.rss_limit_mb;
   }
   Options.MallocLimitMb = Flags.malloc_limit_mb;
