@@ -7,8 +7,8 @@ SRC_DIR=$(dirname "$(readlink -f "${0}")")
 WHITELIST_DIR="${SRC_DIR}/whitelists"
 
 FUZZER_TEST_SUITE="fuzzer-test-suite"
-FUZZER_TEST_SUITE_URL="https://github.com/google/${FUZZER_TEST_SUITE}.git"
-FUZZER_TEST_SUITE_REV="0878ea35544464ceef4309bfb430efd9987c3b71"
+FUZZER_TEST_SUITE_URL="https://github.com/adrianherrera/${FUZZER_TEST_SUITE}.git"
+FUZZER_TEST_SUITE_REV="datAFLow-experiments"
 
 AFL_PATH=${SRC_DIR}/../afl-2.52b
 
@@ -66,10 +66,10 @@ ln -sf ${SRC_DIR}/angora/angora_clang.c ${ANGORA_BUILD_DIR}/llvm_mode/compiler/a
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
-  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
   make -j)
 mkdir -p fuzzalloc-debug && \
-  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=True -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
   make -j)
 
 # Add scripts
