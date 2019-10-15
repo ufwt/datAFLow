@@ -109,6 +109,8 @@ FUZZER_FLAG_INT(print_corpus_stats, 0,
   "If 1, print statistics on corpus elements at exit.")
 FUZZER_FLAG_INT(print_coverage, 0, "If 1, print coverage information as text"
                                    " at exit.")
+FUZZER_FLAG_INT(print_dataflows, 0,
+                "If 1, print out covered def/use chains.")
 FUZZER_FLAG_INT(dump_coverage, 0, "Deprecated."
                                   " If 1, dump coverage information as a"
                                   " .sancov file at exit.")

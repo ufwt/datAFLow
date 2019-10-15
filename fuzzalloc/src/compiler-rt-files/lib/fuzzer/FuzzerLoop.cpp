@@ -815,6 +815,7 @@ void Fuzzer::Loop(const Vector<std::string> &CorpusDirs) {
   DFT.Clear(); // No need for DFT any more.
   TPC.SetPrintNewPCs(Options.PrintNewCovPcs);
   TPC.SetPrintNewFuncs(Options.PrintNewCovFuncs);
+  TPC.SetPrintDataFlows(Options.PrintDataFlows);
   system_clock::time_point LastCorpusReload = system_clock::now();
   if (Options.DoCrossOver)
     MD.SetCorpus(&Corpus);

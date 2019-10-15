@@ -93,6 +93,7 @@ public:
   void SetUseDataFlow(bool UDF) { UseDataFlow = UDF; }
   void SetPrintNewPCs(bool P) { DoPrintNewPCs = P; }
   void SetPrintNewFuncs(size_t P) { NumPrintNewFuncs = P; }
+  void SetPrintDataFlows(bool P) { DoPrintDataFlows = P; }
   void UpdateObservedPCs();
   template <class Callback> void CollectFeatures(Callback CB) const;
 
@@ -161,6 +162,7 @@ private:
   uint32_t UseValueProfileMask = false;
   bool UseDataFlow = false;
   bool DoPrintNewPCs = false;
+  bool DoPrintDataFlows = false;
   size_t NumPrintNewFuncs = 0;
 
   struct Module {

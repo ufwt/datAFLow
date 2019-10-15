@@ -626,6 +626,7 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   Options.PrintCorpusStats = Flags.print_corpus_stats;
   Options.PrintCoverage = Flags.print_coverage;
   Options.PrintUnstableStats = Flags.print_unstable_stats;
+  Options.PrintDataFlows = Flags.print_dataflows;
   if (Flags.handle_unstable == TracePC::MinUnstable ||
       Flags.handle_unstable == TracePC::ZeroUnstable)
     Options.HandleUnstable = Flags.handle_unstable;

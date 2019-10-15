@@ -426,6 +426,10 @@ ATTRIBUTE_NO_SANITIZE_ALL void TracePC::HandleDataFlow(tag_t DefSite,
   const uintptr_t kMask = (1 << kBits) - 1;
   uintptr_t Idx = (UseSite & kMask) |
                   (((DefSite - FUZZALLOC_DEFAULT_TAG) & kMask) << kBits);
+  if (DoPrintDataFlows) {
+    Printf("INFO: Updating dataflow map def/use chain (%#x, %#x) at index %lu\n",
+           DefSite, UseSite, Idx);
+  }
   DataFlowMap.AddValueModPrime(Idx);
 }
 

@@ -57,6 +57,7 @@ struct FuzzingOptions {
   bool PrintCorpusStats = false;
   bool PrintCoverage = false;
   bool PrintUnstableStats = false;
+  bool PrintDataFlows = false;
   int HandleUnstable = 0;
   bool DumpCoverage = false;
   bool DetectLeaks = true;
