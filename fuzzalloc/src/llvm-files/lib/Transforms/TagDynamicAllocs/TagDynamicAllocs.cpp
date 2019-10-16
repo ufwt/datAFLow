@@ -179,7 +179,8 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
 
   IRBuilder<> IRB(TrampolineBB);
 
-  // Use the trampoline's return address as the allocation site tag
+  // Use the trampoline's return address (modulo the max tag) as the allocation
+  // site tag
   auto *RetAddr = IRB.CreateCall(this->ReturnAddrF, IRB.getInt32(0));
 
   // XXX I have no idea why I need to cast the return address pointer to a large
@@ -190,11 +191,13 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
   Value *CastTag =
       IRB.CreateIntCast(IRB.CreateAnd(Tag, FUZZALLOC_TAG_MASK), this->TagTy,
                         /* isSigned */ false);
+  Value *ModTag =
+      IRB.CreateURem(CastTag, ConstantInt::get(this->TagTy, ClTagMax));
 
   // Call a tagged version of the dynamic memory allocation function and return
   // its result
   Function *TaggedF = translateTaggedFunction(OrigF);
-  SmallVector<Value *, 4> TaggedCallArgs = {CastTag};
+  SmallVector<Value *, 4> TaggedCallArgs = {ModTag};
   for (auto &Arg : TrampolineF->args()) {
     TaggedCallArgs.push_back(&Arg);
   }
