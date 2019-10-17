@@ -8,8 +8,7 @@ export ASAN_ENABLE=1
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
 export PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE})"
 
-rm -rf ${PARENT_DIR}
-mkdir ${PARENT_DIR}
+mkdir -p ${PARENT_DIR}
 echo "Created top directory ${PARENT_DIR}"
 
 build_target() {

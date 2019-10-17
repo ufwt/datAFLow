@@ -15,8 +15,7 @@ fi
 
 export PARENT_DIR
 
-rm -rf ${PARENT_DIR}
-mkdir ${PARENT_DIR}
+mkdir -p ${PARENT_DIR}
 echo "Created top directory ${PARENT_DIR}"
 
 build_target() {
