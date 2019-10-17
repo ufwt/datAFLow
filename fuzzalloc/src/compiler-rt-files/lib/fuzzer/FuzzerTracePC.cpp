@@ -424,7 +424,7 @@ ATTRIBUTE_NO_SANITIZE_ALL void TracePC::HandleDataFlow(tag_t DefSite,
                                                        uintptr_t UseSite) {
   const uintptr_t kBits = 12;
   const uintptr_t kMask = (1 << kBits) - 1;
-  uintptr_t Idx = (UseSite & kMask) | ((DefSite & kMask) << kBits);
+  uintptr_t Idx = ((3 * (DefSite - FUZZALLOC_DEFAULT_TAG)) ^ UseSite) - UseSite;
   if (DoPrintDataFlows) {
     Printf(
         "INFO: Updating dataflow map def/use chain (%#x, %#x) at index %lu\n",
