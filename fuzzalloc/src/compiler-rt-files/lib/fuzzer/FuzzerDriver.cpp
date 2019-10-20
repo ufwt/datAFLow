@@ -218,6 +218,9 @@ static void WorkerThread(const Command &BaseCmd, std::atomic<unsigned> *Counter,
       break;
     std::string Log = "fuzz-" + std::to_string(C) + ".log";
     Command Cmd(BaseCmd);
+    if (Cmd.hasFlag("job_prefix")) {
+      Log += Cmd.getFlagValue("job_prefix") + '-';
+    }
     Cmd.setOutputFile(Log);
     Cmd.combineOutAndErr();
     if (Flags.verbosity) {

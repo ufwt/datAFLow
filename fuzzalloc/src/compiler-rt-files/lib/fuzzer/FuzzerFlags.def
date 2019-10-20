@@ -82,6 +82,7 @@ FUZZER_FLAG_INT(reduce_inputs, 1,
 FUZZER_FLAG_UNSIGNED(jobs, 0, "Number of jobs to run. If jobs >= 1 we spawn"
                           " this number of jobs in separate worker processes"
                           " with stdout/stderr redirected to fuzz-JOB.log.")
+FUZZER_FLAG_STRING(job_prefix, "fuzz-JOB.log prefix.")
 FUZZER_FLAG_UNSIGNED(workers, 0,
             "Number of simultaneous worker processes to run the jobs."
             " If zero, \"min(jobs,NumberOfCpuCores()/2)\" is used.")
