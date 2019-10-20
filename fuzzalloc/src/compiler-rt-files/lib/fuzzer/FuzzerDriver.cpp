@@ -651,8 +651,14 @@ int FuzzerDriver(int *argc, char ***argv, UserCallback Callback) {
   if (Seed == 0)
     Seed =
         std::chrono::system_clock::now().time_since_epoch().count() + GetPid();
-  if (Flags.verbosity)
+  if (Flags.verbosity) {
     Printf("INFO: Seed: %u\n", Seed);
+    Printf("INFO: Use counters: %d\n", Options.UseCounters);
+    Printf("INFO: Use memmem: %d\n", Options.UseMemmem);
+    Printf("INFO: Use cmp: %d\n", Options.UseCmp);
+    Printf("INFO: Use value profile: %d\n", Options.UseValueProfile);
+    Printf("INFO: Use data flow: %d\n", Options.UseDataFlow);
+  }
 
   Random Rand(Seed);
   auto *MD = new MutationDispatcher(Rand, Options);
