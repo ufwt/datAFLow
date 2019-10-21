@@ -32,6 +32,8 @@ build_target() {
   unset CC
   unset CXX
   . ${DIR_NAME}/common.sh
+  rm -f ${FUZZALLOC_TAG_LOG}
+
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
