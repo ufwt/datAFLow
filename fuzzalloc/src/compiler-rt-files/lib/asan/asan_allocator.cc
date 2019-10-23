@@ -183,7 +183,7 @@ struct QuarantineCallback {
 
   void Deallocate(void *p) { get_allocator().Deallocate(cache_, p); }
 
- private:
+private:
   AllocatorCache *const cache_;
   BufferedStackTrace *const stack_;
 };
@@ -762,18 +762,11 @@ struct Allocator {
     if (alignment > min_alignment) {
       needed_size += alignment;
     }
-    bool using_primary_allocator = true;
     // If we are allocating from the secondary allocator, there will be no
     // automatic right redzone, so add the right redzone manually.
-#if FUZZALLOC_ASAN
-    // The fuzzalloc allocator is always the secondary allocator
-    if (true) {
-#else
-    if (!PrimaryAllocator::CanAllocate(needed_size, alignment)) {
-#endif // FUZZALLOC_ASAN
-      needed_size += rz_size;
-      using_primary_allocator = false;
-    }
+    //
+    // Note that the fuzzalloc allocator is always the secondary allocator
+    needed_size += rz_size;
     CHECK(IsAligned(needed_size, min_alignment));
     if (size > kMaxAllowedMallocSize || needed_size > kMaxAllowedMallocSize) {
       if (AllocatorMayReturnNull()) {
@@ -835,17 +828,11 @@ struct Allocator {
       reinterpret_cast<uptr *>(alloc_beg)[0] = kAllocBegMagic;
       reinterpret_cast<uptr *>(alloc_beg)[1] = chunk_beg;
     }
-    if (using_primary_allocator) {
-      CHECK(size);
-      m->user_requested_size = size;
-      CHECK(allocator.FromPrimary(allocated));
-    } else {
-      CHECK(!allocator.FromPrimary(allocated));
-      m->user_requested_size = SizeClassMap::kMaxSize;
-      uptr *meta = reinterpret_cast<uptr *>(allocator.GetMetaData(allocated));
-      meta[0] = size;
-      meta[1] = chunk_beg;
-    }
+    CHECK(!allocator.FromPrimary(allocated));
+    m->user_requested_size = SizeClassMap::kMaxSize;
+    uptr *meta = reinterpret_cast<uptr *>(allocator.GetMetaData(allocated));
+    meta[0] = size;
+    meta[1] = chunk_beg;
     m->user_requested_alignment_log = user_requested_alignment_log;
 
     m->alloc_context_id = StackDepotPut(*stack);
@@ -928,7 +915,9 @@ struct Allocator {
         Allocate(alloc_site_tag, nmemb * size, 8, stack, FROM_MALLOC, false);
     // If the memory comes from the secondary allocator no need to clear it
     // as it comes directly from mmap.
-    if (ptr && allocator.FromPrimary(ptr)) {
+    //
+    // Note that the fuzzalloc allocator is always the secondary allocator
+    if (ptr) {
       REAL(memset)(ptr, 0, nmemb * size);
     }
     return ptr;
