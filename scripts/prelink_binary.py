@@ -30,7 +30,7 @@ def ex(cmd):
         print("stdout: '%s'" % p.stdout.read())
         print("stderr: '%s'" % p.stderr.read())
         raise Exception("Error while executing command")
-    return p.stdout.read()
+    return p.stdout.read().decode('utf8')
 
 
 def get_overlap(mapping, other_mappings):

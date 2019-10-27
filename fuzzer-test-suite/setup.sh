@@ -1,14 +1,11 @@
-#!/bin/bash
+#!/bin/bash -eux
 
-set -ex
-
-ROOT_DIR=${PWD}
 SRC_DIR=$(dirname "$(readlink -f "${0}")")
 WHITELIST_DIR="${SRC_DIR}/whitelists"
 
 FUZZER_TEST_SUITE="fuzzer-test-suite"
 FUZZER_TEST_SUITE_URL="https://github.com/adrianherrera/${FUZZER_TEST_SUITE}.git"
-FUZZER_TEST_SUITE_REV="datAFLow-experiments"
+FUZZER_TEST_SUITE_BRANCH="datAFLow-experiments"
 
 AFL_PATH=${SRC_DIR}/../afl-2.52b
 
@@ -22,9 +19,8 @@ ABILIST_DIR="${SRC_DIR}/angora/rules"
 
 # Get the test suite
 if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
-  echo "${FUZZER_TEST_SUITE} not found. Downloading the Google fuzzer test suite"
-  git clone ${FUZZER_TEST_SUITE_URL} ${FUZZER_TEST_SUITE} && \
-    (cd ${FUZZER_TEST_SUITE} && git checkout ${FUZZER_TEST_SUITE_REV})
+  echo "${FUZZER_TEST_SUITE} not found. Downloading"
+  git clone -b ${FUZZER_TEST_SUITE_BRANCH} --single-branch --depth 1 -- ${FUZZER_TEST_SUITE_URL} ${FUZZER_TEST_SUITE}
 fi
 
 # Build AFL
