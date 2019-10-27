@@ -34,7 +34,7 @@ make -j -C ${AFL_PATH}/llvm_mode clean all
 ln -sf ${AFL_PATH} AFL
 
 # Get compiler-rt
-if [ -z "${COMPILER_RT_PATH}" ]; then
+if [ -z "${COMPILER_RT_PATH-}" ]; then
   if [ ! -d "${COMPILER_RT}" ]; then
     echo "COMPILER_RT not set. Downloading LLVM's compiler-rt"
     mkdir -p ${COMPILER_RT}
@@ -54,7 +54,7 @@ fi
 ln -sf ${COMPILER_RT_PATH}/lib/fuzzer Fuzzer
 
 # Get Angora
-if [ -z "${ANGORA_BUILD_DIR}" ]; then
+if [ -z "${ANGORA_BUILD_DIR-}" ]; then
   if [ ! -d "${ANGORA}" ]; then
     echo "${ANGOAR} not found. Downloading"
     git clone ${ANGORA_URL} ${ANGORA}
@@ -62,7 +62,6 @@ if [ -z "${ANGORA_BUILD_DIR}" ]; then
 
   export ANGORA_BUILD_DIR=${PWD}/${ANGORA}
 fi
-ln -sf ${SRC_DIR}/angora/angora_clang.c ${ANGORA_BUILD_DIR}/llvm_mode/compiler/angora_clang.c
 
 # Build the fuzzalloc libraries and tools
 mkdir -p fuzzalloc-release && \
