@@ -54,7 +54,7 @@ class LargeMmapAllocatorPtrArrayDynamic {
   }
 
   private:
-  static const int kMaxNumChunks = 1 << 20;
+  static const int kMaxNumChunks = 1 << 30;
   static const int kChunksBlockCount = 1 << 14;
   ReservedAddressRange address_range_;
   uptr n_reserved_;
