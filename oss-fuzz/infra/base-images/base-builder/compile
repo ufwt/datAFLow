@@ -113,7 +113,6 @@ fi
 
 if [[ "$FUZZING_ENGINE" == "tags" ]]; then
   # The only thing we care about are the tag sites
-  find $WORK/* -not -name tag-sites.csv -exec rm -rf {} \;
   rm -rf $OUT/*
 fi
 
