@@ -103,3 +103,10 @@ can be used as dropin replacements for `clang` (and `clang++`).
 Note that this typically requires running `dataflow-collect-tag-sites` before
 running `dataflow-clang-fast` to collect the allocation sites to tag.
 
+## With libFuzzer
+
+The following flags are added to libFuzzer:
+
+* `use_dataflow`: Enable dataflow-based coverage
+* `print_dataflows`: Print out covered def/use chains
+* `job_prefix`: fuzz-JOB.log prefix
