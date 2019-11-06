@@ -222,14 +222,23 @@ void *__tagged_realloc(tag_t def_site_tag, void *ptr, size_t size) {
   mspace space;
 
   if (!ptr) {
-    // We are allocating a new memory region. Need to ensure that no-one else
+    // We may be allocating a new memory region. Need to ensure that no-one else
     // can update the mapped def sites while we are doing our own mapping
     ACQUIRE_MALLOC_GLOBAL_LOCK();
 
-    space = create_fuzzalloc_mspace(def_site_tag);
+    if (mapped_def_sites[def_site_tag] == FALSE) {
+      space = create_fuzzalloc_mspace(def_site_tag);
 
-    // Release the global lock - we've updated the def site map
-    RELEASE_MALLOC_GLOBAL_LOCK();
+      // Release the global lock - we've updated the def site map
+      RELEASE_MALLOC_GLOBAL_LOCK();
+    } else {
+      // Don't need the global lock anymore - the mspace lock will take care of
+      // it
+      RELEASE_MALLOC_GLOBAL_LOCK();
+
+      assert(mspace_overhead >= 0);
+      space = GET_MSPACE(def_site_tag) + mspace_overhead;
+    }
   } else {
     // We are resizing an existing memory region, so reuse the def site tag and
     // mspace of the existing pointer
