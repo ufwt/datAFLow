@@ -204,7 +204,7 @@ def main():
             csv_writer.writerow(['module', 'new rewrites', 'delete rewrites',
                                  'alloca heapifications',
                                  'global heapifications', 'tagged direct calls',
-                                 'tagged indirect calls', 'mem_accesses'])
+                                 'tagged indirect calls', 'mem accesses'])
             csv_writer.writerows(stats_table)
 
     return 0
