@@ -1,2 +1,3 @@
 add_subdirectory(CollectTagSites)
+add_subdirectory(CountObjects)
 add_subdirectory(SVFAnalysis)

@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks datAFLow datAFLow_libfuzzer tags clang angora_fast angora_track"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks clang datAFLow datAFLow_libfuzzer tags count_objects angora_fast angora_track"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -35,6 +35,20 @@ elif [[ $FUZZING_ENGINE == "honggfuzz" ]]; then
 elif [[ $FUZZING_ENGINE == "coverage" ]]; then
   export CFLAGS=${CFLAGS:-$COVERAGE_FLAGS}
   export CXXFLAGS=${CXXFLAGS:-$COVERAGE_FLAGS}
+elif [[ $FUZZING_ENGINE == "clang" ]]; then
+  export LLVM_CC_NAME="clang"
+  export LLVM_CXX_NAME="clang++"
+
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
+
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  if [ ! -z $ASAN_ENABLE ]; then
+    echo "ASan enabled"
+    export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
+    export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
+  fi
+  export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "datAFLow" || $FUZZING_ENGINE == "datAFLow_libfuzzer" ]]; then
   export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
   export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
@@ -87,25 +101,26 @@ elif [[ $FUZZING_ENGINE == "tags" ]]; then
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   export CXXFLAGS=${CFLAGS}
+elif [[ $FUZZING_ENGINE == "count_objects" ]]; then
+  export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
+  export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
+
+  # Disable parallel build so the tag log doesn't get clobbered
+  JOBS="1"
+
+  export LLVM_CC_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-count-objects"
+  export LLVM_CXX_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-count-objects++"
+
+  export CC=${CC:-${LLVM_CC_NAME}}
+  export CXX=${CXX:-${LLVM_CXX_NAME}}
+
+  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
+  export CXXFLAGS=${CFLAGS}
 elif [[ $FUZZING_ENGINE == "afl" ]]; then
   export AFL_PATH=${AFL_SRC}
 
   export CC="${AFL_PATH}/afl-clang-fast"
   export CXX="${AFL_PATH}/afl-clang-fast++"
-
-  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  if [ ! -z $ASAN_ENABLE ]; then
-    echo "ASan enabled"
-    export CFLAGS="$CFLAGS -fsanitize=address -fsanitize-address-use-after-scope"
-    export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=1:allocator_may_return_null=1"
-  fi
-  export CXXFLAGS=${CFLAGS}
-elif [[ $FUZZING_ENGINE == "clang" ]]; then
-  export LLVM_CC_NAME="clang"
-  export LLVM_CXX_NAME="clang++"
-
-  export CC=${CC:-${LLVM_CC_NAME}}
-  export CXX=${CXX:-${LLVM_CXX_NAME}}
 
   export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
   if [ ! -z $ASAN_ENABLE ]; then
@@ -191,23 +206,24 @@ build_datAFLow() {
   rm *.o
 }
 
-build_tags() {
+build_clang() {
   STANDALONE_TARGET=1
   $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
   ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
   rm *.o
+}
+
+build_tags() {
+  build_clang
+}
+
+build_count_objects() {
+  build_clang
 }
 
 build_afl() {
   $CXX $CXXFLAGS -std=c++11 -O2 -c ${LIBFUZZER_SRC}/afl/afl_driver.cpp -I$LIBFUZZER_SRC
   ar r $LIB_FUZZING_ENGINE afl_driver.o
-  rm *.o
-}
-
-build_clang() {
-  STANDALONE_TARGET=1
-  $CC -O2 -c $LIBFUZZER_SRC/standalone/StandaloneFuzzTargetMain.c
-  ar rc $LIB_FUZZING_ENGINE StandaloneFuzzTargetMain.o
   rm *.o
 }
 

@@ -27,6 +27,24 @@ build_target() {
 
   cd ${PARENT_DIR}
 
+  # Create the empty seed
+  RUNDIR="${PARENT_DIR}/RUNDIR-datAFLow-${TARGET}"
+  mkdir -p ${RUNDIR}/empty-seed
+  echo "" > ${RUNDIR}/empty-seed/seed
+
+  # Count allocas and global variables
+  export FUZZING_ENGINE="count_objects"
+  unset CC
+  unset CXX
+  . ${DIR_NAME}/common.sh
+
+  echo "Running build ${TARGET} (${FUZZING_ENGINE})"
+  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
+
+  if [ $? -ne 0 ]; then
+    echo "${TARGET} build failed (${FUZZING_ENGINE})"
+  fi
+
   # Collect tags
   export FUZZING_ENGINE="tags"
   export FUZZALLOC_TAG_LOG="${PARENT_DIR}/${TARGET}-tag-sites.csv"
@@ -38,6 +56,11 @@ build_target() {
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
+  if [ $? -ne 0 ]; then
+    echo "${TARGET} build failed (${FUZZING_ENGINE})"
+    return
+  fi
+
   # Build target
   export FUZZING_ENGINE="datAFLow"
   unset CC
@@ -45,15 +68,9 @@ build_target() {
   . ${DIR_NAME}/common.sh
   echo "Running build ${TARGET} (${FUZZING_ENGINE})"
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
-  BUILD_RET_CODE=$?
 
-  # Create the empty seed
-  RUNDIR="${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-${TARGET}"
-  mkdir -p ${RUNDIR}/empty-seed
-  echo "" > ${RUNDIR}/empty-seed/seed
-
-  if [ ${BUILD_RET_CODE} -ne 0 ]; then
-    echo "${TARGET} build failed"
+  if [ $? -ne 0 ]; then
+    echo "${TARGET} build failed (${FUZZING_ENGINE})"
     return
   fi
 
