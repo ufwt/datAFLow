@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Replay the AFL queue and collect the fuzzalloc logs
+# Replay the AFL queue and collect logs
 #
 
 
@@ -18,6 +18,8 @@ def parse_args():
     parser = ArgumentParser(description='Replay the AFL queue and collect logs')
     parser.add_argument('-o', '--output', required=True,
                         help='Output directory path')
+    parser.add_argument('-t', '--target', required=False,
+                        help='Override the target program to run')
     parser.add_argument('afl_out_dir', help='AFL output directory')
 
     return parser.parse_args()
@@ -39,6 +41,9 @@ def main():
     if not os.path.isdir(logs_out_dir):
         raise Exception('%s is not a valid output directory' % logs_out_dir)
 
+    if args.target and not os.path.isfile(args.target):
+        raise Exception('%s is not a valid target to execute' % args.target)
+
     if 'LD_LIBRARY_PATH' not in os.environ:
         print('warn: LD_LIBRARY_PATH is not set. Are you sure that this is not '
               'needed?')
@@ -48,20 +53,27 @@ def main():
     #
 
     afl_cmd_line = get_afl_command_line(fuzzer_stats_path)
-    print('replaying AFL target `%s`' % afl_cmd_line.target_cmd_line)
 
     #
     # Replay all of the files in the queue
     #
 
     for f in os.listdir(queue_path):
+        print('replaying %s %s...' % (afl_cmd_line.target_cmd_line, f), end=' ')
         input_path = os.path.join(queue_path, f)
-        args = afl_cmd_line.target_cmd_line.replace('@@', input_path).split()
+
+        if '@@' in afl_cmd_line.target_cmd_line:
+            afl_args = afl_cmd_line.target_cmd_line.replace('@@', input_path).split()
+        else:
+            afl_args = afl_cmd_line.target_cmd_line.split() + [input_path]
+
+        if args.target:
+            afl_args[0] = args.target
 
         with open(os.path.join(logs_out_dir, '%s.log' % f), 'w') as log_file:
-            proc = subprocess.Popen(args, stderr=log_file)
+            proc = subprocess.Popen(afl_args, stderr=log_file)
             proc.wait()
-            print('replaying %s returned %d' % (f, proc.returncode))
+            print('returned %d' % proc.returncode)
 
     return 0
 

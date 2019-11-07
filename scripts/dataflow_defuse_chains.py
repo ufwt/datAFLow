@@ -16,16 +16,14 @@ import sys
 from tabulate import tabulate
 
 
-from common import FUZZALLOC_LOG_PTR_DEREF_RE
+from common import FUZZALLOC_LOG_MEM_ACCESS_RE
 
 
-PtrDeref = namedtuple('PtrDeref', ['pool_id', 'tag', 'ret_addr'])
+MemAccess = namedtuple('MemAccess', ['def_site', 'use_site'])
 
 
 def parse_args():
     parser = ArgumentParser(description='Statistics from datAFLow fuzzing logs')
-    parser.add_argument('-i', '--ignore-pool-zero', action='store_true',
-                        help='Ignore pool zero accesses')
     parser.add_argument('-s', '--silent', action='store_true',
                         help='Don\'t print the results to stdout')
     parser.add_argument('--csv', help='Path to an output CSV file')
@@ -41,38 +39,32 @@ def main():
     if not os.path.isfile(log_path):
         raise Exception('%s is not a valid log file' % log_path)
 
-    ptr_deref_counts = defaultdict(int)
+    mem_access_counts = defaultdict(int)
 
     #
     # Collect the data
     #
 
-    ignore_pool_zero = args.ignore_pool_zero
-
     with open(log_path, 'r') as infile:
         for line in infile:
-            match = FUZZALLOC_LOG_PTR_DEREF_RE.search(line)
+            match = FUZZALLOC_LOG_MEM_ACCESS_RE.search(line)
             if match:
-                pool_id = int(match.group(1), 16)
-                tag = int(match.group(2), 16)
-                ret_addr = int(match.group(3), 16)
+                def_site = int(match.group(1), 16)
+                use_site = int(match.group(2), 16)
 
-                if ignore_pool_zero and pool_id == 0:
-                    continue
-
-                ptr_deref_counts[PtrDeref(pool_id, tag, ret_addr)] += 1
+                mem_access_counts[MemAccess(def_site, use_site)] += 1
 
     #
     # Print/save the results
     #
 
-    ptr_deref_table = [(ptr.pool_id, ptr.tag, ptr.ret_addr, count) for
-                       ptr, count in ptr_deref_counts.items()]
+    mem_access_table = [(mem_access.def_site, mem_access.use_site, count) for
+                       mem_access, count in mem_access_counts.items()]
 
     if not args.silent:
-        print('pointer dereferences\n')
-        print(tabulate(sorted(ptr_deref_table, key=lambda x: x[0]),
-                       headers=['Pool ID', 'Tag', 'Ret. Addr.', 'Count'],
+        print('Def/use chains\n')
+        print(tabulate(sorted(mem_access_table, key=lambda x: x[0]),
+                       headers=['Def site', 'Use site', 'Count'],
                        tablefmt='psql'))
 
     csv_path = args.csv
@@ -80,8 +72,8 @@ def main():
         with open(csv_path, 'w') as csvfile:
             csv_writer = csv.writer(csvfile)
 
-            csv_writer.writerow(['pool id', 'tag', 'return address', 'count'])
-            csv_writer.writerows(ptr_deref_table)
+            csv_writer.writerow(['def site', 'use site', 'count'])
+            csv_writer.writerows(mem_access_table)
 
     return 0
 

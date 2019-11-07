@@ -5,7 +5,7 @@
 
 SCRIPT_DIR=$(dirname $(realpath -s $0)
 
-. "${SCRIPT_DIR}/replay_inputs.sh"
+. "${SCRIPT_DIR}/replay_inputs_perf.sh"
 
 export -f replay_inputs
 RUNDIRS="RUNDIR-${FUZZING_ENGINE}-*"

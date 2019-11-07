@@ -8,8 +8,8 @@ import re
 import shlex
 
 
-# Regex for pulling out pointer access information from a fuzzalloc log file
-FUZZALLOC_LOG_PTR_DEREF_RE = re.compile(r'__mem_access: accessing pool (0x[0-9a-f]+) \(allocation site (0x[0-9a-f]+)\) from (0x[0-9a-f]+)')
+# Regex for pulling out memory access information from a fuzzalloc log file
+FUZZALLOC_LOG_MEM_ACCESS_RE = re.compile(r'__mem_access: accessing def site (0x[0-9a-f]+) from (0x[0-9a-f]+)')
 
 
 class AFLCommandLine(object):

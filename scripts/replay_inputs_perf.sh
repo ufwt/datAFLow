@@ -1,10 +1,13 @@
 #!/bin/bash
+#
+# Replay inputs for performance measurements.
 
 if [ -z ${FUZZING_ENGINE} ]; then
   echo "Please set the FUZZING_ENGINE environment variable"
   exit 1
 fi
 
+# Same ASan flags used during fuzzing
 export ASAN_OPTIONS="abort_on_error=1:detect_leaks=0:symbolize=0:allocator_may_return_null=1"
 
 replay_inputs() {
@@ -29,6 +32,6 @@ replay_inputs() {
 }
 
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
-  echo "Replaying inputs for $1..."
+  echo "Replaying inputs for $1 (perf)..."
   replay_inputs $1
 fi

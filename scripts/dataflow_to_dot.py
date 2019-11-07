@@ -24,7 +24,7 @@ except ImportError:
         print('Both pygraphviz and pydot were not found')
         raise
 
-from common import FUZZALLOC_LOG_PTR_DEREF_RE
+from common import FUZZALLOC_LOG_MEM_ACCESS_RE
 
 
 def parse_args():
@@ -54,7 +54,7 @@ def main():
 
     with open(log_path, 'r') as infile:
         for line in infile:
-            match = FUZZALLOC_LOG_PTR_DEREF_RE.search(line)
+            match = FUZZALLOC_LOG_MEM_ACCESS_RE.search(line)
             if not match:
                 continue
 
