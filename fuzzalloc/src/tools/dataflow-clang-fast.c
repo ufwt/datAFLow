@@ -159,6 +159,12 @@ static void edit_params(u32 argc, char **argv) {
       cc_params[cc_par_cnt++] = "-mllvm";
       cc_params[cc_par_cnt++] = "-fuzzalloc-debug-instrument";
     }
+
+    char *fuzzalloc_sensitivity = getenv("FUZZALLOC_SENSITIVITY");
+    if (fuzzalloc_sensitivity) {
+      cc_params[cc_par_cnt++] = "-mllvm";
+      cc_params[cc_par_cnt++] = alloc_printf("-s%s", fuzzalloc_sensitivity);
+    }
   }
 
   cc_params[cc_par_cnt++] = "-Qunused-arguments";
