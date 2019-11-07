@@ -7,7 +7,10 @@ export FUZZING_ENGINE="clang"
 . ${DIR_NAME}/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-export PARENT_DIR="$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-angora)"
+
+PARENT_DIR=${1:-"$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-angora)"}
+PARENT_DIR=$(realpath ${PARENT_DIR})
+export PARENT_DIR
 
 mkdir -p ${PARENT_DIR}
 echo "Created top directory ${PARENT_DIR}"
