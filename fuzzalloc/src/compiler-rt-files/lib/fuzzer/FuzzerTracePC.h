@@ -86,7 +86,7 @@ public:
   void HandlePCsInit(const uintptr_t *Start, const uintptr_t *Stop);
   void HandleCallerCallee(uintptr_t Caller, uintptr_t Callee);
   template <class T> void HandleCmp(uintptr_t PC, T Arg1, T Arg2);
-  void HandleDataFlow(tag_t DefSite, uintptr_t UseSite);
+  void HandleDataFlow(tag_t DefSite, uintptr_t UseSite, int64_t Offset);
   size_t GetTotalPCCoverage();
   void SetUseCounters(bool UC) { UseCounters = UC; }
   void SetUseValueProfileMask(uint32_t VPMask) { UseValueProfileMask = VPMask; }
@@ -302,8 +302,7 @@ TracePC::CollectFeatures(Callback HandleFeature) const {
   }
 
   if (UseDataFlow) {
-    DataFlowMap.ForEach(
-        [&](size_t Idx) { HandleFeature(FirstFeature + Idx); });
+    DataFlowMap.ForEach([&](size_t Idx) { HandleFeature(FirstFeature + Idx); });
     FirstFeature += DataFlowMap.SizeInBits();
   }
 

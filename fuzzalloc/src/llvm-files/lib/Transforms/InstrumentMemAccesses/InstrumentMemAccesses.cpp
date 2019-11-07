@@ -16,8 +16,10 @@
 #include <set>
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InlineAsm.h"
@@ -37,15 +39,30 @@ using namespace llvm;
 
 #define DEBUG_TYPE "fuzzalloc-inst-mem-accesses"
 
-static cl::opt<bool>
-    ClInstrumentWrites("fuzzalloc-instrument-writes",
-                       cl::desc("Instrument write instructions"));
-static cl::opt<bool>
-    ClInstrumentReads("fuzzalloc-instrument-reads",
-                      cl::desc("Instrument read instructions"));
-static cl::opt<bool> ClInstrumentAtomics(
-    "fuzzalloc-instrument-atomics",
-    cl::desc("Instrument atomic instructions (rmw, cmpxchg)"));
+enum Sensitivity {
+  MemRead,
+  MemWrite,
+  MemAccess,
+
+  MemReadIdx,
+  MemWriteIdx,
+  MemAccessIdx,
+};
+
+static cl::opt<Sensitivity> ClSensitivity(
+    cl::desc("Sensitivity:"),
+    cl::values(clEnumValN(MemRead, "mem-read", "Instrument read instructions"),
+               clEnumValN(MemWrite, "mem-write",
+                          "Instrument write instructions"),
+               clEnumValN(MemAccess, "mem-access",
+                          "Instrument read and write instructions"),
+               clEnumValN(MemReadIdx, "mem-read-idx",
+                          "Instrument read instructions with index"),
+               clEnumValN(MemWriteIdx, "mem-write-idx",
+                          "Instrument write instructions with index"),
+               clEnumValN(MemAccessIdx, "mem-access-idx",
+                          "Instrument read and write instructions with index")),
+    cl::init(MemAccess));
 
 static cl::opt<bool>
     ClDebugInstrument("fuzzalloc-debug-instrument",
@@ -59,13 +76,62 @@ STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
 
 // AFL-style fuzzing
-static const char *const DbgInstrumentName = "__mem_access";
+static const char *const DbgMemAccessName = "__mem_access";
 static const char *const AFLMapName = "__afl_area_ptr";
 
 // libFuzzer-style fuzzing
 static const char *const SanCovTraceDataFlow = "__sanitizer_cov_trace_dataflow";
 
 namespace {
+
+/// Keep track of what to instrument.
+struct InstrumentFlags {
+  bool InstrumentReads;
+  bool InstrumentWrites;
+  bool InstrumentAtomics;
+  bool UseOffset;
+
+  InstrumentFlags(Sensitivity S) {
+    switch (S) {
+    case MemRead:
+      InstrumentReads = true;
+      InstrumentWrites = false;
+      InstrumentAtomics = false;
+      UseOffset = false;
+      break;
+    case MemWrite:
+      InstrumentReads = false;
+      InstrumentWrites = true;
+      InstrumentAtomics = false;
+      UseOffset = false;
+      break;
+    case MemAccess:
+      InstrumentReads = true;
+      InstrumentWrites = true;
+      InstrumentAtomics = false;
+      UseOffset = false;
+      break;
+    case MemReadIdx:
+      InstrumentReads = true;
+      InstrumentWrites = false;
+      InstrumentAtomics = false;
+      UseOffset = true;
+      break;
+    case MemWriteIdx:
+      InstrumentReads = false;
+      InstrumentWrites = true;
+      InstrumentAtomics = false;
+      UseOffset = true;
+      break;
+    case MemAccessIdx:
+      InstrumentReads = true;
+      InstrumentWrites = true;
+      InstrumentAtomics = false;
+      UseOffset = true;
+      break;
+    }
+  }
+};
 
 class InstrumentMemAccesses : public ModulePass {
 private:
@@ -80,6 +146,8 @@ private:
   ConstantInt *TagMask;
   ConstantInt *AFLInc;
   ConstantInt *HashMul;
+
+  InstrumentFlags *InstFlags;
 
   Value *getDefSite(Value *, IRBuilder<> &) const;
   Value *isInterestingMemoryAccess(Instruction *, bool *, uint64_t *,
@@ -100,7 +168,7 @@ private:
 
   Value *ReadPCAsm;
   GlobalVariable *AFLMapPtr;
-  Function *DbgInstrumentFn;
+  Function *DbgMemAccessFn;
 
   void doAFLInstrument(Instruction *, Value *) const;
 
@@ -181,6 +249,43 @@ static bool isInterestingAlloca(const AllocaInst &AI) {
          !AI.isSwiftError();
 }
 
+// Adapted from llvm::GetUnderlyingObject
+static GEPOperator *getUseSiteGEP(Value *V, DataLayout &DL,
+                                  unsigned MaxLookup = 6) {
+  if (!V->getType()->isPointerTy()) {
+    return nullptr;
+  }
+
+  for (unsigned Count = 0; MaxLookup == 0 || Count < MaxLookup; ++Count) {
+    if (GEPOperator *GEP = dyn_cast<GEPOperator>(V)) {
+      return GEP;
+    } else if (Operator::getOpcode(V) == Instruction::BitCast ||
+               Operator::getOpcode(V) == Instruction::AddrSpaceCast) {
+      V = cast<Operator>(V)->getOperand(0);
+    } else {
+      if (auto CS = CallSite(V)) {
+        if (auto *RP = getArgumentAliasingToReturnedPointer(CS)) {
+          V = RP;
+          continue;
+        }
+      }
+
+      if (Instruction *I = dyn_cast<Instruction>(V)) {
+        if (Value *Simplified = SimplifyInstruction(I, {DL, I})) {
+          V = Simplified;
+          continue;
+        }
+      }
+
+      return nullptr;
+    }
+
+    assert(V->getType()->isPointerTy() && "Unexpected operand type");
+  }
+
+  return nullptr;
+}
+
 Value *InstrumentMemAccesses::getDefSite(Value *Ptr, IRBuilder<> &IRB) const {
   // Cast the memory access pointer to an integer and mask out the mspace tag
   // from the pointer by right-shifting by 32 bits
@@ -191,7 +296,8 @@ Value *InstrumentMemAccesses::getDefSite(Value *Ptr, IRBuilder<> &IRB) const {
   auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                   this->TagMask);
 
-  return IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false);
+  return IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false,
+                           Ptr->getName() + ".def_site");
 }
 
 // Adapted from llvm::AddressSanitizer::isInterestingMemoryAccess
@@ -201,7 +307,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
   Value *PtrOperand = nullptr;
 
   if (auto *LI = dyn_cast<LoadInst>(I)) {
-    if (!ClInstrumentReads) {
+    if (!this->InstFlags->InstrumentReads) {
       return nullptr;
     }
 
@@ -210,7 +316,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
     *Alignment = LI->getAlignment();
     PtrOperand = LI->getPointerOperand();
   } else if (auto *SI = dyn_cast<StoreInst>(I)) {
-    if (!ClInstrumentWrites) {
+    if (!this->InstFlags->InstrumentWrites) {
       return nullptr;
     }
 
@@ -220,7 +326,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
     *Alignment = SI->getAlignment();
     PtrOperand = SI->getPointerOperand();
   } else if (auto *RMW = dyn_cast<AtomicRMWInst>(I)) {
-    if (!ClInstrumentAtomics) {
+    if (!this->InstFlags->InstrumentAtomics) {
       return nullptr;
     }
 
@@ -230,7 +336,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
     *Alignment = 0;
     PtrOperand = RMW->getPointerOperand();
   } else if (auto *XCHG = dyn_cast<AtomicCmpXchgInst>(I)) {
-    if (!ClInstrumentAtomics) {
+    if (!this->InstFlags->InstrumentAtomics) {
       return nullptr;
     }
 
@@ -246,7 +352,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
       unsigned OpOffset = 0;
 
       if (F->getName().startswith("llvm.masked.store.")) {
-        if (!ClInstrumentWrites) {
+        if (!this->InstFlags->InstrumentWrites) {
           return nullptr;
         }
 
@@ -254,7 +360,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
         OpOffset = 1;
         *IsWrite = true;
       } else {
-        if (!ClInstrumentReads) {
+        if (!this->InstFlags->InstrumentReads) {
           return nullptr;
         }
 
@@ -302,61 +408,6 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
   return PtrOperand;
 }
 
-/// Instrument the Instruction `I` that accesses the memory at `Ptr`.
-void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
-  LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
-
-  auto *M = I->getModule();
-  IRBuilder<> IRB(I);
-  LLVMContext &C = IRB.getContext();
-
-  // This metadata can be used by the static pointer analysis
-  I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
-                 MDNode::get(C, None));
-
-  auto *DefSite = getDefSite(Ptr, IRB);
-
-  if (ClDebugInstrument) {
-    // For debugging
-    IRB.CreateCall(this->DbgInstrumentFn, DefSite);
-  } else {
-    // Use the PC as the use site identifier
-    auto *UseSite =
-        IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
-                          /* isSigned */ false);
-
-    // Load the AFL bitmap
-    auto *AFLMap = IRB.CreateLoad(this->AFLMapPtr);
-
-    // Hash the allocation site and use site to index into the bitmap
-    //
-    // zext is necessary otherwise we end up using signed indices
-    //
-    // Hash algorithm: ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
-    auto *Hash = IRB.CreateSub(
-        IRB.CreateXor(
-            IRB.CreateMul(this->HashMul,
-                          IRB.CreateSub(DefSite, ConstantInt::get(
-                                                     this->TagTy,
-                                                     FUZZALLOC_DEFAULT_TAG))),
-            UseSite),
-        UseSite);
-    auto *AFLMapIdx =
-        IRB.CreateGEP(AFLMap, IRB.CreateZExt(Hash, IRB.getInt32Ty()));
-
-    // Update the bitmap only if the def site is not the default tag
-    auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
-    auto *Incr = IRB.CreateAdd(CounterLoad, this->AFLInc);
-    auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
-
-    setNoSanitizeMetadata(AFLMap);
-    setNoSanitizeMetadata(CounterLoad);
-    setNoSanitizeMetadata(CounterStore);
-  }
-
-  NumOfInstrumentedMemAccesses++;
-}
-
 void InstrumentMemAccesses::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
@@ -377,13 +428,12 @@ bool InstrumentMemAccesses::doInitialization(Module &M) {
   this->AFLInc = ConstantInt::get(this->Int8Ty, 1);
   this->HashMul = ConstantInt::get(this->TagTy, 3);
 
+  this->InstFlags = new InstrumentFlags(ClSensitivity);
+
   return false;
 }
 
 bool InstrumentMemAccesses::runOnModule(Module &M) {
-  assert((ClInstrumentReads || ClInstrumentWrites) &&
-         "Must instrument either loads or stores");
-
   LLVMContext &C = M.getContext();
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
@@ -394,9 +444,11 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     // libFuzzer-style fuzzing
     //
 
-    this->SanCovTraceDataFlowFn = checkInstrumentationFunc(
-        M.getOrInsertFunction(SanCovTraceDataFlow, VoidTy, this->TagTy));
+    this->SanCovTraceDataFlowFn =
+        checkInstrumentationFunc(M.getOrInsertFunction(
+            SanCovTraceDataFlow, VoidTy, this->TagTy, this->Int64Ty));
     this->SanCovTraceDataFlowFn->addParamAttr(0, Attribute::ZExt);
+    this->SanCovTraceDataFlowFn->addParamAttr(1, Attribute::SExt);
   } else {
     //
     // AFL-style fuzzing
@@ -411,9 +463,10 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
         GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
 
     if (ClDebugInstrument) {
-      this->DbgInstrumentFn = checkInstrumentationFunc(
-          M.getOrInsertFunction(DbgInstrumentName, VoidTy, this->TagTy));
-      this->DbgInstrumentFn->addParamAttr(0, Attribute::ZExt);
+      this->DbgMemAccessFn = checkInstrumentationFunc(M.getOrInsertFunction(
+          DbgMemAccessName, VoidTy, this->TagTy, this->Int64Ty));
+      this->DbgMemAccessFn->addParamAttr(0, Attribute::ZExt);
+      this->DbgMemAccessFn->addParamAttr(1, Attribute::SExt);
     }
   }
 
@@ -525,6 +578,84 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
 
 //===----------------------------------------------------------------------===//
 //
+// AFL-style fuzzing
+//
+//===----------------------------------------------------------------------===//
+
+/// Instrument the Instruction `I` that accesses the memory at `Ptr`.
+void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
+  LLVM_DEBUG(dbgs() << "instrumenting " << *Ptr << " in " << *I << '\n');
+
+  auto *M = I->getModule();
+  IRBuilder<> IRB(I);
+  LLVMContext &C = IRB.getContext();
+
+  // This metadata can be used by the static pointer analysis
+  I->setMetadata(M->getMDKindID("fuzzalloc.instrumented_deref"),
+                 MDNode::get(C, None));
+
+  // Get the def site
+  auto *DefSite = getDefSite(Ptr, IRB);
+
+  // Get the use site offset. Default to zero if we can't determine the offset
+  Value *UseSiteOffset = Constant::getNullValue(this->TagTy);
+  if (this->InstFlags->UseOffset) {
+    auto *UseSiteGEP = getUseSiteGEP(Ptr, *this->DL);
+    if (UseSiteGEP) {
+      UseSiteOffset = EmitGEPOffset(&IRB, *this->DL, UseSiteGEP);
+    }
+  }
+
+  if (ClDebugInstrument) {
+    // For debugging
+    IRB.CreateCall(this->DbgMemAccessFn, {DefSite, UseSiteOffset});
+  } else {
+    // Use the PC as the use site identifier
+    auto *UseSite =
+        IRB.CreateIntCast(IRB.CreateCall(this->ReadPCAsm), this->TagTy,
+                          /* isSigned */ false, Ptr->getName() + ".use_site");
+
+    // Incorporate the memory access offset into the use site
+    if (this->InstFlags->UseOffset) {
+      UseSite =
+          IRB.CreateAdd(UseSite, IRB.CreateIntCast(UseSiteOffset, this->TagTy,
+                                                   /* isSigned */ true));
+    }
+
+    // Load the AFL bitmap
+    auto *AFLMap = IRB.CreateLoad(this->AFLMapPtr);
+
+    // Hash the allocation site and use site to index into the bitmap
+    //
+    // zext is necessary otherwise we end up using signed indices
+    //
+    // Hash algorithm: ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
+    auto *Hash = IRB.CreateSub(
+        IRB.CreateXor(
+            IRB.CreateMul(this->HashMul,
+                          IRB.CreateSub(DefSite, ConstantInt::get(
+                                                     this->TagTy,
+                                                     FUZZALLOC_DEFAULT_TAG))),
+            UseSite),
+        UseSite, Ptr->getName() + ".def_use_hash");
+    auto *AFLMapIdx = IRB.CreateGEP(
+        AFLMap, IRB.CreateZExt(Hash, IRB.getInt32Ty()), "__afl_area_ptr_idx");
+
+    // Update the bitmap only if the def site is not the default tag
+    auto *CounterLoad = IRB.CreateLoad(AFLMapIdx);
+    auto *Incr = IRB.CreateAdd(CounterLoad, this->AFLInc);
+    auto *CounterStore = IRB.CreateStore(Incr, AFLMapIdx);
+
+    setNoSanitizeMetadata(AFLMap);
+    setNoSanitizeMetadata(CounterLoad);
+    setNoSanitizeMetadata(CounterStore);
+  }
+
+  NumOfInstrumentedMemAccesses++;
+}
+
+//===----------------------------------------------------------------------===//
+//
 // libFuzzer-style fuzzing
 //
 //===----------------------------------------------------------------------===//
@@ -543,7 +674,16 @@ void InstrumentMemAccesses::doLibFuzzerInstrument(Instruction *I,
                  MDNode::get(C, None));
 
   auto *DefSite = getDefSite(Ptr, IRB);
-  IRB.CreateCall(this->SanCovTraceDataFlowFn, DefSite);
+  Value *UseSiteOffset = Constant::getNullValue(this->TagTy);
+
+  if (this->InstFlags->UseOffset) {
+    auto *UseSiteGEP = getUseSiteGEP(Ptr, *this->DL);
+    if (UseSiteGEP) {
+      UseSiteOffset = EmitGEPOffset(&IRB, *this->DL, UseSiteGEP);
+    }
+  }
+
+  IRB.CreateCall(this->SanCovTraceDataFlowFn, {DefSite, UseSiteOffset});
 
   NumOfInstrumentedMemAccesses++;
 }

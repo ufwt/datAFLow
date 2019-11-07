@@ -154,10 +154,6 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[cc_par_cnt++] =
         "-fplugin=" FUZZALLOC_LLVM_DIR
         "/Transforms/InstrumentMemAccesses/fuzzalloc-inst-mem-accesses.so";
-    cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-writes";
-    cc_params[cc_par_cnt++] = "-mllvm";
-    cc_params[cc_par_cnt++] = "-fuzzalloc-instrument-reads";
 
     if (getenv("FUZZALLOC_DEBUG_INSTRUMENT")) {
       cc_params[cc_par_cnt++] = "-mllvm";
