@@ -131,18 +131,21 @@ def parse_line(line):
         module = match.group(1)
         count = int(match.group(2))
         inst_stats[module].tagged_indirect_calls = count
+        return
 
     match = FUZZALLOC_NEW_REWRITES_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
         inst_stats[module].new_rewrites = count
+        return
 
     match = FUZZALLOC_DELETE_REWRITES_RE.search(line)
     if match:
         module = match.group(1)
         count = int(match.group(2))
         inst_stats[module].delete_rewrites = count
+        return
 
 
 def parse_args():
@@ -191,9 +194,9 @@ def main():
                      sum(stats.tagged_indirect_calls for stats in inst_stats.values()),
                      sum(stats.mem_accesses for stats in inst_stats.values()))],
                    headers=['Module', 'New rewrites', 'Delete rewrites',
-                            'Alloca Heapifications', 'Global Heapifications',
+                            'Alloca heapifications', 'Global heapifications',
                             'Tagged direct calls', 'Tagged indirect calls',
-                            'Memory Accesses'],
+                            'Memory accesses'],
                    tablefmt='psql'))
 
     csv_path = args.csv
