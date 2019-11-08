@@ -13,13 +13,11 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/Statistic.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "Common.h"
@@ -28,17 +26,20 @@ using namespace llvm;
 
 #define DEBUG_TYPE "fuzzalloc-count-objects"
 
-STATISTIC(NumOfAllocas, "Number of allocas.");
-STATISTIC(NumOfGlobalVars, "Number of global variables.");
-
 namespace {
 
 /// Count the number of `alloca`s and global variables
 class CountObjects : public ModulePass {
+private:
+  unsigned long NumOfAllocas;
+  unsigned long NumOfGlobalVars;
+
 public:
   static char ID;
   CountObjects() : ModulePass(ID) {}
 
+  void getAnalysisUsage(AnalysisUsage &) const override;
+  void print(llvm::raw_ostream &, const Module *) const override;
   bool runOnModule(Module &) override;
 };
 
@@ -46,11 +47,23 @@ public:
 
 char CountObjects::ID = 0;
 
+void CountObjects::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.setPreservesAll();
+}
+
+void CountObjects::print(raw_ostream &O, const Module *M) const {
+  O << "  num. allocas: " << this->NumOfAllocas << "\n";
+  O << "  num. global variables: " << this->NumOfGlobalVars << "\n";
+}
+
 bool CountObjects::runOnModule(Module &M) {
+  this->NumOfAllocas = 0;
+  this->NumOfGlobalVars = 0;
+
   for (const auto &F : M.functions()) {
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
       if (isa<AllocaInst>(&*I)) {
-        NumOfAllocas++;
+        this->NumOfAllocas++;
       }
     }
   }
@@ -58,13 +71,10 @@ bool CountObjects::runOnModule(Module &M) {
   for (const auto &G : M.globals()) {
     if (auto *GV = dyn_cast<GlobalVariable>(&G)) {
       if (!GV->isDeclaration()) {
-        NumOfGlobalVars++;
+        this->NumOfGlobalVars++;
       }
     }
   }
-
-  printStatistic(M, NumOfAllocas);
-  printStatistic(M, NumOfGlobalVars);
 
   return false;
 }

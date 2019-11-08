@@ -32,19 +32,6 @@ build_target() {
   mkdir -p ${RUNDIR}/empty-seed
   echo "" > ${RUNDIR}/empty-seed/seed
 
-  # Count allocas and global variables
-  export FUZZING_ENGINE="count_objects"
-  unset CC
-  unset CXX
-  . ${DIR_NAME}/common.sh
-
-  echo "Running build ${TARGET} (${FUZZING_ENGINE})"
-  ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
-
-  if [ $? -ne 0 ]; then
-    echo "${TARGET} build failed (${FUZZING_ENGINE})"
-  fi
-
   # Collect tags
   export FUZZING_ENGINE="tags"
   export FUZZALLOC_TAG_LOG="${PARENT_DIR}/${TARGET}-tag-sites.csv"

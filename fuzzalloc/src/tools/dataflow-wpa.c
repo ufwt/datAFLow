@@ -36,6 +36,16 @@ static void edit_params(u32 argc, char **argv) {
       FUZZALLOC_LLVM_DIR "/Analysis/SVFAnalysis/fuzzalloc-svf-analysis.so";
   cc_params[cc_par_cnt++] = "-fuzzalloc-svf-analysis";
 
+  if (getenv("FUZZALLOC_DEBUG")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-debug";
+  }
+
+  if (getenv("FUZZALLOC_STATS")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-stats";
+  }
+
   while (--argc) {
     u8 *cur = *(++argv);
 

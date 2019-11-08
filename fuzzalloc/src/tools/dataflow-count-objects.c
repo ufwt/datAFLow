@@ -9,8 +9,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "common.h"
-
 static u8 **cc_params;     /* Parameters passed to the opt */
 static u32 cc_par_cnt = 1; /* Param count, including argv0 */
 
@@ -26,19 +24,16 @@ static void edit_params(u32 argc, char **argv) {
     name++;
   }
 
-  if (!strcmp(name, "dataflow-count-objects++")) {
-    u8 *alt_cxx = getenv("AFL_CXX");
-    cc_params[0] = alt_cxx ? alt_cxx : (u8 *)"clang++";
-  } else {
-    u8 *alt_cc = getenv("AFL_CC");
-    cc_params[0] = alt_cc ? alt_cc : (u8 *)"clang";
-  }
+  cc_params[0] = (u8 *)"opt";
+
+  cc_params[cc_par_cnt++] = "-analyze";
 
   /* Count allocas and global variables */
 
+  cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] =
-      "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Analysis/CountObjects/fuzzalloc-count-objects.so";
+      FUZZALLOC_LLVM_DIR "/Analysis/CountObjects/fuzzalloc-count-objects.so";
+  cc_params[cc_par_cnt++] = "-fuzzalloc-count-objects";
 
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
@@ -50,18 +45,10 @@ static void edit_params(u32 argc, char **argv) {
     cc_params[cc_par_cnt++] = "-stats";
   }
 
-  cc_params[cc_par_cnt++] = "-Qunused-arguments";
-
   while (--argc) {
     u8 *cur = *(++argv);
 
     cc_params[cc_par_cnt++] = cur;
-  }
-
-  if (!getenv("AFL_DONT_OPTIMIZE")) {
-    cc_params[cc_par_cnt++] = "-g";
-    cc_params[cc_par_cnt++] = "-O3";
-    cc_params[cc_par_cnt++] = "-funroll-loops";
   }
 
   cc_params[cc_par_cnt] = NULL;
@@ -76,9 +63,10 @@ int main(int argc, char **argv) {
   if (argc < 2) {
     SAYF("\n"
          "This is a helper application for counting the number of allocas and "
-         "global variables are in a program. A typical usage would be:\n\n"
+         "global variables are in a target bitcode (bc) file. A typical usage "
+         "would be:\n\n"
 
-         "  dataflow-count-objects /path/to/file\n\n");
+         "  dataflow-count-objects /path/to/bc/file\n\n");
 
     exit(1);
   }

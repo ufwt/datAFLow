@@ -7,7 +7,7 @@
 
 # Ensure that fuzzing engine, if defined, is valid
 FUZZING_ENGINE=${FUZZING_ENGINE:-"datAFLow"}
-POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks clang datAFLow datAFLow_libfuzzer tags count_objects angora_fast angora_track"
+POSSIBLE_FUZZING_ENGINE="libfuzzer afl honggfuzz coverage fsanitize_fuzzer hooks clang datAFLow datAFLow_libfuzzer tags angora_fast angora_track"
 !(echo "$POSSIBLE_FUZZING_ENGINE" | grep -w "$FUZZING_ENGINE" > /dev/null) && \
   echo "USAGE: Error: If defined, FUZZING_ENGINE should be one of the following:
   $POSSIBLE_FUZZING_ENGINE. However, it was defined as $FUZZING_ENGINE" && exit 1
@@ -95,21 +95,6 @@ elif [[ $FUZZING_ENGINE == "tags" ]]; then
 
   export LLVM_CC_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-collect-tag-sites"
   export LLVM_CXX_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-collect-tag-sites++"
-
-  export CC=${CC:-${LLVM_CC_NAME}}
-  export CXX=${CXX:-${LLVM_CXX_NAME}}
-
-  export CFLAGS="-O2 -fno-omit-frame-pointer -gline-tables-only"
-  export CXXFLAGS=${CFLAGS}
-elif [[ $FUZZING_ENGINE == "count_objects" ]]; then
-  export FUZZALLOC_DEBUG_BUILD_DIR=${FUZZALLOC_DEBUG_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-debug}
-  export FUZZALLOC_RELEASE_BUILD_DIR=${FUZZALLOC_RELEASE_BUILD_DIR:-$(dirname $SCRIPT_DIR)/fuzzalloc-release}
-
-  # Disable parallel build so the tag log doesn't get clobbered
-  JOBS="1"
-
-  export LLVM_CC_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-count-objects"
-  export LLVM_CXX_NAME="${FUZZALLOC_DEBUG_BUILD_DIR}/src/tools/dataflow-count-objects++"
 
   export CC=${CC:-${LLVM_CC_NAME}}
   export CXX=${CXX:-${LLVM_CXX_NAME}}
@@ -214,10 +199,6 @@ build_clang() {
 }
 
 build_tags() {
-  build_clang
-}
-
-build_count_objects() {
   build_clang
 }
 
