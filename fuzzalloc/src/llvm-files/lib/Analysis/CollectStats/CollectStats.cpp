@@ -1,4 +1,4 @@
-//===-- CountObjects.cpp - Counts objects allocated in memory -------------===//
+//===-- CollectStats.cpp - Collects useful statsistics --------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,12 +8,10 @@
 //===----------------------------------------------------------------------===//
 ///
 /// \file
-/// This pass simply counts the number of memory-allocated objects. This
-/// includes `alloca`s and global variables.
+/// This pass simply collects a number of useful statistics.
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -24,46 +22,58 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "fuzzalloc-count-objects"
+#define DEBUG_TYPE "fuzzalloc-collect-stats"
 
 namespace {
 
-/// Count the number of `alloca`s and global variables
-class CountObjects : public ModulePass {
+/// Collect useful statistics
+class CollectStats : public ModulePass {
 private:
+  unsigned long NumOfBasicBlocks;
   unsigned long NumOfAllocas;
   unsigned long NumOfGlobalVars;
 
 public:
   static char ID;
-  CountObjects() : ModulePass(ID) {}
+  CollectStats() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
   void print(llvm::raw_ostream &, const Module *) const override;
+  bool doInitialization(Module &M) override;
   bool runOnModule(Module &) override;
 };
 
 } // anonymous namespace
 
-char CountObjects::ID = 0;
+char CollectStats::ID = 0;
 
-void CountObjects::getAnalysisUsage(AnalysisUsage &AU) const {
+void CollectStats::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
-void CountObjects::print(raw_ostream &O, const Module *M) const {
+void CollectStats::print(raw_ostream &O, const Module *M) const {
+  O << "  num. basic blocks: " << this->NumOfBasicBlocks << "\n";
   O << "  num. allocas: " << this->NumOfAllocas << "\n";
   O << "  num. global variables: " << this->NumOfGlobalVars << "\n";
 }
 
-bool CountObjects::runOnModule(Module &M) {
+bool CollectStats::doInitialization(Module &M) {
+  this->NumOfBasicBlocks = 0;
   this->NumOfAllocas = 0;
   this->NumOfGlobalVars = 0;
 
+  return false;
+}
+
+bool CollectStats::runOnModule(Module &M) {
   for (const auto &F : M.functions()) {
-    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (isa<AllocaInst>(&*I)) {
-        this->NumOfAllocas++;
+    for (auto &BB : F) {
+      this->NumOfBasicBlocks++;
+
+      for (auto &I : BB) {
+        if (isa<AllocaInst>(I)) {
+          this->NumOfAllocas++;
+        }
       }
     }
   }
@@ -79,19 +89,19 @@ bool CountObjects::runOnModule(Module &M) {
   return false;
 }
 
-static RegisterPass<CountObjects>
-    X("fuzzalloc-count-objects",
-      "Count the number of allocas and global variables", false, false);
+static RegisterPass<CollectStats> X("fuzzalloc-collect-stats",
+                                    "Collect some useful statistics", false,
+                                    false);
 
-static void registerCountObjectsPass(const PassManagerBuilder &,
+static void registerCollectStatsPass(const PassManagerBuilder &,
                                      legacy::PassManagerBase &PM) {
-  PM.add(new CountObjects());
+  PM.add(new CollectStats());
 }
 
 static RegisterStandardPasses
-    RegisterCountObjectsPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
-                             registerCountObjectsPass);
+    RegisterCollectStatsPass(PassManagerBuilder::EP_ModuleOptimizerEarly,
+                             registerCollectStatsPass);
 
 static RegisterStandardPasses
-    RegisterCountObjectsPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
-                              registerCountObjectsPass);
+    RegisterCollectStatsPass0(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                              registerCollectStatsPass);

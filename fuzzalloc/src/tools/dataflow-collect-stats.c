@@ -28,12 +28,12 @@ static void edit_params(u32 argc, char **argv) {
 
   cc_params[cc_par_cnt++] = "-analyze";
 
-  /* Count allocas and global variables */
+  /* Collect useful statistics */
 
   cc_params[cc_par_cnt++] = "-load";
   cc_params[cc_par_cnt++] =
-      FUZZALLOC_LLVM_DIR "/Analysis/CountObjects/fuzzalloc-count-objects.so";
-  cc_params[cc_par_cnt++] = "-fuzzalloc-count-objects";
+      FUZZALLOC_LLVM_DIR "/Analysis/CollectStats/fuzzalloc-collect-stats.so";
+  cc_params[cc_par_cnt++] = "-fuzzalloc-collect-stats";
 
   if (getenv("FUZZALLOC_DEBUG")) {
     cc_params[cc_par_cnt++] = "-mllvm";
@@ -56,17 +56,16 @@ static void edit_params(u32 argc, char **argv) {
 
 int main(int argc, char **argv) {
   if (isatty(2) && !getenv("AFL_QUIET")) {
-    SAYF(cCYA "dataflow-count-objects" cBRI VERSION cRST
+    SAYF(cCYA "dataflow-collect-stats" cBRI VERSION cRST
               " by <adrian.herrera@anu.edu.au>\n");
   }
 
   if (argc < 2) {
     SAYF("\n"
-         "This is a helper application for counting the number of allocas and "
-         "global variables are in a target bitcode (bc) file. A typical usage "
-         "would be:\n\n"
+         "This is a helper application for collecting some useful statistics "
+         "from a target bitcode (bc) file. A typical usage would be:\n\n"
 
-         "  dataflow-count-objects /path/to/bc/file\n\n");
+         "  dataflow-collect-stats /path/to/bc/file\n\n");
 
     exit(1);
   }
