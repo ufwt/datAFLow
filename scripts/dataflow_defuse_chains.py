@@ -19,7 +19,7 @@ from tabulate import tabulate
 from common import FUZZALLOC_LOG_MEM_ACCESS_RE
 
 
-MemAccess = namedtuple('MemAccess', ['def_site', 'use_site'])
+MemAccess = namedtuple('MemAccess', ['def_site', 'use_site', 'offset'])
 
 
 def parse_args():
@@ -51,20 +51,22 @@ def main():
             if match:
                 def_site = int(match.group(1), 16)
                 use_site = int(match.group(2), 16)
+                offset = int(match.group(3))
 
-                mem_access_counts[MemAccess(def_site, use_site)] += 1
+                mem_access_counts[MemAccess(def_site, use_site, offset)] += 1
 
     #
     # Print/save the results
     #
 
-    mem_access_table = [(mem_access.def_site, mem_access.use_site, count) for
-                       mem_access, count in mem_access_counts.items()]
+    mem_access_table = [(mem_access.def_site, mem_access.use_site,
+                         mem_access.offset, count) for
+                        mem_access, count in mem_access_counts.items()]
 
     if not args.silent:
         print('Def/use chains\n')
         print(tabulate(sorted(mem_access_table, key=lambda x: x[0]),
-                       headers=['Def site', 'Use site', 'Count'],
+                       headers=['Def site', 'Use site', 'Offset', 'Count'],
                        tablefmt='psql'))
 
     csv_path = args.csv
@@ -72,7 +74,7 @@ def main():
         with open(csv_path, 'w') as csvfile:
             csv_writer = csv.writer(csvfile)
 
-            csv_writer.writerow(['def site', 'use site', 'count'])
+            csv_writer.writerow(['def site', 'use site', 'offset', 'count'])
             csv_writer.writerows(mem_access_table)
 
     return 0
