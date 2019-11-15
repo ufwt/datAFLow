@@ -14,14 +14,14 @@ import sys
 
 import networkx as nx
 try:
-    import pygraphiv
+    import pygraphviz
     from networkx.drawing.nx_agraph import write_dot
 except ImportError:
     try:
         import pydot
         from networkx.drawing.nx_pydot import write_dot
     except ImportError:
-        print('Both pygraphviz and pydot were not found')
+        print('Neither pygraphviz or pydot were found')
         raise
 
 from common import FUZZALLOC_LOG_MEM_ACCESS_RE
