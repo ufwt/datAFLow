@@ -1,14 +1,16 @@
 #!/bin/bash
 
 export FUZZING_ENGINE="afl"
-export ASAN_ENABLE=1
-
 . $(dirname $0)/common.sh
 
 export ABS_SCRIPT_DIR=$(readlink -f ${SCRIPT_DIR})
-
 PARENT_DIR=${1:-"$(readlink -f ${ABS_SCRIPT_DIR}/../ALL_BENCHMARKS-${FUZZING_ENGINE})"}
-PARENT_DIR=$(realpath ${APRENT_DIR})
+PARENT_DIR=$(realpath ${PARENT_DIR})
+
+if [ ! -z ${ASAN_ENABLE} ]; then
+  PARENT_DIR="${PARENT_DIR}-asan"
+fi
+
 export PARENT_DIR
 
 mkdir -p ${PARENT_DIR}
