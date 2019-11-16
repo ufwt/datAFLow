@@ -104,6 +104,19 @@ bool AFLCoverage::runOnModule(Module &M) {
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
+  /* Get printf function (for debugging) */
+
+  char printf_debug = getenv("AFL_DEBUG") != nullptr;
+  Function *PrintfF = nullptr;
+
+  if (printf_debug) {
+    FunctionType *PrintfTy = FunctionType::get(Int32Ty,
+        {Int8Ty->getPointerTo()}, /* isVarArg */ true);
+    auto *PrintfC = M.getOrInsertFunction("printf", PrintfTy);
+    assert(isa<Function>(PrintfC) && "printf is not a function");
+    PrintfF = cast<Function>(PrintfC);
+  }
+
   /* Instrument all the things! */
 
   int inst_blocks = 0;
@@ -127,6 +140,13 @@ bool AFLCoverage::runOnModule(Module &M) {
       LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
       PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
+
+      /* Print current and previous location (for debugging) */
+      if (printf_debug) {
+        auto *FormatStr = IRB.CreateGlobalStringPtr(
+            "prev loc %#x, cur loc %#x\n", "afl.debug_fmt_str");
+        IRB.CreateCall(PrintfF, {FormatStr, PrevLocCasted, CurLoc});
+      }
 
       /* Load SHM pointer */
 
