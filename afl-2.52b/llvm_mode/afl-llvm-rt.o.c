@@ -255,3 +255,7 @@ __attribute__((constructor(CONST_PRIO))) void __afl_auto_init(void) {
   __afl_manual_init();
 
 }
+
+void debug_log(u32 prev_loc, u32 cur_loc) {
+  fprintf(stderr, "prev loc %#x, cur loc %#x\n", prev_loc, cur_loc);
+}

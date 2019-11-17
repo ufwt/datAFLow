@@ -69,6 +69,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
   IntegerType *Int8Ty  = IntegerType::getInt8Ty(C);
   IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
+  Type *VoidTy = Type::getVoidTy(C);
 
   /* Show a banner */
 
@@ -104,17 +105,20 @@ bool AFLCoverage::runOnModule(Module &M) {
       M, Int32Ty, false, GlobalValue::ExternalLinkage, 0, "__afl_prev_loc",
       0, GlobalVariable::GeneralDynamicTLSModel, 0, false);
 
-  /* Get printf function (for debugging) */
+  /* Get debug_log function (for debugging) */
 
-  char printf_debug = getenv("AFL_DEBUG") != nullptr;
-  Function *PrintfF = nullptr;
+  char debug_log = getenv("AFL_DEBUG") != nullptr;
+  Function *DebugLogF = nullptr;
 
-  if (printf_debug) {
-    FunctionType *PrintfTy = FunctionType::get(Int32Ty,
-        {Int8Ty->getPointerTo()}, /* isVarArg */ true);
-    auto *PrintfC = M.getOrInsertFunction("printf", PrintfTy);
-    assert(isa<Function>(PrintfC) && "printf is not a function");
-    PrintfF = cast<Function>(PrintfC);
+  if (debug_log) {
+    FunctionType *DebugLogTy = FunctionType::get(VoidTy, {Int32Ty, Int32Ty},
+        /* isVarArg */ false);
+    auto *DebugLogC = M.getOrInsertFunction("debug_log", DebugLogTy);
+    assert(isa<Function>(DebugLogC) && "debug_log is not a function");
+
+    DebugLogF = cast<Function>(DebugLogC);
+    DebugLogF->addParamAttr(0, Attribute::ZExt);
+    DebugLogF->addParamAttr(1, Attribute::ZExt);
   }
 
   /* Instrument all the things! */
@@ -142,10 +146,8 @@ bool AFLCoverage::runOnModule(Module &M) {
       Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
 
       /* Print current and previous location (for debugging) */
-      if (printf_debug) {
-        auto *FormatStr = IRB.CreateGlobalStringPtr(
-            "prev loc %#x, cur loc %#x\n", "afl.debug_fmt_str");
-        IRB.CreateCall(PrintfF, {FormatStr, PrevLocCasted, CurLoc});
+      if (debug_log) {
+        IRB.CreateCall(DebugLogF, {PrevLocCasted, CurLoc});
       }
 
       /* Load SHM pointer */
