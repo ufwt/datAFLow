@@ -59,7 +59,6 @@ def main():
     #
 
     for f in os.listdir(queue_path):
-        print('replaying %s %s...' % (afl_cmd_line.target_cmd_line, f), end=' ')
         input_path = os.path.join(queue_path, f)
 
         if '@@' in afl_cmd_line.target_cmd_line:
@@ -70,6 +69,7 @@ def main():
         if args.target:
             afl_args[0] = args.target
 
+        print('replaying %s %s...' % (afl_args[0], f), end=' ')
         with open(os.path.join(logs_out_dir, '%s.log' % f), 'w') as log_file:
             proc = subprocess.Popen(afl_args, stderr=log_file)
             proc.wait()
