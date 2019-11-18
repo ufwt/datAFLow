@@ -12,7 +12,7 @@ class AFLCommandLine(object):
     """Represents an AFL command-line invocation"""
 
     # Regex for pulling out the command-line used to run AFL from fuzzer_stats
-    FUZZER_STATS_CMD_LINE_RE = re.compile(r'^command_line +: (.+) -- (.+)')
+    FUZZER_STATS_CMD_LINE_RE = re.compile(r'^command_line +: (.+) (?:--)?(.+)')
 
     def _find_afl_cmd_line_arg(self, arg):
         try:
