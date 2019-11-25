@@ -3,7 +3,7 @@
 SRC_DIR=$(dirname "$(readlink -f "${0}")")
 
 OSS_FUZZ="oss-fuzz"
-OSS_FUZZ_BUILDER_DIR="${OSS_FUZZ}/infra/base-images/base-builder"
+OSS_FUZZ_BASE_DIR="${OSS_FUZZ}/infra/base-images/"
 OSS_FUZZ_URL="https://github.com/google/${OSS_FUZZ}.git"
 
 # Download OSS-Fuzz
@@ -16,7 +16,9 @@ fi
 cp ${SRC_DIR}/infra/helper.py ${OSS_FUZZ}/infra
 
 # Copy everything needed
-rsync -av ${SRC_DIR}/infra/base-images/base-builder/ ${OSS_FUZZ_BUILDER_DIR}
-rsync -av ${SRC_DIR}/../fuzzalloc ${OSS_FUZZ_BUILDER_DIR}/
-rsync -av ${SRC_DIR}/../SVF ${OSS_FUZZ_BUILDER_DIR}/
-rsync -av ${SRC_DIR}/../scripts ${OSS_FUZZ_BUILDER_DIR}/
+rsync -av ${SRC_DIR}/infra/base-images/base-builder/ ${OSS_FUZZ_BASE_DIR}/base-builder
+rsync -av ${SRC_DIR}/../fuzzalloc ${OSS_FUZZ_BASE_DIR}/base-builder/
+rsync -av ${SRC_DIR}/../SVF ${OSS_FUZZ_BASE_DIR}/base-builder/
+rsync -av ${SRC_DIR}/../scripts ${OSS_FUZZ_BASE_DIR}/base-builder/
+
+rsync -av ${SRC_DIR}/infra/base-images/base-runner/ ${OSS_FUZZ_BASE_DIR}/base-runner

@@ -121,7 +121,6 @@ RUN $SRC/build_llvm.sh
 # Build fuzzalloc
 COPY build_fuzzalloc.sh $SRC/
 RUN $SRC/build_fuzzalloc.sh
-RUN rm build_fuzzalloc.sh
 
 # Build custom clang/LLVM
 RUN cd llvm && $SRC/fuzzalloc/scripts/update_clang_src.sh
@@ -129,6 +128,10 @@ RUN cd llvm && $SRC/fuzzalloc/scripts/update_llvm_src.sh
 RUN cd llvm && $SRC/fuzzalloc/scripts/update_compiler_rt_src.sh
 RUN $SRC/build_llvm.sh
 RUN rm build_llvm.sh
+
+# Rebuild fuzzalloc with custom clang/LLVM
+RUN $SRC/build_fuzzalloc.sh
+RUN rm build_fuzzalloc.sh
 
 # Setup scripts
 COPY scripts $SRC/scripts

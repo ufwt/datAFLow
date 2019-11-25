@@ -12,7 +12,6 @@ export AFL_PATH="$SRC/afl"
 
 mkdir -p $WORK/datAFLow
 pushd $WORK/datAFLow > /dev/null
-$CC $CFLAGS -Wno-pointer-sign -c $SRC/afl/llvm_mode/afl-llvm-rt.o.c
 $CXX $CXXFLAGS -std=c++11 -O2 -c $SRC/libfuzzer/afl/*.cpp -I$SRC/libfuzzer
 ar r $LIB_FUZZING_ENGINE $WORK/datAFLow/*.o
 popd > /dev/null
