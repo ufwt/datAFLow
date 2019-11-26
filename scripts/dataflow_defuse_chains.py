@@ -17,7 +17,7 @@ from tabulate import tabulate
 
 
 # Regex for pulling out memory access information from a fuzzalloc log file
-FUZZALLOC_LOG_MEM_ACCESS_RE = re.compile(r'__mem_access: accessing def site (0x[0-9a-f]+) from (0x[0-9a-f]+) \(at offset (\d+)\)')
+FUZZALLOC_LOG_MEM_ACCESS_RE = re.compile(r'__mem_access: accessing def site ((?:0x)?[0-9a-f]+) from ((?:0x)?[0-9a-f]+) \(at offset (\d+)\)')
 
 MemAccess = namedtuple('MemAccess', ['def_site', 'use_site', 'offset'])
 
