@@ -12,8 +12,8 @@ ar r $LIB_FUZZING_ENGINE $WORK/tags/*.o
 popd > /dev/null
 rm -rf $WORK/tags
 
-if [ -f "$SRC/whitelist.txt" ]; then
-  export FUZZALLOC_WHITELIST="$SRC/whitelist.txt"
+if [ -f "$OUT/whitelist.txt" ]; then
+  export FUZZALLOC_WHITELIST="$OUT/whitelist.txt"
 fi
 
 export CC="$SRC/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites"

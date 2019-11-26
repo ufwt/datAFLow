@@ -174,6 +174,17 @@ def main():
   elif args.command == 'build_image':
     return build_image(args)
   elif args.command == 'build_fuzzers':
+    if args.engine == 'datAFLow':
+        print('Collecting tags first')
+        args.engine = 'tags'
+        failure = build_fuzzers(args)
+        if failure:
+            return failure
+
+        print('Building datAFLow fuzzer')
+        args.engine = 'datAFLow'
+        args.clean = False
+
     return build_fuzzers(args)
   elif args.command == 'check_build':
     return check_build(args)

@@ -5,6 +5,12 @@ echo -n "Compiling datAFLow to $LIB_FUZZING_ENGINE ..."
 export PATH="$SRC/llvm/install/bin:$PATH"
 export LD_LIBRARY_PATH="$SRC/llvm/install/lib:${LD_LIBRARY_PATH-}"
 export AFL_PATH="$SRC/afl"
+export FUZZALLOC_TAG_LOG="$OUT/tag-sites.csv"
+
+if [[ ! -f $FUZZALLOC_TAG_LOG ]]; then
+  echo "No tag log found"
+  return 1
+fi
 
 #
 # Build LIB_FUZZING_ENGINE
