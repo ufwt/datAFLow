@@ -164,7 +164,7 @@ Constant *TagDynamicAllocs::castAbort(Type *Ty) const {
 }
 
 Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
-  const Twine TrampolineFName = "__trampoline_" + OrigF->getName();
+  const Twine TrampolineFName = "fuzzalloc.__trampoline_" + OrigF->getName();
   Function *TrampolineF = this->Mod->getFunction(TrampolineFName.str());
   if (TrampolineF) {
     return TrampolineF;
@@ -173,7 +173,7 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
   // Create the trampoline function
   LLVMContext &C = this->Mod->getContext();
   TrampolineF =
-      Function::Create(OrigF->getFunctionType(), Function::ExternalLinkage,
+      Function::Create(OrigF->getFunctionType(), Function::WeakAnyLinkage,
                        TrampolineFName, this->Mod);
   BasicBlock *TrampolineBB = BasicBlock::Create(C, "", TrampolineF);
 
