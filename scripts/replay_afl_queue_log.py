@@ -7,8 +7,9 @@
 from __future__ import print_function
 
 from argparse import ArgumentParser
+import multiprocessing
 import os
-import subprocess
+from subprocess import Popen
 import sys
 
 from common import get_afl_command_line
@@ -23,6 +24,22 @@ def parse_args():
     parser.add_argument('afl_out_dir', help='AFL output directory')
 
     return parser.parse_args()
+
+
+def replay_input(afl_cmd_line, input_path, output_path, target=None):
+    if '@@' in afl_cmd_line.target_cmd_line:
+        afl_args = afl_cmd_line.target_cmd_line.replace('@@', input_path).split()
+    else:
+        afl_args = afl_cmd_line.target_cmd_line.split() + [input_path]
+
+    if target:
+        afl_args[0] = target
+
+    with open(output_path, 'w') as log_file:
+        proc = Popen(afl_args, stderr=log_file)
+        proc.wait()
+        print('`%s %s` returned %d' % (afl_args[0], input_path,
+                                       proc.returncode))
 
 
 def main():
@@ -58,22 +75,15 @@ def main():
     # Replay all of the files in the queue
     #
 
+    pool = multiprocessing.Pool(multiprocessing.cpu_count() // 2)
     for f in os.listdir(queue_path):
         input_path = os.path.join(queue_path, f)
+        output_path = os.path.join(logs_out_dir, '%s.log' % f)
 
-        if '@@' in afl_cmd_line.target_cmd_line:
-            afl_args = afl_cmd_line.target_cmd_line.replace('@@', input_path).split()
-        else:
-            afl_args = afl_cmd_line.target_cmd_line.split() + [input_path]
-
-        if args.target:
-            afl_args[0] = args.target
-
-        print('replaying %s %s...' % (afl_args[0], f), end=' ')
-        with open(os.path.join(logs_out_dir, '%s.log' % f), 'w') as log_file:
-            proc = subprocess.Popen(afl_args, stderr=log_file)
-            proc.wait()
-            print('returned %d' % proc.returncode)
+        pool.apply_async(replay_input, args=(afl_cmd_line, input_path,
+                                             output_path, args.target))
+    pool.close()
+    pool.join()
 
     return 0
 
