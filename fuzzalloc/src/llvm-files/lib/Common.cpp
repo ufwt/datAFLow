@@ -22,9 +22,18 @@
 #include "llvm/IR/Operator.h"
 
 #include "Common.h"
-#include "debug.h" // from afl
+#include "debug.h"     // from afl
+#include "fuzzalloc.h" // from fuzzalloc
 
 using namespace llvm;
+
+// Common command-line arguments
+cl::opt<unsigned> ClDefSiteTagMin("fuzzalloc-tag-min",
+                                  cl::desc("Minimum tag value"),
+                                  cl::init(FUZZALLOC_TAG_MIN), cl::Hidden);
+cl::opt<unsigned> ClDefSiteTagMax("fuzzalloc-tag-max",
+                                  cl::desc("Maximum tag value"),
+                                  cl::init(FUZZALLOC_TAG_MAX), cl::Hidden);
 
 void setNoSanitizeMetadata(Instruction *I) {
   Module *M = I->getModule();

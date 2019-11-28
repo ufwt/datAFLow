@@ -16,6 +16,7 @@
 #define FUZZALLOC_COMMON_H
 
 #include "llvm/ADT/Optional.h"
+#include "llvm/Support/CommandLine.h"
 
 namespace llvm {
 class DataLayout;
@@ -36,6 +37,10 @@ const std::string FunctionArgLogPrefix = "fun_arg";
 
 /// A struct type and the offset of an element in that struct
 using StructOffset = std::pair<const llvm::StructType *, unsigned>;
+
+// Common command-line options
+extern llvm::cl::opt<unsigned> ClDefSiteTagMin;
+extern llvm::cl::opt<unsigned> ClDefSiteTagMax;
 
 /// Set `nosanitize` metadata on an instruction
 void setNoSanitizeMetadata(llvm::Instruction *);

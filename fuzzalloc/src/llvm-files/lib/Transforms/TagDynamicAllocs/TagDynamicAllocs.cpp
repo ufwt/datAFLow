@@ -58,13 +58,6 @@ static cl::opt<bool> ClEnableIndirectCallTag(
     cl::desc("Enable static tagging of indirect call sites when possible"),
     cl::init(true), cl::Hidden);
 
-static cl::opt<unsigned> ClTagMin("fuzzalloc-tag-min",
-                                  cl::desc("Minimum tag value"),
-                                  cl::init(FUZZALLOC_TAG_MIN), cl::Hidden);
-static cl::opt<unsigned> ClTagMax("fuzzalloc-tag-max",
-                                  cl::desc("Maximum tag value"),
-                                  cl::init(FUZZALLOC_TAG_MAX), cl::Hidden);
-
 STATISTIC(NumOfTaggedDirectCalls, "Number of tagged direct function calls.");
 STATISTIC(NumOfTaggedIndirectCalls,
           "Number of tagged indirect function calls.");
@@ -192,7 +185,7 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
       IRB.CreateIntCast(IRB.CreateAnd(Tag, FUZZALLOC_TAG_MASK), this->TagTy,
                         /* isSigned */ false);
   Value *ModTag =
-      IRB.CreateURem(CastTag, ConstantInt::get(this->TagTy, ClTagMax));
+      IRB.CreateURem(CastTag, ConstantInt::get(this->TagTy, ClDefSiteTagMax));
 
   // Call a tagged version of the dynamic memory allocation function and return
   // its result
@@ -210,7 +203,7 @@ Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
 
 /// Generate a random tag
 ConstantInt *TagDynamicAllocs::generateTag() const {
-  return ConstantInt::get(this->TagTy, RAND(ClTagMin, ClTagMax));
+  return ConstantInt::get(this->TagTy, RAND(ClDefSiteTagMin, ClDefSiteTagMax));
 }
 
 void TagDynamicAllocs::getTagSites() {
@@ -854,8 +847,8 @@ bool TagDynamicAllocs::doInitialization(Module &M) {
 }
 
 bool TagDynamicAllocs::runOnModule(Module &M) {
-  assert(ClTagMin >= FUZZALLOC_TAG_MIN && "Invalid minimum tag value");
-  assert(ClTagMax <= FUZZALLOC_TAG_MAX && "Invalid maximum tag value");
+  assert(ClDefSiteTagMin >= FUZZALLOC_TAG_MIN && "Invalid minimum tag value");
+  assert(ClDefSiteTagMax <= FUZZALLOC_TAG_MAX && "Invalid maximum tag value");
 
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
