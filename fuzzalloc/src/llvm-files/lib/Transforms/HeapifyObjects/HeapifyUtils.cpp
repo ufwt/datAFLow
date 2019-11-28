@@ -1,4 +1,4 @@
-//===-- HeapifyCommon.cpp - Heapify static arrays -------------------------===//
+//===-- HeapifyUtils.cpp - Heapify static arrays --------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,7 +16,7 @@
 
 #include "llvm/IR/Instructions.h"
 
-#include "HeapifyCommon.h"
+#include "HeapifyUtils.h"
 
 using namespace llvm;
 

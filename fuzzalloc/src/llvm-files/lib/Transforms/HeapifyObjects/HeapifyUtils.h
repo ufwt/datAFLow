@@ -1,4 +1,4 @@
-//===-- HeapifyCommon.h - Heapify static arrays ---------------------------===//
+//===-- HeapifyUtils.h - Heapify static arrays ----------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,8 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FUZZALLOC_HEAPIFY_COMMON_H
-#define FUZZALLOC_HEAPIFY_COMMON_H
+#ifndef FUZZALLOC_HEAPIFY_UTILS_H
+#define FUZZALLOC_HEAPIFY_UTILS_H
 
 #include "llvm/IR/IRBuilder.h"
 
@@ -53,4 +53,4 @@ llvm::Instruction *createArrayMalloc(llvm::LLVMContext &,
 /// Insert a call to \c free for the given alloca
 void insertFree(llvm::Value *, llvm::Instruction *);
 
-#endif // FUZZALLOC_HEAPIFY_COMMON_H
+#endif // FUZZALLOC_HEAPIFY_UTILS_H

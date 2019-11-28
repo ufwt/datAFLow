@@ -22,7 +22,7 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
-#include "HeapifyCommon.h"
+#include "HeapifyUtils.h"
 #include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
