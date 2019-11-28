@@ -114,6 +114,9 @@ static void edit_params(u32 argc, char **argv) {
   cc_params[cc_par_cnt++] = "-Xclang";
   cc_params[cc_par_cnt++] = "-mdisable-const-array-pack";
 
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR "/Utils/libfuzzalloc-utils.so";
+
   /* Rewrite calls to new with calls to malloc */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR

@@ -18,11 +18,9 @@
 #include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
-#include "Common.h"
+#include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
-
-#define DEBUG_TYPE "fuzzalloc-collect-stats"
 
 namespace {
 

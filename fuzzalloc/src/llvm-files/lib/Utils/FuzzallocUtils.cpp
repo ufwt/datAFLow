@@ -1,4 +1,4 @@
-//===-- Common.cpp - LLVM transform utils ---------------------------------===//
+//===-- FuzzallocUtils.cpp - fuzzalloc utils ------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -21,7 +21,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 
-#include "Common.h"
+#include "FuzzallocUtils.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
 

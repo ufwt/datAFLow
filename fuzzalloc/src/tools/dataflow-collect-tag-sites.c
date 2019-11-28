@@ -39,6 +39,9 @@ static void edit_params(u32 argc, char **argv) {
 
   maybe_assembler = check_if_assembler(argc, argv);
 
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR "/Utils/libfuzzalloc-utils.so";
+
   /* Collect values to tag */
 
   cc_params[cc_par_cnt++] =

@@ -38,9 +38,9 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#include "Common.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
+#include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
 

@@ -1,4 +1,4 @@
-//===-- Common.h - LLVM transform utils -----------------------------------===//
+//===-- FuzzallocUtils.h - fuzzalloc utils --------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,8 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef FUZZALLOC_COMMON_H
-#define FUZZALLOC_COMMON_H
+#ifndef FUZZALLOC_UTILS_H
+#define FUZZALLOC_UTILS_H
 
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/CommandLine.h"
@@ -61,4 +61,4 @@ llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
 llvm::Optional<StructOffset> getStructOffset(const llvm::StructType *, unsigned,
                                              const llvm::DataLayout &);
 
-#endif // FUZZALLOC_COMMON_H
+#endif // FUZZALLOC_UTILS_H

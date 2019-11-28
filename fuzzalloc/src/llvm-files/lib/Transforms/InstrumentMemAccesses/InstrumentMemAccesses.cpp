@@ -31,9 +31,9 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
-#include "Common.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
+#include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
 

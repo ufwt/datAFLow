@@ -28,7 +28,7 @@
 #include "llvm/Support/SpecialCaseList.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
-#include "Common.h"
+#include "Utils/FuzzallocUtils.h"
 #include "debug.h" // from afl
 
 using namespace llvm;
