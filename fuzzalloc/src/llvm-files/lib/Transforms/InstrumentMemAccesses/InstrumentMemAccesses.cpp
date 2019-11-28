@@ -605,10 +605,12 @@ void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
       UseSiteOffset = EmitGEPOffset(&IRB, *this->DL, UseSiteGEP);
     }
   }
+  auto *UseSiteOffsetInt64 =
+      IRB.CreateSExtOrTrunc(UseSiteOffset, this->Int64Ty);
 
   if (ClDebugInstrument) {
     // For debugging
-    IRB.CreateCall(this->DbgMemAccessFn, {DefSite, UseSiteOffset});
+    IRB.CreateCall(this->DbgMemAccessFn, {DefSite, UseSiteOffsetInt64});
   } else {
     // Use the PC as the use site identifier
     auto *UseSite =
@@ -617,9 +619,9 @@ void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
 
     // Incorporate the memory access offset into the use site
     if (this->InstFlags->UseOffset) {
-      UseSite =
-          IRB.CreateAdd(UseSite, IRB.CreateIntCast(UseSiteOffset, this->TagTy,
-                                                   /* isSigned */ true));
+      UseSite = IRB.CreateAdd(UseSite,
+                              IRB.CreateIntCast(UseSiteOffsetInt64, this->TagTy,
+                                                /* isSigned */ true));
     }
 
     // Load the AFL bitmap
