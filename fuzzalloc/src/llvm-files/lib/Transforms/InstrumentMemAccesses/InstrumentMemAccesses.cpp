@@ -32,8 +32,8 @@
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
 #include "Common.h"
-#include "debug.h" // from afl
-#include "fuzzalloc.h"
+#include "debug.h"     // from afl
+#include "fuzzalloc.h" // from fuzzalloc
 
 using namespace llvm;
 
@@ -144,6 +144,9 @@ private:
 
   ConstantInt *TagShiftSize;
   ConstantInt *TagMask;
+  ConstantInt *DefaultTag;
+  ConstantInt *MinTag;
+  ConstantInt *MaxTag;
   ConstantInt *AFLInc;
   ConstantInt *HashMul;
 
@@ -296,8 +299,16 @@ Value *InstrumentMemAccesses::getDefSite(Value *Ptr, IRBuilder<> &IRB) const {
   auto *MSpaceTag = IRB.CreateAnd(IRB.CreateLShr(PtrAsInt, this->TagShiftSize),
                                   this->TagMask);
 
-  return IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false,
-                           Ptr->getName() + ".def_site");
+  auto *DefSite =
+      IRB.CreateIntCast(MSpaceTag, this->TagTy, /* isSigned */ false,
+                        Ptr->getName() + ".def_site");
+
+  // Ensure that the def site is within the valid range of allowed def sites.
+  // Otherwise assign it the default tag
+  auto *SelectComp = IRB.CreateAnd(IRB.CreateICmpUGE(DefSite, this->MinTag),
+                                   IRB.CreateICmpULE(DefSite, this->MaxTag));
+  return IRB.CreateSelect(SelectComp, DefSite, this->DefaultTag,
+                          DefSite->getName() + "_in_range");
 }
 
 // Adapted from llvm::AddressSanitizer::isInterestingMemoryAccess
@@ -425,6 +436,9 @@ bool InstrumentMemAccesses::doInitialization(Module &M) {
 
   this->TagShiftSize = ConstantInt::get(SizeTTy, FUZZALLOC_TAG_SHIFT);
   this->TagMask = ConstantInt::get(this->TagTy, FUZZALLOC_TAG_MASK);
+  this->DefaultTag = ConstantInt::get(this->TagTy, FUZZALLOC_DEFAULT_TAG);
+  this->MinTag = ConstantInt::get(this->TagTy, ClDefSiteTagMin);
+  this->MaxTag = ConstantInt::get(this->TagTy, ClDefSiteTagMax);
   this->AFLInc = ConstantInt::get(this->Int8Ty, 1);
   this->HashMul = ConstantInt::get(this->TagTy, 3);
 
@@ -598,7 +612,7 @@ void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
   auto *DefSite = getDefSite(Ptr, IRB);
 
   // Get the use site offset. Default to zero if we can't determine the offset
-  Value *UseSiteOffset = Constant::getNullValue(this->TagTy);
+  Value *UseSiteOffset = Constant::getNullValue(this->Int64Ty);
   if (this->InstFlags->UseOffset) {
     auto *UseSiteGEP = getUseSiteGEP(Ptr, *this->DL);
     if (UseSiteGEP) {
@@ -633,12 +647,9 @@ void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
     //
     // Hash algorithm: ((3 * (def_site - DEFAULT_TAG)) ^ use_site) - use_site
     auto *Hash = IRB.CreateSub(
-        IRB.CreateXor(
-            IRB.CreateMul(this->HashMul,
-                          IRB.CreateSub(DefSite, ConstantInt::get(
-                                                     this->TagTy,
-                                                     FUZZALLOC_DEFAULT_TAG))),
-            UseSite),
+        IRB.CreateXor(IRB.CreateMul(this->HashMul,
+                                    IRB.CreateSub(DefSite, this->DefaultTag)),
+                      UseSite),
         UseSite, Ptr->getName() + ".def_use_hash");
     auto *AFLMapIdx = IRB.CreateGEP(
         AFLMap, IRB.CreateZExt(Hash, IRB.getInt32Ty()), "__afl_area_ptr_idx");
@@ -676,7 +687,7 @@ void InstrumentMemAccesses::doLibFuzzerInstrument(Instruction *I,
                  MDNode::get(C, None));
 
   auto *DefSite = getDefSite(Ptr, IRB);
-  Value *UseSiteOffset = Constant::getNullValue(this->TagTy);
+  Value *UseSiteOffset = Constant::getNullValue(this->Int64Ty);
 
   if (this->InstFlags->UseOffset) {
     auto *UseSiteGEP = getUseSiteGEP(Ptr, *this->DL);
