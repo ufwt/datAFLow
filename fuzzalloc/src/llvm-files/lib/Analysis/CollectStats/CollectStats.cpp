@@ -30,6 +30,8 @@ private:
   unsigned long NumOfBasicBlocks;
   unsigned long NumOfAllocas;
   unsigned long NumOfGlobalVars;
+  unsigned long NumOfTaggedAllocs;
+  unsigned long NumOfInstrumentedDerefs;
 
 public:
   static char ID;
@@ -53,12 +55,17 @@ void CollectStats::print(raw_ostream &O, const Module *M) const {
   O << "  num. basic blocks: " << this->NumOfBasicBlocks << "\n";
   O << "  num. allocas: " << this->NumOfAllocas << "\n";
   O << "  num. global variables: " << this->NumOfGlobalVars << "\n";
+  O << "  num. tagged allocs: " << this->NumOfTaggedAllocs << "\n";
+  O << "  num. of dereferenced pointers: " << this->NumOfInstrumentedDerefs
+    << "\n";
 }
 
 bool CollectStats::doInitialization(Module &M) {
   this->NumOfBasicBlocks = 0;
   this->NumOfAllocas = 0;
   this->NumOfGlobalVars = 0;
+  this->NumOfTaggedAllocs = 0;
+  this->NumOfInstrumentedDerefs = 0;
 
   return false;
 }
@@ -71,6 +78,13 @@ bool CollectStats::runOnModule(Module &M) {
       for (auto &I : BB) {
         if (isa<AllocaInst>(I)) {
           this->NumOfAllocas++;
+        }
+
+        if (I.getMetadata(M.getMDKindID("fuzzalloc.tagged_alloc"))) {
+          this->NumOfTaggedAllocs++;
+        } else if (I.getMetadata(
+                       M.getMDKindID("fuzzalloc.instrumented)deref"))) {
+          this->NumOfInstrumentedDerefs++;
         }
       }
     }
