@@ -619,6 +619,7 @@ void InstrumentMemAccesses::doAFLInstrument(Instruction *I, Value *Ptr) const {
       UseSiteOffset = EmitGEPOffset(&IRB, *this->DL, UseSiteGEP);
     }
   }
+  UseSiteOffset->setName(Ptr->getName() + ".offset");
   auto *UseSiteOffsetInt64 =
       IRB.CreateSExtOrTrunc(UseSiteOffset, this->Int64Ty);
 
@@ -695,6 +696,7 @@ void InstrumentMemAccesses::doLibFuzzerInstrument(Instruction *I,
       UseSiteOffset = EmitGEPOffset(&IRB, *this->DL, UseSiteGEP);
     }
   }
+  UseSiteOffset->setName(Ptr->getName() + ".offset");
 
   IRB.CreateCall(this->SanCovTraceDataFlowFn, {DefSite, UseSiteOffset});
 
