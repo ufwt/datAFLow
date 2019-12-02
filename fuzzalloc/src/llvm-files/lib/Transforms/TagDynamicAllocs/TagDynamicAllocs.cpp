@@ -881,9 +881,8 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   // Tag all the things
 
+  // Rewrite custom allocation functions (so they accept a def site tag)
   for (auto *F : this->FunctionsToTag) {
-    // Only rewrite custom allocation functions (i.e., not malloc, calloc, or
-    // realloc)
     if (isCustomAllocationFunction(F)) {
       tagFunction(F);
     }

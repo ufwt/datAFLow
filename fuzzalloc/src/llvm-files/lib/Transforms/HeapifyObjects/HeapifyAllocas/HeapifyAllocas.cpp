@@ -117,6 +117,9 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   LLVM_DEBUG(dbgs() << "heapifying " << *Alloca << " in function "
                     << Alloca->getFunction()->getName() << "\n");
 
+  const Module *M = Alloca->getModule();
+  LLVMContext &C = M->getContext();
+
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
@@ -145,6 +148,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   PointerType *NewAllocaTy = ElemTy->getPointerTo();
   auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
                                    Alloca->getName(), Alloca);
+  NewAlloca->setMetadata(M->getMDKindID("fuzzalloc.heapified_alloca"),
+                         MDNode::get(C, None));
   NewAlloca->takeName(Alloca);
   copyDebugInfo(Alloca, NewAlloca);
 
