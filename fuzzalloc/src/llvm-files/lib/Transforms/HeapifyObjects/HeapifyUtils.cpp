@@ -57,28 +57,6 @@ bool isHeapifiableType(Type *Ty) {
   return true;
 }
 
-bool isVTableOrTypeInfo(const Value *V) {
-  if (!isa<GlobalVariable>(V)) {
-    return false;
-  }
-
-  int DemangleStatus;
-  char *DemangleNameCStr = abi::__cxa_demangle(
-      V->getName().str().c_str(), nullptr, nullptr, &DemangleStatus);
-  if (DemangleStatus == 0) {
-    StringRef DemangleName = StringRef(DemangleNameCStr);
-
-    if (DemangleName.startswith_lower("vtable for ") ||
-        DemangleName.startswith_lower("vtt for ") ||
-        DemangleName.startswith_lower("typeinfo for ") ||
-        DemangleName.startswith_lower("typeinfo name for ")) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 bool isFromLibCpp(const Value *V) {
   if (!isa<GlobalVariable>(V)) {
     return false;

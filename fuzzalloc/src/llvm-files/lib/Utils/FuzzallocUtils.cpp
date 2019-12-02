@@ -12,6 +12,8 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include <cxxabi.h>
+
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryLocation.h"
@@ -47,6 +49,28 @@ void printStatistic(const Module &M, const Statistic &Stat) {
     OKF("[%s] %u %s - %s", M.getName().str().c_str(), Stat.getValue(),
         Stat.getName(), Stat.getDesc());
   }
+}
+
+bool isVTableOrTypeInfo(const Value *V) {
+  if (!isa<GlobalVariable>(V)) {
+    return false;
+  }
+
+  int DemangleStatus;
+  char *DemangleNameCStr = abi::__cxa_demangle(
+      V->getName().str().c_str(), nullptr, nullptr, &DemangleStatus);
+  if (DemangleStatus == 0) {
+    StringRef DemangleName = StringRef(DemangleNameCStr);
+
+    if (DemangleName.startswith_lower("vtable for ") ||
+        DemangleName.startswith_lower("vtt for ") ||
+        DemangleName.startswith_lower("typeinfo for ") ||
+        DemangleName.startswith_lower("typeinfo name for ")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,

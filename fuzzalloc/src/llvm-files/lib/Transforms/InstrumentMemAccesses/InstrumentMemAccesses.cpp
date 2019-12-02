@@ -568,9 +568,14 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     for (auto *I : ToInstrument) {
       if (Value *Addr =
               isInterestingMemoryAccess(I, &IsWrite, &TypeSize, &Alignment)) {
+        Value *Obj = GetUnderlyingObject(Addr, *this->DL);
         // A direct inbounds access to a stack variable is always valid
-        if (isa<AllocaInst>(GetUnderlyingObject(Addr, *this->DL)) &&
-            isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
+        if (isa<AllocaInst>(Obj) && isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
+          continue;
+        }
+
+        // Don't instrument vtable/typeinfo loads/stores
+        if (isVTableOrTypeInfo(Obj)) {
           continue;
         }
 

@@ -36,10 +36,6 @@ llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
 /// Returns \c true if the given type is heapifiable to dynamic allocation.
 bool isHeapifiableType(llvm::Type *);
 
-/// Returns \c true if the given value is a C++ virtual table or type info
-/// metadata
-bool isVTableOrTypeInfo(const llvm::Value *);
-
 /// Returns \c true if the given value is from the C++ standard library and
 /// hence never defined (and hence not heapifiable)
 bool isFromLibCpp(const llvm::Value *);

@@ -48,6 +48,10 @@ void setNoSanitizeMetadata(llvm::Instruction *);
 /// Print the statistic using AFL's `OKF`
 void printStatistic(const llvm::Module &, const llvm::Statistic &);
 
+/// Returns \c true if the given value is a C++ virtual table or type info
+/// metadata
+bool isVTableOrTypeInfo(const llvm::Value *);
+
 /// Like `GetUnderlyingObject` in ValueTracking analysis, except that it looks
 /// through load instructions
 llvm::Value *GetUnderlyingObjectThroughLoads(llvm::Value *,
