@@ -15,6 +15,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/CaptureTracking.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -72,6 +73,50 @@ public:
 
 char HeapifyAllocas::ID = 0;
 
+static bool isHeapifiableAlloca(AllocaInst *Alloca) {
+  Type *AllocatedTy = Alloca->getAllocatedType();
+
+  // Check if the allocated value is of a heapifiable type (i.e., an array)
+  if (isHeapifiableType(AllocatedTy)) {
+    return true;
+  }
+
+  // Otherwise, heapify structs/classes (not from libstdc++) that escape the
+  // function in why they are defined
+
+  if (!isa<StructType>(AllocatedTy)) {
+    return false;
+  }
+
+  StructType *AllocatedStructTy = cast<StructType>(AllocatedTy);
+  bool AllocaEscapes = PointerMayBeCaptured(Alloca, /* ReturnCaptures */ false,
+                                            /*StoreCaptures */ true);
+  if (!AllocaEscapes) {
+    return false;
+  }
+
+  // Literal structs don't have names
+  if (AllocatedStructTy->isLiteral()) {
+    return false;
+  }
+
+  // Ignore libstdc++ structs/classes
+  StringRef StructName = AllocatedTy->getStructName();
+  if (StructName.startswith("class.__gnu_cxx::") ||
+      StructName.startswith("class.__gnu_debug::") ||
+      StructName.startswith("class.__gnu_internal::") ||
+      StructName.startswith("class.__gnu_parallel::") ||
+      StructName.startswith("class.__gnu_pbds::") ||
+      StructName.startswith("class.__gnu_profile::") ||
+      StructName.startswith("class.__gnu_sequential::") ||
+      StructName.startswith("class.__abi::") ||
+      StructName.startswith("class.std::")) {
+    return false;
+  }
+
+  return true;
+}
+
 /// Insert a call to `malloc` before the `InsertPt` instruction. The result of
 /// the `malloc` call is stored in `NewAlloca`.
 Instruction *HeapifyAllocas::insertMalloc(const AllocaInst *OrigAlloca,
@@ -79,16 +124,25 @@ Instruction *HeapifyAllocas::insertMalloc(const AllocaInst *OrigAlloca,
                                           Instruction *InsertPt) const {
   const Module *M = OrigAlloca->getModule();
   LLVMContext &C = M->getContext();
-
-  ArrayType *ArrayTy = cast<ArrayType>(OrigAlloca->getAllocatedType());
-  Type *ElemTy = ArrayTy->getArrayElementType();
-
-  uint64_t ArrayNumElems = ArrayTy->getNumElements();
+  Type *AllocatedTy = OrigAlloca->getAllocatedType();
+  Instruction *MallocCall = nullptr;
 
   IRBuilder<> IRB(InsertPt);
 
-  auto *MallocCall = createArrayMalloc(C, *this->DL, IRB, ElemTy, ArrayNumElems,
-                                       OrigAlloca->getName() + "_malloccall");
+  if (auto *ArrayTy = dyn_cast<ArrayType>(AllocatedTy)) {
+    // Insert array malloc call
+    Type *ElemTy = ArrayTy->getArrayElementType();
+    uint64_t ArrayNumElems = ArrayTy->getNumElements();
+
+    MallocCall = createArrayMalloc(C, *this->DL, IRB, ElemTy, ArrayNumElems,
+                                   NewAlloca->getName() + "_malloccall");
+  } else if (auto *StructTy = dyn_cast<StructType>(AllocatedTy)) {
+    // Insert struct malloc call
+    MallocCall = createStructMalloc(C, *this->DL, IRB, StructTy,
+                                    NewAlloca->getName() + "_malloccall");
+  }
+
+  assert(MallocCall && "malloc call should have been created");
   auto *MallocStore = IRB.CreateStore(MallocCall, NewAlloca);
   MallocStore->setMetadata(M->getMDKindID("fuzzalloc.noinstrument"),
                            MDNode::get(C, None));
@@ -123,9 +177,6 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   // Cache uses
   SmallVector<User *, 8> Users(Alloca->user_begin(), Alloca->user_end());
 
-  ArrayType *ArrayTy = cast<ArrayType>(Alloca->getAllocatedType());
-  Type *ElemTy = ArrayTy->getArrayElementType();
-
   // This will transform something like this:
   //
   // %1 = alloca [NumElements x Ty]
@@ -145,7 +196,16 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   //  - `Size` is the size of the allocated buffer (equivalent to
   //    `NumElements * sizeof(Ty)`)
 
-  PointerType *NewAllocaTy = ElemTy->getPointerTo();
+  Type *AllocatedTy = Alloca->getAllocatedType();
+  PointerType *NewAllocaTy = nullptr;
+
+  if (AllocatedTy->isArrayTy()) {
+    NewAllocaTy = AllocatedTy->getArrayElementType()->getPointerTo();
+  } else if (AllocatedTy->isStructTy()) {
+    NewAllocaTy = AllocatedTy->getPointerTo();
+  }
+
+  assert(NewAllocaTy && "new alloca must have a type");
   auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
                                    Alloca->getName(), Alloca);
   NewAlloca->setMetadata(M->getMDKindID("fuzzalloc.heapified_alloca"),
@@ -174,8 +234,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     insertMalloc(Alloca, NewAlloca, NewAlloca->getNextNode());
   }
 
-  // Update all the users of the original array to use the dynamically
-  // allocated array
+  // Update all the users of the original alloca to use the new heap-based
+  // alloca
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // Ensure GEPs are correctly typed
@@ -197,28 +257,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
           PHI->setIncomingValue(I, BitCastNewAlloca);
         }
       }
-    } else if (auto *Store = dyn_cast<StoreInst>(U)) {
-      // Sometimes the original array may be stored to some temporary variable
-      // generated by LLVM (e.g., from a GEP instruction).
-      //
-      // In this case, we can just cast the new dynamically allocated alloca
-      // (which is a pointer) to the original static array's type
-
-      // The original array must be the store's value operand (I think...)
-      assert(Store->getValueOperand() == Alloca);
-
-      auto *StorePtrElemTy =
-          Store->getPointerOperandType()->getPointerElementType();
-
-      // Only cast the new alloca if the types don't match
-      auto *ReplacementAlloca = (StorePtrElemTy == NewAllocaTy)
-                                    ? static_cast<Instruction *>(NewAlloca)
-                                    : CastInst::CreatePointerCast(
-                                          NewAlloca, StorePtrElemTy, "", Store);
-
-      Store->replaceUsesOfWith(Alloca, ReplacementAlloca);
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
-      // We must load the array from the heap before we do anything with it
+      // We must load the new alloca from the heap before we do anything with it
       auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);
       auto *BitCastNewAlloca = CastInst::CreatePointerCast(
           LoadNewAlloca, Alloca->getType(), "", Inst);
@@ -271,16 +311,19 @@ bool HeapifyAllocas::runOnModule(Module &M) {
 
     // Collect all the things!
     for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+      // Collect heapifaible allocas
       if (auto *Alloca = dyn_cast<AllocaInst>(&*I)) {
-        if (isHeapifiableType(Alloca->getAllocatedType())) {
+        if (isHeapifiableAlloca(Alloca)) {
           AllocasToHeapify.push_back(Alloca);
         }
+        // Lifetime start/end intrinsics are required for placing mallocs/frees
       } else if (auto *Intrinsic = dyn_cast<IntrinsicInst>(&*I)) {
         if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_start) {
           LifetimeStarts.push_back(Intrinsic);
         } else if (Intrinsic->getIntrinsicID() == Intrinsic::lifetime_end) {
           LifetimeEnds.push_back(Intrinsic);
         }
+        // Return instructions are required for placing frees
       } else if (auto *Return = dyn_cast<ReturnInst>(&*I)) {
         Returns.push_back(Return);
       }
@@ -318,10 +361,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
 
       Alloca->eraseFromParent();
       NumOfAllocaArrayHeapification++;
-    }
-
-    if (F.getName() == "_ZN3povL13Parse_ExpressEPdPi") {
-      outs() << F << '\n';
     }
   }
 

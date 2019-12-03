@@ -22,6 +22,7 @@ class DataLayout;
 class GetElementPtrInst;
 class Instruction;
 class LLVMContext;
+class StructType;
 class Type;
 class Twine;
 class Value;
@@ -40,11 +41,17 @@ bool isHeapifiableType(llvm::Type *);
 /// hence never defined (and hence not heapifiable)
 bool isFromLibCpp(const llvm::Value *);
 
-/// Create a call to \c malloc that will create an array.
+/// Create a call to \c malloc that will create an array on the heap.
 llvm::Instruction *createArrayMalloc(llvm::LLVMContext &,
                                      const llvm::DataLayout &,
                                      llvm::IRBuilder<> &, llvm::Type *,
                                      uint64_t, const llvm::Twine & = "");
+
+/// Create a callc to \c malloc that will create a struct on the heap.
+llvm::Instruction *createStructMalloc(llvm::LLVMContext &,
+                                      const llvm::DataLayout &,
+                                      llvm::IRBuilder<> &, llvm::StructType *,
+                                      const llvm::Twine & = "");
 
 /// Insert a call to \c free for the given alloca
 void insertFree(llvm::Value *, llvm::Instruction *);

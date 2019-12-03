@@ -88,6 +88,16 @@ Instruction *createArrayMalloc(LLVMContext &C, const DataLayout &DL,
                                 nullptr, Name);
 }
 
+Instruction *createStructMalloc(LLVMContext &C, const DataLayout &DL,
+                                IRBuilder<> &IRB, StructType *AllocTy,
+                                const Twine &Name) {
+  IntegerType *IntPtrTy = DL.getIntPtrType(C);
+
+  return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), IntPtrTy, AllocTy,
+                                ConstantExpr::getSizeOf(AllocTy), nullptr,
+                                nullptr, Name);
+}
+
 void insertFree(Value *MallocPtr, Instruction *Inst) {
   // Load the pointer to the dynamically allocated memory and pass it to free
   auto *LoadMalloc = new LoadInst(MallocPtr, "", Inst);
