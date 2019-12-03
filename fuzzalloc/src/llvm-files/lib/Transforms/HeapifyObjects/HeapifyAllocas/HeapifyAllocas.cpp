@@ -40,6 +40,8 @@ static cl::opt<int> ClMinArraySize(
 
 STATISTIC(NumOfAllocaArrayHeapification,
           "Number of alloca array heapifications.");
+STATISTIC(NumOfAllocaStructHeapification,
+          "Number of alloca struct heapifications.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
@@ -198,9 +200,11 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
 
   Type *AllocatedTy = Alloca->getAllocatedType();
   PointerType *NewAllocaTy = nullptr;
+  bool AllocatedTyIsArray = false;
 
   if (AllocatedTy->isArrayTy()) {
     NewAllocaTy = AllocatedTy->getArrayElementType()->getPointerTo();
+    AllocatedTyIsArray = true;
   } else if (AllocatedTy->isStructTy()) {
     NewAllocaTy = AllocatedTy->getPointerTo();
   }
@@ -266,6 +270,12 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     } else {
       assert(false && "Unsupported alloca user");
     }
+  }
+
+  if (AllocatedTyIsArray) {
+    NumOfAllocaArrayHeapification++;
+  } else {
+    NumOfAllocaStructHeapification++;
   }
 
   return NewAlloca;
@@ -360,14 +370,15 @@ bool HeapifyAllocas::runOnModule(Module &M) {
       }
 
       Alloca->eraseFromParent();
-      NumOfAllocaArrayHeapification++;
     }
   }
 
   printStatistic(M, NumOfAllocaArrayHeapification);
+  printStatistic(M, NumOfAllocaStructHeapification);
   printStatistic(M, NumOfFreeInsert);
 
-  return NumOfAllocaArrayHeapification > 0;
+  return NumOfAllocaArrayHeapification > 0 ||
+         NumOfAllocaStructHeapification > 0;
 }
 
 static RegisterPass<HeapifyAllocas>
