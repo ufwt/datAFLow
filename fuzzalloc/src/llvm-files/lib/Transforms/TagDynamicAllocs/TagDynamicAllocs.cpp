@@ -38,9 +38,9 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#include "Utils/FuzzallocUtils.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
-#include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
 
@@ -637,6 +637,22 @@ Function *TagDynamicAllocs::tagFunction(Function *OrigF) {
     CloneFunctionInto(TaggedF, OrigF, VMap, /* ModuleLevelChanges */ true,
                       Returns);
 
+    // Update allocsize attribute (if it exists). Just move the allocsize index
+    // up one (to take into account the tag being inserted as the first function
+    // parameter)
+    if (TaggedF->hasFnAttribute(Attribute::AllocSize)) {
+      Attribute Attr = TaggedF->getFnAttribute(Attribute::AllocSize);
+      std::pair<unsigned, Optional<unsigned>> Args = Attr.getAllocSizeArgs();
+      Args.first += 1;
+      Args.second = Args.second.hasValue()
+                        ? Optional<unsigned>(Args.second.getValue() + 1)
+                        : None;
+
+      TaggedF->removeFnAttr(Attribute::AllocSize);
+      TaggedF->addFnAttr(Attribute::getWithAllocSizeArgs(
+          TaggedF->getContext(), Args.first, Args.second));
+    }
+
     // Update the contents of the function (i.e., the instructions) when we
     // update the users of the dynamic memory allocation function (i.e., in
     // tagUser)
@@ -869,12 +885,19 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   // allocation site
   this->FuzzallocMallocF = checkFuzzallocFunc(M.getOrInsertFunction(
       FuzzallocMallocFuncName, Int8PtrTy, this->TagTy, this->SizeTTy));
+  this->FuzzallocMallocF->addFnAttr(
+      Attribute::getWithAllocSizeArgs(C, 1, None));
+
   this->FuzzallocCallocF = checkFuzzallocFunc(
       M.getOrInsertFunction(FuzzallocCallocFuncName, Int8PtrTy, this->TagTy,
                             this->SizeTTy, this->SizeTTy));
+  this->FuzzallocCallocF->addFnAttr(Attribute::getWithAllocSizeArgs(C, 1, 2));
+
   this->FuzzallocReallocF = checkFuzzallocFunc(
       M.getOrInsertFunction(FuzzallocReallocFuncName, Int8PtrTy, this->TagTy,
                             Int8PtrTy, this->SizeTTy));
+  this->FuzzallocReallocF->addFnAttr(
+      Attribute::getWithAllocSizeArgs(C, 2, None));
 
   // Figure out what we need to tag
   getTagSites();
