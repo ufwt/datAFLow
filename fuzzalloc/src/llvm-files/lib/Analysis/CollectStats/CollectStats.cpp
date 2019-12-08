@@ -22,6 +22,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "fuzzalloc-collect-stats"
+
 namespace {
 
 /// Collect useful statistics
