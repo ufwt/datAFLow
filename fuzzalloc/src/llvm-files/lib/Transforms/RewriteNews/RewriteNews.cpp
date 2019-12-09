@@ -18,11 +18,11 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -40,14 +40,13 @@ namespace {
 
 /// RewriteNews: Rewrites calls to the `new` operator and replaces them with
 /// calls to `malloc`. Objects are initialized via `placement new`.
-class RewriteNews : public ModulePass {
-
+class RewriteNews : public FunctionPass {
 public:
   static char ID;
-  RewriteNews() : ModulePass(ID) {}
+  RewriteNews() : FunctionPass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &) const override;
-  bool runOnModule(Module &) override;
+  bool runOnFunction(Function &) override;
 };
 
 } // anonymous namespace
@@ -160,8 +159,9 @@ void RewriteNews::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
-bool RewriteNews::runOnModule(Module &M) {
-  const DataLayout &DL = M.getDataLayout();
+bool RewriteNews::runOnFunction(Function &F) {
+  Module *M = F.getParent();
+  const DataLayout &DL = M->getDataLayout();
   const TargetLibraryInfo *TLI =
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
 
@@ -174,49 +174,42 @@ bool RewriteNews::runOnModule(Module &M) {
   // llvm.mem* intrinsics that may require realignment
   SmallVector<MemIntrinsic *, 4> MemIntrinsics;
 
-  for (auto &F : M.functions()) {
-    NewCalls.clear();
-    DeleteCalls.clear();
-    MemIntrinsics.clear();
+  // Collect all the things!
+  for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+    if (isa<CallInst>(&*I) || isa<InvokeInst>(&*I)) {
+      CallSite CS(&*I);
+      Value *Callee = CS.getCalledValue();
 
-    // Collect all the things!
-    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-      if (isa<CallInst>(&*I) || isa<InvokeInst>(&*I)) {
-        CallSite CS(&*I);
-        Value *Callee = CS.getCalledValue();
-
-        if (isNewFn(Callee, TLI)) {
-          NewCalls.push_back(CS);
-        } else if (isDeleteFn(Callee, TLI)) {
-          DeleteCalls.push_back(CS);
-        } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
-          MemIntrinsics.push_back(MemI);
-        }
+      if (isNewFn(Callee, TLI)) {
+        NewCalls.push_back(CS);
+      } else if (isDeleteFn(Callee, TLI)) {
+        DeleteCalls.push_back(CS);
+      } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
+        MemIntrinsics.push_back(MemI);
       }
     }
+  }
 
-    // Rewrite new calls
-    for (auto &NewCall : NewCalls) {
-      auto *MallocCall = rewriteNew(NewCall);
+  // Rewrite new calls
+  for (auto &NewCall : NewCalls) {
+    auto *MallocCall = rewriteNew(NewCall);
 
-      for (auto *MemI : MemIntrinsics) {
-        if (GetUnderlyingObjectThroughLoads(MemI->getDest(), DL) ==
-            MallocCall) {
-          MemI->setDestAlignment(1);
-        }
+    for (auto *MemI : MemIntrinsics) {
+      if (GetUnderlyingObjectThroughLoads(MemI->getDest(), DL) == MallocCall) {
+        MemI->setDestAlignment(1);
       }
     }
+  }
 
-    // Rewrite delete calls
-    for (auto &DeleteCall : DeleteCalls) {
-      rewriteDelete(DeleteCall);
-    }
+  // Rewrite delete calls
+  for (auto &DeleteCall : DeleteCalls) {
+    rewriteDelete(DeleteCall);
   }
 
   // Finished!
 
-  printStatistic(M, NumOfNewRewrites);
-  printStatistic(M, NumOfDeleteRewrites);
+  printStatistic(*M, NumOfNewRewrites);
+  printStatistic(*M, NumOfDeleteRewrites);
 
   return NewCalls.size() > 0 || DeleteCalls.size() > 0;
 }

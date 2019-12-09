@@ -18,7 +18,7 @@
 extern u8 *__afl_area_ptr;
 #endif
 
-void __mem_access(tag_t def_site, s64 offset) {
+void __mem_access(tag_t def_site, int64_t offset) {
   DEBUG_MSG("accessing def site %#x from %p (at offset %ld)\n", def_site,
             __builtin_return_address(0), offset);
 
