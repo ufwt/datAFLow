@@ -34,9 +34,14 @@ using namespace llvm;
 #define DEBUG_TYPE "fuzzalloc-heapify-allocas"
 
 static cl::opt<int> ClMinArraySize(
-    "fuzzalloc-min-alloca array-size",
+    "fuzzalloc-min-alloca-array-size",
     cl::desc("The minimum size of a static alloca array to heapify to malloc"),
     cl::init(1));
+
+static cl::opt<bool> ClHeapifyStructs(
+    "fuzzalloc-heapify-structs",
+    cl::desc("Heapify alloca structs that ahve their address taken"),
+    cl::init(true), cl::Hidden);
 
 STATISTIC(NumOfAllocaArrayHeapification,
           "Number of alloca array heapifications.");
@@ -206,6 +211,9 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     NewAllocaTy = AllocatedTy->getArrayElementType()->getPointerTo();
     AllocatedTyIsArray = true;
   } else if (AllocatedTy->isStructTy()) {
+    if (!ClHeapifyStructs) {
+      return Alloca;
+    }
     NewAllocaTy = AllocatedTy->getPointerTo();
   }
 
