@@ -230,7 +230,7 @@ void TagDynamicAllocs::getTagSites() {
   if (EC) {
     std::string Err;
     raw_string_ostream OS(Err);
-    OS << "Unable to open fuzzalloc tag log at " << ClLogPath << ": "
+    OS << "Unable to read fuzzalloc tag log at " << ClLogPath << ": "
        << EC.message();
     OS.flush();
     report_fatal_error(Err);
