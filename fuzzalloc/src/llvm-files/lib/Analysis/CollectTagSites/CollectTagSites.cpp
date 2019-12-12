@@ -254,6 +254,10 @@ void CollectTagSites::saveTagSites() const {
     unsigned Offset = StructWithFunc.first.second;
     auto *F = StructWithFunc.second;
 
+    if (!StructTy->hasName()) {
+      continue;
+    }
+
     Output << StructOffsetLogPrefix << LogSeparator << StructTy->getName()
            << LogSeparator << Offset << LogSeparator << F->getName()
            << LogSeparator << *F->getFunctionType() << '\n';
