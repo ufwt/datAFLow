@@ -15,6 +15,8 @@
 #ifndef FUZZALLOC_UTILS_H
 #define FUZZALLOC_UTILS_H
 
+#include <string>
+
 #include "llvm/ADT/Optional.h"
 #include "llvm/Support/CommandLine.h"
 
