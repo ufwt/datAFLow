@@ -8,9 +8,7 @@ Author: Adrian Herrera
 
 
 from argparse import ArgumentParser
-from datetime import datetime
 from enum import Enum
-from itertools import product
 import multiprocessing
 import os
 import subprocess
@@ -95,11 +93,16 @@ def parse_args():
 
 
 def create_cmd(afl_fuzz_path, target, target_dir, engine, out_dir, fts_dir,
-               afl_opt=False):
+               timeout=86400, afl_opt=False):
     """Create AFL command to run."""
     target_conf = TARGETS[target]
 
     cmd_args = [
+        'time',
+        '--verbose',
+        'timeout',
+        '--preserve-status',
+        '%ds' % timeout,
         afl_fuzz_path,
         '-o', out_dir,
         '-m', 'none',
@@ -121,47 +124,47 @@ def create_cmd(afl_fuzz_path, target, target_dir, engine, out_dir, fts_dir,
     cmd_args.extend(['--', os.path.join(target_dir,
                                         '%s-%s' % (target, engine))])
 
-    return cmd_args
+    return {
+        'cmd': cmd_args,
+        'target': target,
+        'engine': engine,
+        'out_dir': out_dir,
+    }
 
 
-def run_cmd(cmd, timeout):
+def run_cmd(cmd_dict):
     """Run AFL command."""
     env = os.environ.copy()
     env['AFL_NO_UI'] = '1'
-    env['AFL_NO_AFFINITY'] = '1'
 
-    print('running `%s` (timeout %d secs)' % (' '.join(cmd), timeout))
-    return subprocess.run(cmd, env=env, timeout=timeout, check=True,
+    print('running `%s`' % ' '.join(cmd_dict['cmd']))
+    proc = subprocess.run(cmd_dict['cmd'], env=env, check=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    return cmd_dict, proc
 
-def run_fuzzers(cmds, timeout, outlog):
+def write_logs(proc, out_dir):
+    """Write logs from the given process."""
+    with open(os.path.join(out_dir, 'stdout.log'), 'wb') as stdout_log, \
+         open(os.path.join(out_dir, 'stderr.log'), 'wb') as stderr_log:
+        if proc.stdout:
+            stdout_log.write(proc.stdout)
+        if proc.stderr:
+            stderr_log.write(proc.stderr)
+
+
+def run_fuzzers(cmds):
     """Run the list of AFL commands."""
-    num_processes = multiprocessing.cpu_count() // 3
+    num_processes = multiprocessing.cpu_count() // 2
 
-    with multiprocessing.Pool(processes=num_processes) as pool, \
-         open('%s.stdout' % outlog, 'wb') as stdout_log, \
-         open('%s.stderr' % outlog, 'wb') as stderr_log:
-
-        res = pool.starmap_async(run_cmd, product(cmds, (timeout,)))
-        stdout = None
-        stderr = None
-
+    with multiprocessing.Pool(processes=num_processes) as pool:
         try:
-            proc = res.get()
-            stdout = proc.stdout
-            stderr = proc.stderr
-        except subprocess.CalledProcessError as proc:
-            print('`%s` failed: %s' % (' '.join(proc.cmd), proc.stderr))
+            results = pool.map_async(run_cmd, cmds).get()
+            for cmd, proc in results:
+                write_logs(proc, cmd['out_dir'])
+        except subprocess.CalledProcessError as err:
+            print('`%s` failed: %s' % (' '.join(err.cmd), err.stderr))
             raise
-        except subprocess.TimeoutExpired as proc:
-            stdout = proc.stdout
-            stderr = proc.stderr
-
-        if stdout:
-            stdout_log.write(stdout)
-        if stderr:
-            stderr_log.write(stderr)
 
         pool.close()
         pool.join()
@@ -200,14 +203,11 @@ def main():
         for i in range(1, args.num_trials + 1):
             out_dir = os.path.join(target_dir, '%s-%02d' % (out_prefix, i))
             cmd = create_cmd(afl_fuzz, target, target_dir, engine, out_dir,
-                             fts_dir, args.afl_opt)
+                             fts_dir, args.timeout, args.afl_opt)
             cmds.append(cmd)
 
     # Run the fuzzers
-    datetime_str = datetime.now().strftime('%Y-%m-%d-%H:%M:%S')
-    outlog = os.path.join(benchmark_dir,
-                          '%s-%s-%s' % (out_prefix, engine, datetime_str))
-    run_fuzzers(cmds, args.timeout, outlog)
+    run_fuzzers(cmds)
 
 
 if __name__ == '__main__':
