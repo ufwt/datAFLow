@@ -82,9 +82,12 @@ def parse_args():
                         type=int, help='Number of repeated trials')
     parser.add_argument('-t', '--timeout', required=False, action='store',
                         default=24*60*60, type=int, help='Timeout (in seconds)')
+    parser.add_argument('-j', '--jobs', required=False, action='store',
+                        type=int, default=multiprocessing.cpu_count() // 2,
+                        help='Maximum number of processes to run concurrently')
     parser.add_argument('-f', '--fts', required=True, action='store',
                         help='Path to the Google FTS source directory')
-    parser.add_argument('-o', '--afl-opt', required=False, action='store_true',
+    parser.add_argument('-m', '--afl-opt', required=False, action='store_true',
                         help='Use AFL-Opt')
     parser.add_argument('benchmark_dir',
                         help='Path to ALL_BENCHMARKS-* directory')
@@ -153,10 +156,8 @@ def write_logs(proc, out_dir):
             stderr_log.write(proc.stderr)
 
 
-def run_fuzzers(cmds):
+def run_fuzzers(cmds, num_processes):
     """Run the list of AFL commands."""
-    num_processes = multiprocessing.cpu_count() // 2
-
     with multiprocessing.Pool(processes=num_processes) as pool:
         try:
             results = pool.map_async(run_cmd, cmds).get()
@@ -207,7 +208,7 @@ def main():
             cmds.append(cmd)
 
     # Run the fuzzers
-    run_fuzzers(cmds)
+    run_fuzzers(cmds, args.jobs)
 
 
 if __name__ == '__main__':
