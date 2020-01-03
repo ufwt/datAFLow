@@ -83,6 +83,7 @@ ln -sf ${SRC_DIR}/build-everything-datAFLow-libFuzzer.sh ${FUZZER_TEST_SUITE}/bu
 ln -sf ${SRC_DIR}/build-everything-libfuzzer.sh ${FUZZER_TEST_SUITE}/build-everything-libfuzzer.sh
 ln -sf ${SRC_DIR}/def-use-chains.sh ${FUZZER_TEST_SUITE}/def-use-chains.sh
 ln -sf ${SRC_DIR}/run_experiments.py ${FUZZER_TEST_SUITE}/run_experiments.py
+ln -sf ${SRC_DIR}/fuzzer-config.yaml ${FUZZER_TEST_SUITE}/fuzzer-config.yaml
 
 # Add Angora driver
 ln -sf ${SRC_DIR}/angora/angora_driver.c angora_driver.c
