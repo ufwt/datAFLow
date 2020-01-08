@@ -9,10 +9,13 @@ Author: Adrian Herrera
 
 from argparse import ArgumentParser
 from enum import Enum
+from itertools import cycle
+import logging
 import multiprocessing
 import os
-import subprocess
+from subprocess import CalledProcessError, CompletedProcess, PIPE, TimeoutExpired
 
+from psutil import Popen
 import yaml
 try:
     from yaml import CLoader as YamlLoader
@@ -96,23 +99,43 @@ def create_cmd(afl_fuzz_path, target_conf, target_dir, engine, out_dir, fts_dir,
                                         '%s-%s' % (target, engine))])
 
     return {
-        'cmd': cmd_args,
-        'target': target,
+        'target_dir': target_dir,
         'engine': engine,
         'out_dir': out_dir,
+        'target': target,
+        'cmd': cmd_args,
     }
 
 
-def run_cmd(cmd_dict):
+def run_cmd(cpu, cmd_dict):
     """Run AFL command."""
     env = os.environ.copy()
     env['AFL_NO_UI'] = '1'
 
-    print('running `%s`' % ' '.join(cmd_dict['cmd']))
-    proc = subprocess.run(cmd_dict['cmd'], env=env, check=True,
-                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # Set the datAFLow library path
+    if cmd_dict['engine'] == 'datAFLow':
+        prefix_dir = os.path.join(cmd_dict['target_dir'], 'prelink')
+        env['LD_LIBRARY_PATH'] = '%s:%s' % (prefix_dir,
+                                            env.get('LD_LIBRARY_PATH', ''))
 
-    return cmd_dict, proc
+    logging.info('running `%s` on CPU %d', ' '.join(cmd_dict['cmd']), cpu)
+    with Popen(cmd_dict['cmd'], env=env, stdout=PIPE, stderr=PIPE) as proc:
+        try:
+            proc.cpu_affinity([cpu])
+            stdout, stderr = proc.communicate()
+        except TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise
+        except:
+            proc.kill()
+            raise
+        retcode = proc.poll()
+        if retcode:
+            raise CalledProcessError(retcode, proc.args, output=stdout,
+                                     stderr=stderr)
+
+    return cmd_dict, CompletedProcess(proc.args, retcode, stdout, stderr)
 
 def write_logs(proc, out_dir):
     """Write logs from the given process."""
@@ -126,14 +149,11 @@ def write_logs(proc, out_dir):
 
 def run_fuzzers(cmds, num_processes):
     """Run the list of AFL commands."""
+    cmds_w_cpu = zip(cycle(range(num_processes)), cmds)
     with multiprocessing.Pool(processes=num_processes) as pool:
-        try:
-            results = pool.map_async(run_cmd, cmds).get()
-            for cmd, proc in results:
-                write_logs(proc, cmd['out_dir'])
-        except subprocess.CalledProcessError as err:
-            print('`%s` failed: %s' % (' '.join(err.cmd), err.stderr))
-            raise
+        results = pool.starmap_async(run_cmd, cmds_w_cpu).get()
+        for cmd, proc in results:
+            write_logs(proc, cmd['out_dir'])
 
         pool.close()
         pool.join()
@@ -143,11 +163,13 @@ def main():
     """The main function."""
     args = parse_args()
 
+    # Check that the AFL path is valid
     afl_fuzz = os.path.join(args.afl_dir, 'afl-fuzz')
     if not os.path.isfile(afl_fuzz):
         raise Exception('AFL fuzzer not found in %s' % args.afl_dir)
     afl_fuzz = os.path.realpath(afl_fuzz)
 
+    # Check that the fuzzer config path is valid
     config_path = args.config
     if not os.path.isfile(config_path):
         raise Exception('YAML config %s does not exist' % config_path)
@@ -159,22 +181,28 @@ def main():
     if not config:
         raise Exception('YAML config %s is empty' % config_path)
 
+    # Check that the benchmarks path is valid
     benchmark_dir = config['targets_dir']
     if not os.path.isdir(benchmark_dir):
         raise Exception('Fuzzer benchmark directory %s is invalid' %
                         benchmark_dir)
     benchmark_dir = os.path.realpath(benchmark_dir)
 
+    # Check that the fuzzer test suite path is valid
     fts_dir = config['fuzzer_test_suite_dir']
     if not os.path.isdir(fts_dir):
         raise Exception('Fuzzer Test Suite directory %s is invalid' % fts_dir)
     fts_dir = os.path.realpath(fts_dir)
 
-    engine = args.fuzzing_engine
-    out_prefix = args.output_prefix
+    # Configure logging
+    logging.basicConfig(level=logging.INFO,
+                        format='[%(asctime)-15s] %(message)s')
 
     # Create a list of AFL commands to run
+    engine = args.fuzzing_engine
+    out_prefix = args.output_prefix
     cmds = []
+
     for target_conf in config['targets']:
         target = target_conf['name']
         target_dir = os.path.join(benchmark_dir,
@@ -187,7 +215,9 @@ def main():
             cmds.append(cmd)
 
     # Run the fuzzers
-    run_fuzzers(cmds, args.jobs)
+    num_cpus = multiprocessing.cpu_count()
+    num_jobs = args.jobs if args.jobs < num_cpus else num_cpus
+    run_fuzzers(cmds, num_jobs)
 
 
 if __name__ == '__main__':
