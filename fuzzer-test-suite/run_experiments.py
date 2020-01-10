@@ -8,6 +8,7 @@ Author: Adrian Herrera
 
 
 from argparse import ArgumentParser
+from datetime import datetime
 from enum import Enum
 from itertools import cycle
 import logging
@@ -151,9 +152,18 @@ def run_fuzzers(cmds, num_processes):
     """Run the list of AFL commands."""
     cmds_w_cpu = zip(cycle(range(num_processes)), cmds)
     with multiprocessing.Pool(processes=num_processes) as pool:
-        results = pool.starmap_async(run_cmd, cmds_w_cpu).get()
-        for cmd, proc in results:
-            write_logs(proc, cmd['out_dir'])
+        try:
+            results = pool.starmap_async(run_cmd, cmds_w_cpu).get()
+            for cmd, proc in results:
+                write_logs(proc, cmd['out_dir'])
+        except CalledProcessError as err:
+            with open('fuzz-failures.log', 'a') as failure_log:
+                logging.error('fuzzer failure: %s', err)
+                time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                failure_log.write('time: %s' % time)
+                failure_log.write('cmd: %s\n' % ' '.join(err.cmd))
+                failure_log.write('stdout: %s\n' % err.stdout)
+                failure_log.write('stderr: %s\n' % err.stderr)
 
         pool.close()
         pool.join()
