@@ -39,6 +39,10 @@ def parse_args():
                         default='fuzz-out', help='Output directory prefix')
     parser.add_argument('-e', '--fuzzing-engine', required=True, action='store',
                         choices=('afl', 'datAFLow'), help='Fuzzing engine')
+    parser.add_argument('-f', '--fts', required=True, action='store',
+                        help='Path to the Google FTS source directory')
+    parser.add_argument('-c', '--config', required=True, action='store',
+                        help='Path to YAML config file')
     parser.add_argument('-n', '--num-trials', required=False, default=5,
                         type=int, help='Number of repeated trials')
     parser.add_argument('-t', '--timeout', required=False, action='store',
@@ -48,7 +52,8 @@ def parse_args():
                         help='Maximum number of processes to run concurrently')
     parser.add_argument('-m', '--afl-opt', required=False, action='store_true',
                         help='Use AFL-Opt')
-    parser.add_argument('config', help='Path to YAML config file')
+    parser.add_argument('benchmarks', dest='benchmark_dir',
+                        help='Path to ALL_BENCHMARKS-* directory')
 
     return parser.parse_args()
 
@@ -192,14 +197,14 @@ def main():
         raise Exception('YAML config %s is empty' % config_path)
 
     # Check that the benchmarks path is valid
-    benchmark_dir = config['targets_dir']
+    benchmark_dir = args.benchmark_dir
     if not os.path.isdir(benchmark_dir):
         raise Exception('Fuzzer benchmark directory %s is invalid' %
                         benchmark_dir)
     benchmark_dir = os.path.realpath(benchmark_dir)
 
     # Check that the fuzzer test suite path is valid
-    fts_dir = config['fuzzer_test_suite_dir']
+    fts_dir = args.fts
     if not os.path.isdir(fts_dir):
         raise Exception('Fuzzer Test Suite directory %s is invalid' % fts_dir)
     fts_dir = os.path.realpath(fts_dir)

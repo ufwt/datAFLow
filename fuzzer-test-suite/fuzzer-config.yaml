@@ -1,6 +1,3 @@
-fuzzer_test_suite_dir: /scratch/adrianh/dataflow-google-experiments/fuzzer-test-suite
-targets_dir: /scratch/adrianh/dataflow-google-experiments/ALL_BENCHMARKS-afl
-
 targets:
     - name: boringssl-2016-02-12
       seeds:
