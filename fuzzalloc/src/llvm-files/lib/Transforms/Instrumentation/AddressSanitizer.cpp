@@ -383,6 +383,13 @@ static cl::opt<int> ClDebugMin("asan-debug-min", cl::desc("Debug min inst"),
 static cl::opt<int> ClDebugMax("asan-debug-max", cl::desc("Debug max inst"),
                                cl::Hidden, cl::init(-1));
 
+#if FUZZALLOC_ASAN
+static cl::opt<bool>
+    ClWithFuzzalloc("asan-with-fuzzalloc",
+                    cl::desc("Force shadow memory address"),
+                    cl::Hidden, cl::init(false));
+#endif // FUZZALLOC_ASAN
+
 STATISTIC(NumInstrumentedReads, "Number of instrumented reads");
 STATISTIC(NumInstrumentedWrites, "Number of instrumented writes");
 STATISTIC(NumOptimizedAccessesToGlobalVar,
@@ -551,13 +558,11 @@ static ShadowMapping getShadowMapping(Triple &TargetTriple, int LongSize,
     else if (IsLinux && IsX86_64) {
       if (IsKasan)
         Mapping.Offset = kLinuxKasan_ShadowOffset64;
-      else
-#if FUZZALLOC_ASAN
+      else if (ClWithFuzzalloc)
         Mapping.Offset = FUZZALLOC_ASAN_SHADOW_OFFSET;
-#else
+      else
         Mapping.Offset = (kSmallX86_64ShadowOffsetBase &
                           (kSmallX86_64ShadowOffsetAlignMask << Mapping.Scale));
-#endif // FUZZALLOC_ASAN
     } else if (IsWindows && IsX86_64) {
       Mapping.Offset = kWindowsShadowOffset64;
     } else if (IsMIPS64)

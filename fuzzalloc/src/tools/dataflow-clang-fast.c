@@ -268,6 +268,8 @@ static void edit_params(u32 argc, char **argv) {
 
   if (asan_set && !maybe_assembler) {
     cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-asan-with-fuzzalloc";
+    cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
         alloc_printf("-fuzzalloc-tag-min=%d", FUZZALLOC_ASAN_TAG_MIN);
     cc_params[cc_par_cnt++] = "-mllvm";
