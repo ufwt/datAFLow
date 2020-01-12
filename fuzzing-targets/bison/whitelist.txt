@@ -1,0 +1,10 @@
+[fuzzalloc]
+fun:xmalloc
+fun:xrealloc
+fun:x2realloc
+fun:xzalloc
+fun:xcalloc
+fun:xnmalloc
+fun:xnrealloc
+fun:x2nrealloc
+fun:xcharalloc
