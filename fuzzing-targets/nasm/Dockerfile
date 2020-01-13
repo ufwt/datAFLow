@@ -5,6 +5,11 @@ ADD https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz .
 RUN tar xf nasm-2.14.02.tar.gz &&   \
     rm nasm-2.14.02.tar.gz
 
+# Seeds
+RUN cd nasm-2.14.02 &&  \
+    mkdir seeds &&      \
+    ln -sf $(find . -type f -name '*.asm' -exec realpath {} \+) seeds
+
 # Build AFL target
 RUN mkdir nasm-afl &&                               \
     cd nasm-2.14.02 &&                              \
@@ -66,3 +71,5 @@ RUN cd nasm-datAFLow-access-idx &&                              \
     find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
+
+CMD ["bash"]

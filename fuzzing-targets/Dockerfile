@@ -55,6 +55,9 @@ ENV PATH ${GOROOT}/bin:${GOPATH}/bin:${PATH}
 # wllvm
 RUN go get github.com/SRI-CSL/gllvm/cmd/...
 
+# Fuzzing seeds
+RUN git clone --depth=1 https://github.com/MozillaSecurity/fuzzdata
+
 # binutils
 RUN git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
 RUN cd binutils &&                                          \

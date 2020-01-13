@@ -8,6 +8,11 @@ ADD https://ftp.gnu.org/gnu/bison/bison-3.5.tar.gz .
 RUN tar xf bison-3.5.tar.gz &&  \
     rm bison-3.5.tar.gz
 
+# Seeds
+RUN cd bison-3.5 &&    \
+    mkdir seeds &&      \
+    ln -sf $(find . -type f -name '*.y' -exec realpath {} \+) seeds
+
 # Build AFL target
 RUN mkdir bison-afl &&                              \
     cd bison-3.5 &&                                 \
@@ -69,3 +74,5 @@ RUN cd bison-datAFLow-access-idx &&                             \
     find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
+
+CMD ["bash"]

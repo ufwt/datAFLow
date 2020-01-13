@@ -97,3 +97,5 @@ RUN cd poppler-datAFLow-access-idx &&                           \
     find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
+
+CMD ["bash"]
