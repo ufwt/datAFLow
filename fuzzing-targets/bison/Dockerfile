@@ -44,10 +44,11 @@ RUN mkdir bison-datAFLow &&                                                     
     export CFLAGS="-fsanitize=address" &&                                       \
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/bison-3.5-tag-sites.csv" &&                \
-    ./configure --prefix=${WORKDIR}/bison-datAFLow &&   \
+    ./configure --prefix=${WORKDIR}/bison-datAFLow &&                           \
     make clean && make -j && make install
 
 # Prelink
-RUN cd bison-datAFLow &&                                    \
-    python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
-        --in-place --out-dir="$(pwd)/prelink" bin/bison
+RUN cd bison-datAFLow &&                                        \
+    find bin -type f -exec                                      \
+        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+        --in-place --out-dir={}_prelink {} \;

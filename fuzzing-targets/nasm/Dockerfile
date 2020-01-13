@@ -45,6 +45,7 @@ RUN mkdir nasm-datAFLow &&                                                      
     make clean && make -j && make install
 
 # Prelink
-RUN cd nasm-datAFLow &&                                     \
-    python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
-        --in-place --out-dir="$(pwd)/prelink" bin/nasm
+RUN cd nasm-datAFLow &&                                         \
+    find bin -type f -exec                                      \
+        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+        --in-place --out-dir={}_prelink {} \;
