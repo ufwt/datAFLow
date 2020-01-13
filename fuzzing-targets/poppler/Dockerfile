@@ -46,10 +46,10 @@ RUN cd poppler-0.84.0 &&                                            \
     mv temp.csv poppler-0.84.0-tag-sites.csv
 RUN rm -rf poppler-0.84.0/build
 
-# Build datAFLow target
+# Build datAFLow memory access target
 #
 # Note that we need to use gclang otherwise the CMake tests fail
-RUN mkdir poppler-datAFLow &&                                                   \
+RUN mkdir poppler-datAFLow-access &&                                            \
     mkdir poppler-0.84.0/build &&                                               \
     cd poppler-0.84.0/build &&                                                  \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -58,17 +58,42 @@ RUN mkdir poppler-datAFLow &&                                                   
     export CFLAGS="-fsanitize=address" &&                                       \
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/../poppler-0.84.0-tag-sites.csv" &&        \
-    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow                 \
+    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access          \
         -DBUILD_GTK_TESTS=Off -DBUILD_QT5_TESTS=Off                             \
         -DBUILD_CPP_TESTS=Off -DENABLE_CPP=Off                                  \
         -DENABLE_SPLASH=Off -DENABLE_GTK_DOC=Off                                \
         -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&                             \
     export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
     export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make -j && make install
+RUN rm -rf poppler-0.84.0/build
+RUN cd poppler-datAFLow-access &&                               \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+        --in-place --out-dir={}_prelink {} \;
 
-# Prelink
-RUN cd poppler-datAFLow &&                                      \
-    find bin -type f -exec                                      \
+# Build datAFLow memory access + index target
+RUN mkdir poppler-datAFLow-access-idx &&                                        \
+    mkdir poppler-0.84.0/build &&                                               \
+    cd poppler-0.84.0/build &&                                                  \
+    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+    export CC=gclang && export CXX=gclang++ &&                                  \
+    export CFLAGS="-fsanitize=address" &&                                       \
+    export CXXFLAGS="-fsanitize=address" &&                                     \
+    export FUZZALLOC_TAG_LOG="$(pwd)/../poppler-0.84.0-tag-sites.csv" &&        \
+    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access-idx      \
+        -DBUILD_GTK_TESTS=Off -DBUILD_QT5_TESTS=Off                             \
+        -DBUILD_CPP_TESTS=Off -DENABLE_CPP=Off                                  \
+        -DENABLE_SPLASH=Off -DENABLE_GTK_DOC=Off                                \
+        -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&                             \
+    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
+    make clean && make -j && make install
+RUN rm -rf poppler-0.84.0/build
+RUN cd poppler-datAFLow-access-idx &&                           \
+    find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;

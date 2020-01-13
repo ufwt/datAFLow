@@ -31,8 +31,8 @@ RUN cd nasm-2.14.02 &&                                              \
         nasm-2.14.02-tag-sites.csv > temp.csv &&                    \
     mv temp.csv nasm-2.14.02-tag-sites.csv
 
-# Build datAFLow target
-RUN mkdir nasm-datAFLow &&                                                      \
+# Build datAFLow memory access target
+RUN mkdir nasm-datAFLow-access &&                                               \
     cd nasm-2.14.02 &&                                                          \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
     export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
@@ -41,11 +41,28 @@ RUN mkdir nasm-datAFLow &&                                                      
     export CFLAGS="-fsanitize=address" &&                                       \
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/nasm-2.14.02-tag-sites.csv" &&             \
-    ./configure --prefix=${WORKDIR}/nasm-datAFLow &&                            \
+    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access &&                     \
     make clean && make -j && make install
+RUN cd nasm-datAFLow-access &&                                  \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+        --in-place --out-dir={}_prelink {} \;
 
-# Prelink
-RUN cd nasm-datAFLow &&                                         \
-    find bin -type f -exec                                      \
+# Build datAFLow memory access + index target
+RUN mkdir nasm-datAFLow-access-idx &&                                           \
+    cd nasm-2.14.02 &&                                                          \
+    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
+    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
+    export CFLAGS="-fsanitize=address" &&                                       \
+    export CXXFLAGS="-fsanitize=address" &&                                     \
+    export FUZZALLOC_TAG_LOG="$(pwd)/nasm-2.14.02-tag-sites.csv" &&             \
+    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
+    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx &&                 \
+    make clean && make -j && make install
+RUN cd nasm-datAFLow-access-idx &&                              \
+    find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;

@@ -34,8 +34,8 @@ RUN cd bison-3.5 &&                                                 \
         bison-3.5-tag-sites.csv > temp.csv &&                       \
     mv temp.csv bison-3.5-tag-sites.csv
 
-# Build datAFLow target
-RUN mkdir bison-datAFLow &&                                                     \
+# Build datAFLow memory access target
+RUN mkdir bison-datAFLow-access &&                                              \
     cd bison-3.5 &&                                                             \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
     export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
@@ -44,11 +44,28 @@ RUN mkdir bison-datAFLow &&                                                     
     export CFLAGS="-fsanitize=address" &&                                       \
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/bison-3.5-tag-sites.csv" &&                \
-    ./configure --prefix=${WORKDIR}/bison-datAFLow &&                           \
+    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+    ./configure --prefix=${WORKDIR}/bison-datAFLow-access &&                    \
     make clean && make -j && make install
+RUN cd bison-datAFLow-access &&                                 \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+        --in-place --out-dir={}_prelink {} \;
 
-# Prelink
-RUN cd bison-datAFLow &&                                        \
-    find bin -type f -exec                                      \
+# Build datAFLow memory access + index target
+RUN mkdir bison-datAFLow-access-idx &&                                          \
+    cd bison-3.5 &&                                                             \
+    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
+    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
+    export CFLAGS="-fsanitize=address" &&                                       \
+    export CXXFLAGS="-fsanitize=address" &&                                     \
+    export FUZZALLOC_TAG_LOG="$(pwd)/bison-3.5-tag-sites.csv" &&                \
+    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
+    ./configure --prefix=${WORKDIR}/bison-datAFLow-access-idx &&                \
+    make clean && make -j && make install
+RUN cd bison-datAFLow-access-idx &&                             \
+    find bin -type f -executable -exec                          \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
