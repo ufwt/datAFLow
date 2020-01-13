@@ -8,7 +8,7 @@ fuzzing targets.
 First compile the base Docker image:
 
 ```bash
-docker build -t dataflow/base-image . --build-arg SSH_PRIVATE_KEY="$(cat ~/.ssh/id_rsa)"
+docker build -t dataflow/base . --build-arg SSH_PRIVATE_KEY="$(cat ~/.ssh/id_rsa)"
 ```
 
 Then build the image for the target you want to fuzz, e.g.:
@@ -28,4 +28,12 @@ docker start bison-fuzz
 
 # Access the container
 docker exec -ti bison-fuzz /bin/bash
+```
+
+Once everything is finished:
+
+```bash
+# Stop the container
+docker stop bison-fuzz
+docker rm bison-fuzz
 ```

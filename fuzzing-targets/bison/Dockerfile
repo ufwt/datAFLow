@@ -1,4 +1,4 @@
-FROM dataflow/base-image
+FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
 RUN apt update &&   \

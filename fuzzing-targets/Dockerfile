@@ -121,7 +121,7 @@ RUN mkdir fuzzalloc-release &&          \
     make -j
 RUN pip3 install -r ${WORKDIR}/datAFLow/scripts/requirements.txt
 ENV LD_LIBRARY_PATH ${WORKDIR}/fuzzalloc-release/src/runtime/malloc:${LD_LIBRARY_PATH}
-ENV ASAN_OPTIONS "detect_leaks=0"
+ENV ASAN_OPTIONS "detect_leaks=0:abort_on_error=1:symbolize=0"
 
 # Rebuild LLVM to support datAFLow
 RUN cd llvm-project &&                                                  \

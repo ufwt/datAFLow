@@ -1,4 +1,4 @@
-FROM dataflow/base-image
+FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
 ADD https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz .
