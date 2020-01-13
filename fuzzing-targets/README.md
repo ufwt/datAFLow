@@ -3,7 +3,7 @@
 This directory contains a number of Dockerfiles for building a variety of
 fuzzing targets.
 
-## Usage
+## Building
 
 First compile the base Docker image:
 
@@ -15,4 +15,17 @@ Then build the image for the target you want to fuzz, e.g.:
 
 ```bash
 docker build -t dataflow/bison bison/
+```
+
+# Fuzzing
+
+```bash
+# Create the container
+docker create -ti --name bison-fuzz dataflow/bison
+
+# Start the container
+docker start bison-fuzz
+
+# Access the container
+docker exec -ti bison-fuzz /bin/bash
 ```

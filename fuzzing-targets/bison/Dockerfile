@@ -9,9 +9,8 @@ RUN tar xf bison-3.5.tar.gz &&  \
     rm bison-3.5.tar.gz
 
 # Seeds
-RUN cd bison-3.5 &&    \
-    mkdir seeds &&      \
-    ln -sf $(find . -type f -name '*.y' -exec realpath {} \+) seeds
+RUN mkdir seeds &&  \
+    ln -sf $(find bison-3.5 -type f -name '*.y' -exec realpath {} \+) seeds
 
 # Build AFL target
 RUN mkdir bison-afl &&                              \

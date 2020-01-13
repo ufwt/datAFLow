@@ -6,9 +6,8 @@ RUN tar xf nasm-2.14.02.tar.gz &&   \
     rm nasm-2.14.02.tar.gz
 
 # Seeds
-RUN cd nasm-2.14.02 &&  \
-    mkdir seeds &&      \
-    ln -sf $(find . -type f -name '*.asm' -exec realpath {} \+) seeds
+RUN mkdir seeds &&  \
+    ln -sf $(find nasm-2.14.02 -type f -name '*.asm' -exec realpath {} \+) seeds
 
 # Build AFL target
 RUN mkdir nasm-afl &&                               \
