@@ -42,6 +42,19 @@ RUN apt update &&                                               \
         prelink patchelf &&                                     \
     apt autoremove -y
 
+# Install Go
+ADD https://dl.google.com/go/go1.13.6.linux-amd64.tar.gz .
+RUN mkdir /goroot &&                                                        \
+    tar xf go1.13.6.linux-amd64.tar.gz -C /goroot --strip-components=1 &&   \
+    rm go1.13.6.linux-amd64.tar.gz
+RUN mkdir /gopath
+ENV GOROOT /goroot
+ENV GOPATH /gopath
+ENV PATH ${GOROOT}/bin:${GOPATH}/bin:${PATH}
+
+# wllvm
+RUN go get github.com/SRI-CSL/gllvm/cmd/...
+
 # binutils
 RUN git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
 RUN cd binutils &&                                          \
