@@ -30,39 +30,43 @@ FROM ubuntu:18.04
 MAINTAINER adrian.herrera02@gmail.com
 
 ENV DEBIAN_FRONTEND noninteractive
-ENV WORKDIR /root
-WORKDIR ${WORKDIR}
 
 # Install required packages
 RUN apt update &&                                               \
-    apt upgrade -y &&                                           \
     apt install -y build-essential git autogen autoconf texinfo \
         automake tzdata libtool cmake ninja-build pkg-config    \
-        bison python python3 python3-dev python3-pip            \
+        curl flex bison python python3 python3-dev python3-pip  \
         prelink patchelf &&                                     \
     apt autoremove -y
 
+RUN adduser fuzz && \
+    chown -R fuzz:fuzz /home/fuzz
+USER fuzz
+ENV WORKDIR /home/fuzz
+WORKDIR ${WORKDIR}
+
 # Install Go
-ADD https://dl.google.com/go/go1.13.6.linux-amd64.tar.gz .
-RUN mkdir /goroot &&                                                        \
-    tar xf go1.13.6.linux-amd64.tar.gz -C /goroot --strip-components=1 &&   \
-    rm go1.13.6.linux-amd64.tar.gz
-RUN mkdir /gopath
-ENV GOROOT /goroot
-ENV GOPATH /gopath
+RUN mkdir goroot gopath
+RUN curl https://dl.google.com/go/go1.13.6.linux-amd64.tar.gz | \
+    tar xzvf - -C goroot --strip-components=1
+ENV GOROOT ${WORKDIR}/goroot
+ENV GOPATH ${WORKDIR}/gopath
 ENV PATH ${GOROOT}/bin:${GOPATH}/bin:${PATH}
 
 # wllvm
 RUN go get github.com/SRI-CSL/gllvm/cmd/...
 
-# Fuzzing seeds
-RUN git clone --depth=1 https://github.com/MozillaSecurity/fuzzdata
-
 # binutils
 RUN git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
-RUN cd binutils &&                                          \
-    ./configure --enable-gold=default --enable-plugins &&   \
-    make clean && make -j all-gold && make install-gold
+RUN mkdir binutils/build &&                                 \
+    cd binutils/build &&                                    \
+    ../configure --enable-gold=default --enable-plugins &&  \
+    make clean && make -j all-gold
+
+# Install binutils as root
+USER root
+RUN make -C binutils/build install-gold
+USER fuzz
 
 # LLVM
 RUN git clone --depth=1 --branch release/7.x --single-branch https://github.com/llvm/llvm-project.git
@@ -74,14 +78,28 @@ RUN mkdir llvm-project/build &&                             \
         -DLLVM_INCLUDE_EXAMPLES=Off                         \
         -DLLVM_TARGETS_TO_BUILD="X86"                       \
         -DLLVM_BINUTILS_INCDIR=${WORKDIR}/binutils/include  \
-        -GNinja &&                                          \
-    cmake --build . &&                                      \
-    cmake --build . --target install
-RUN rm -rf llvm-project/build
+        -GNinja
+RUN cmake --build llvm-project/build
+
+# Install LLVM as root
+USER root
+RUN cmake --build llvm-project/build --target install
 RUN ln -s /usr/local/lib/libLTO.so /usr/lib/bfd-plugins/ && \
     ln -s /usr/local/lib/LLVMgold.so /usr/lib/bfd-plugins/
+USER fuzz
+
+RUN rm -rf llvm-project/build
 ENV CC clang
 ENV CXX clang++
+
+#
+# Drop privileges
+#
+
+USER fuzz
+
+# Fuzzing seeds
+RUN git clone --depth=1 https://github.com/MozillaSecurity/fuzzdata
 
 # AFL
 RUN git clone --depth=1 https://github.com/google/AFL.git
@@ -89,6 +107,7 @@ RUN cd AFL &&                   \
     make clean && make -j &&    \
     make -j -C llvm_mode
 ENV AFL_PATH ${WORKDIR}/AFL
+ENV AFL_NO_UI 1
 
 # AFL MOpt
 RUN git clone --depth=1 https://github.com/puppet-meteor/MOpt-AFL
@@ -100,11 +119,11 @@ RUN cd MOpt-AFL/MOpt-AFL\ V1.0 &&   \
 RUN export CC="${AFL_PATH}/afl-clang-fast" &&                                                           \
     export CXX="${AFL_PATH}/afl-clang-fast++" &&                                                        \
     ${CC} -O2 -c ${WORKDIR}/llvm-project/compiler-rt/lib/fuzzer/standalone/StandaloneFuzzTargetMain.c &&\
-    ar rc /usr/local/lib/libaflfuzz.a StandaloneFuzzTargetMain.o &&                                     \
+    ar rc ${AFL_PATH}/libaflfuzz.a StandaloneFuzzTargetMain.o &&                                        \
     rm StandaloneFuzzTargetMain.o
 
 # datAFLow
-COPY --from=datAFLow-intermediate ${WORKDIR}/datAFLow ${WORKDIR}/datAFLow
+COPY --from=datAFLow-intermediate /root/datAFLow ${WORKDIR}/datAFLow
 RUN mkdir fuzzalloc-debug &&            \
     cd fuzzalloc-debug &&               \
     cmake -DFUZZALLOC_USE_LOCKS=False   \
@@ -140,7 +159,7 @@ RUN mkdir llvm-datAFLow &&                                  \
         -DFUZZALLOC_ASAN=On                                 \
         -DLIBFUZZALLOC_PATH=${WORKDIR}/fuzzalloc-release/src/runtime/malloc/libfuzzalloc.so \
         -DCMAKE_INSTALL_PREFIX=${WORKDIR}/llvm-datAFLow     \
-        -GNinja &&                                          \
-    cmake --build . &&                                      \
-    cmake --build . --target install
-RUN rm -rf llvm-project/build
+        -GNinja
+RUN cmake --build llvm-project/build &&                 \
+    cmake --build llvm-project/build --target install
+RUN rm -rf llvm-project

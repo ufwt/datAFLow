@@ -1,9 +1,7 @@
 FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
-ADD https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz .
-RUN tar xf nasm-2.14.02.tar.gz &&   \
-    rm nasm-2.14.02.tar.gz
+RUN curl -L https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz | tar xzvf -
 
 # Seeds
 RUN mkdir seeds &&  \

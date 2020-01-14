@@ -1,12 +1,7 @@
 FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
-RUN apt update &&   \
-    apt install -y flex
-
-ADD https://ftp.gnu.org/gnu/bison/bison-3.5.tar.gz .
-RUN tar xf bison-3.5.tar.gz &&  \
-    rm bison-3.5.tar.gz
+RUN curl -L https://ftp.gnu.org/gnu/bison/bison-3.5.tar.gz | tar xzvf -
 
 # Seeds
 RUN mkdir seeds &&  \

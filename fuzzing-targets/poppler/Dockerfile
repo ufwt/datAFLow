@@ -1,13 +1,13 @@
 FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
+USER root
 RUN apt update &&                                       \
     apt install -y libopenjp2-7-dev libpng-dev libz-dev \
         libtiff-dev libfreetype6-dev libfontconfig-dev
+USER fuzz
 
-ADD https://poppler.freedesktop.org/poppler-0.84.0.tar.xz .
-RUN tar xf poppler-0.84.0.tar.xz && \
-    rm poppler-0.84.0.tar.xz
+RUN curl -L https://poppler.freedesktop.org/poppler-0.84.0.tar.xz | tar xJvf -
 
 # Build AFL target
 RUN mkdir poppler-afl &&                                    \
