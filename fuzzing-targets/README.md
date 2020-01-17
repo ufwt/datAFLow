@@ -20,14 +20,8 @@ docker build -t dataflow/bison bison/
 # Fuzzing
 
 ```bash
-# Create the container
-docker create -ti --name bison-fuzz dataflow/bison
-
-# Start the container
-docker start bison-fuzz
-
-# Access the container
-docker exec -ti bison-fuzz /bin/bash
+# Run the container
+docker run -ti --name bison-fuzz dataflow/bison
 ```
 
 Once everything is finished:

@@ -36,7 +36,7 @@ RUN apt update &&                                               \
     apt install -y build-essential git autogen autoconf texinfo \
         automake tzdata libtool cmake ninja-build pkg-config    \
         curl flex bison python python3 python3-dev python3-pip  \
-        prelink patchelf &&                                     \
+        time prelink patchelf &&                                \
     apt autoremove -y
 
 RUN adduser fuzz && \
@@ -163,3 +163,5 @@ RUN mkdir llvm-datAFLow &&                                  \
 RUN cmake --build llvm-project/build &&                 \
     cmake --build llvm-project/build --target install
 RUN rm -rf llvm-project
+
+ADD fuzz.sh ${WORKDIR}

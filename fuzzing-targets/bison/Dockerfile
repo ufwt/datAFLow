@@ -3,10 +3,6 @@ MAINTAINER adrian.herrera02@gmail.com
 
 RUN curl -L https://ftp.gnu.org/gnu/bison/bison-3.5.tar.gz | tar xzvf -
 
-# Seeds
-RUN mkdir seeds &&  \
-    cp -n $(find bison-3.5 -type f -name '*.y' -exec realpath {} \+) seeds
-
 # Build AFL target
 RUN mkdir bison-afl &&                              \
     cd bison-3.5 &&                                 \
@@ -69,4 +65,9 @@ RUN cd bison-datAFLow-access-idx &&                             \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
 
+# Seeds
+RUN mkdir seeds
+RUN cp -n $(find bison-3.5 -type f -name '*.y' -exec realpath {} \+) seeds
+
+ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]

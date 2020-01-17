@@ -3,10 +3,6 @@ MAINTAINER adrian.herrera02@gmail.com
 
 RUN curl -L https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz | tar xzvf -
 
-# Seeds
-RUN mkdir seeds &&  \
-    cp -n $(find nasm-2.14.02 -type f -name '*.asm' -exec realpath {} \+) seeds
-
 # Build AFL target
 RUN mkdir nasm-afl &&                               \
     cd nasm-2.14.02 &&                              \
@@ -69,4 +65,9 @@ RUN cd nasm-datAFLow-access-idx &&                              \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
 
+# Seeds
+RUN mkdir seeds
+RUN cp -n $(find nasm-2.14.02 -type f -name '*.asm' -exec realpath {} \+) seeds
+
+ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]

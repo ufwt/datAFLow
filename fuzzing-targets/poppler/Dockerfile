@@ -98,4 +98,9 @@ RUN cd poppler-datAFLow-access-idx &&                           \
         python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
         --in-place --out-dir={}_prelink {} \;
 
+# Seeds
+RUN mkdir seeds
+RUN cp fuzzdata/samples/pdf/* seeds/
+
+ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]
