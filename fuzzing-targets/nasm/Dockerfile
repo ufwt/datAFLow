@@ -69,5 +69,4 @@ RUN cd nasm-datAFLow-access-idx &&                              \
 RUN mkdir seeds
 RUN cp -n $(find nasm-2.14.02 -type f -name '*.asm' -exec realpath {} \+) seeds
 
-ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]

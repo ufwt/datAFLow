@@ -39,10 +39,7 @@ RUN apt update &&                                               \
         time prelink patchelf &&                                \
     apt autoremove -y
 
-RUN adduser fuzz && \
-    chown -R fuzz:fuzz /home/fuzz
-USER fuzz
-ENV WORKDIR /home/fuzz
+ENV WORKDIR /root
 WORKDIR ${WORKDIR}
 
 # Install Go
@@ -64,9 +61,7 @@ RUN mkdir binutils/build &&                                 \
     make clean && make -j all-gold
 
 # Install binutils as root
-USER root
 RUN make -C binutils/build install-gold
-USER fuzz
 
 # LLVM
 RUN git clone --depth=1 --branch release/7.x --single-branch https://github.com/llvm/llvm-project.git
@@ -82,21 +77,13 @@ RUN mkdir llvm-project/build &&                             \
 RUN cmake --build llvm-project/build
 
 # Install LLVM as root
-USER root
 RUN cmake --build llvm-project/build --target install
 RUN ln -s /usr/local/lib/libLTO.so /usr/lib/bfd-plugins/ && \
     ln -s /usr/local/lib/LLVMgold.so /usr/lib/bfd-plugins/
-USER fuzz
 
 RUN rm -rf llvm-project/build
 ENV CC clang
 ENV CXX clang++
-
-#
-# Drop privileges
-#
-
-USER fuzz
 
 # Fuzzing seeds
 RUN git clone --depth=1 https://github.com/MozillaSecurity/fuzzdata
@@ -123,7 +110,7 @@ RUN export CC="${AFL_PATH}/afl-clang-fast" &&                                   
     rm StandaloneFuzzTargetMain.o
 
 # datAFLow
-COPY --from=datAFLow-intermediate /root/datAFLow ${WORKDIR}/datAFLow
+COPY --from=datAFLow-intermediate ${WORKDIR}/datAFLow ${WORKDIR}/datAFLow
 RUN mkdir fuzzalloc-debug &&            \
     cd fuzzalloc-debug &&               \
     cmake -DFUZZALLOC_USE_LOCKS=False   \
@@ -163,5 +150,3 @@ RUN mkdir llvm-datAFLow &&                                  \
 RUN cmake --build llvm-project/build &&                 \
     cmake --build llvm-project/build --target install
 RUN rm -rf llvm-project
-
-ADD fuzz.sh ${WORKDIR}

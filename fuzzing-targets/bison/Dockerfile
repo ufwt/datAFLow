@@ -69,5 +69,4 @@ RUN cd bison-datAFLow-access-idx &&                             \
 RUN mkdir seeds
 RUN cp -n $(find bison-3.5 -type f -name '*.y' -exec realpath {} \+) seeds
 
-ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]

@@ -1,11 +1,9 @@
 FROM dataflow/base
 MAINTAINER adrian.herrera02@gmail.com
 
-USER root
 RUN apt update &&                                       \
     apt install -y libopenjp2-7-dev libpng-dev libz-dev \
         libtiff-dev libfreetype6-dev libfontconfig-dev
-USER fuzz
 
 RUN curl -L https://poppler.freedesktop.org/poppler-0.84.0.tar.xz | tar xJvf -
 
@@ -102,5 +100,4 @@ RUN cd poppler-datAFLow-access-idx &&                           \
 RUN mkdir seeds
 RUN cp fuzzdata/samples/pdf/* seeds/
 
-ADD fuzz-config.sh ${WORKDIR}
 CMD ["bash"]
