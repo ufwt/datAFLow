@@ -49,7 +49,7 @@ RUN mkdir nasm-datAFLow-access &&                                               
 RUN cd nasm-datAFLow-access &&                                          \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
 RUN mkdir nasm-datAFLow-access-idx &&                                           \
@@ -67,7 +67,7 @@ RUN mkdir nasm-datAFLow-access-idx &&                                           
 RUN cd nasm-datAFLow-access-idx &&                                      \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
 RUN mkdir nasm-datAFLow-access-heapify-structs &&                               \
@@ -86,7 +86,7 @@ RUN mkdir nasm-datAFLow-access-heapify-structs &&                               
 RUN cd nasm-datAFLow-access-heapify-structs &&                          \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
 RUN mkdir nasm-datAFLow-access-idx-heapify-structs &&                           \
@@ -105,7 +105,7 @@ RUN mkdir nasm-datAFLow-access-idx-heapify-structs &&                           
 RUN cd nasm-datAFLow-access-idx-heapify-structs &&                      \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Seeds
 RUN mkdir seeds

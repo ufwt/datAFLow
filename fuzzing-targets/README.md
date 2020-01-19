@@ -14,17 +14,13 @@ docker build -t dataflow/base . --build-arg SSH_PRIVATE_KEY="$(cat ~/.ssh/id_rsa
 Then build the image for the target you want to fuzz, e.g.:
 
 ```bash
-docker build -t dataflow/bison bison/
+export TARGET="bison"
+docker build -t dataflow/${TARGET} ${TARGET}
 ```
 
 # Fuzzing
 
-First, we need to pull out the files we need (don't fuzz inside the container).
-
 ```bash
-# Run the container
-docker run -ti --name bison-fuzz dataflow/bison
-
 # Setup experiment dir
 mkdir -p /path/to/experiment/dir/
 cd /path/to/experiment/dir
@@ -33,23 +29,15 @@ make -C AFL -j && make -C AFL/llvm_mode -j
 git clone --depth=1 https://github.com/puppet-meteor/MOpt-AFL
 make -C MOpt-AFL/MOpt-AFL\ V1.0/ -j && make -C MOpt-AFL/MOpt-AFL\ V1.0/llvm_mode -j
 
-# Make target directory
-mkdir -p bison
-
-# Copy out files
-docker cp bison-fuzz:/root/bison-afl bison/
-docker cp bison-fuzz:/root/bison-datAFLow-access bison/
-docker cp bison-fuzz:/root/bison-datAFLow-access-idx bison/
-docker cp bison-fuzz:/root/seeds bison/
-
-# Run the experiment
-/path/to/this/dir/fuzz.sh bison
+# Run everything
+/path/to/this/dir/fuzz.sh ${TARGET}
 ```
 
-Once everything is finished:
+# Adding targets
 
-```bash
-# Stop the container
-docker stop bison-fuzz
-docker rm bison-fuzz
-```
+1. Create a Docker file that describes how to build the target. It should follow
+   the same format as the existing targets (i.e., with build dirs `${TARGET}-afl`,
+   `${TARGET}-datAFLow-access`, etc.)
+2. Create a `fuzz-config.sh` with:
+   - `EXE` variable with the name of the binary to run
+   - `EXE_OPTS` variable with the runtime options to use (including `@@` for AFL)

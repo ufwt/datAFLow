@@ -73,7 +73,7 @@ RUN rm -rf poppler-0.84.0/build
 RUN cd poppler-datAFLow-access &&                                       \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
 RUN mkdir poppler-datAFLow-access-idx &&                                        \
@@ -98,7 +98,7 @@ RUN rm -rf poppler-0.84.0/build
 RUN cd poppler-datAFLow-access-idx &&                                   \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
 #
@@ -126,7 +126,7 @@ RUN rm -rf poppler-0.84.0/build
 RUN cd poppler-datAFLow-access-heapify-structs &&                       \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
 RUN mkdir poppler-datAFLow-access-idx-heapify-structs &&                        \
@@ -152,7 +152,7 @@ RUN rm -rf poppler-0.84.0/build
 RUN cd poppler-datAFLow-access-idx-heapify-structs &&                   \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Seeds
 RUN mkdir seeds

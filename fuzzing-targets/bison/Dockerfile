@@ -49,10 +49,10 @@ RUN mkdir bison-datAFLow-access &&                                              
 RUN cd bison-datAFLow-access &&                                         \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
-RUN mkdir bison-datAFLow-access-heapify-structs &&
+RUN mkdir bison-datAFLow-access-heapify-structs &&                              \
     cd bison-3.5 &&                                                             \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
     export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
@@ -68,7 +68,7 @@ RUN mkdir bison-datAFLow-access-heapify-structs &&
 RUN cd bison-datAFLow-access-heapify-structs &&                         \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
 RUN mkdir bison-datAFLow-access-idx &&                                          \
@@ -86,7 +86,7 @@ RUN mkdir bison-datAFLow-access-idx &&                                          
 RUN cd bison-datAFLow-access-idx &&                                     \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
 RUN mkdir bison-datAFLow-access-idx-heapify-structs &&                          \
@@ -105,7 +105,7 @@ RUN mkdir bison-datAFLow-access-idx-heapify-structs &&                          
 RUN cd bison-datAFLow-access-idx-heapify-structs &&                     \
     find bin -type f -executable -exec                                  \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_prelink {} \;
+        --in-place --out-dir={}_deps {} \;
 
 # Seeds
 RUN mkdir seeds

@@ -14,92 +14,51 @@ SEEDS="${TARGET}/seeds"
 export AFL_NO_UI=1
 . ${SCRIPT_PATH}/${TARGET}/fuzz-config.sh
 
-# Need to fix the interpreter
-patchelf --set-interpreter                      \
-    "${TARGET}/${AFL_LD}/ld-linux-x86-64.so.2"  \
-    ${TARGET}/${AFL_TARGET}
+# Make the target directory
+mkdir -p ${TARGET}
 
-# AFL fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${AFL_LD}:${LD_LIBRARY_PATH}              \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u    \
-    /usr/bin/time --verbose --output=${TARGET}/afl-$I.time              \
-    AFL/afl-fuzz -m none                                                \
-        -i ${SEEDS} -o ${TARGET}/afl-out-$I --                          \
-        ${TARGET}/${AFL_TARGET} ${TARGET_OPTS}                          \
-        > ${TARGET}/afl-$I.log 2>&1
-    sleep 2
-done
+# Start the Docker container so that we can extract everything from it
+docker run --name dataflow-${TARGET} dataflow/${TARGET}
 
-# MOpt fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${AFL_LD}:${LD_LIBRARY_PATH}              \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u -q \
-    /usr/bin/time --verbose --output=${TARGET}/mopt-$I.time             \
-    "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -L 0 -m none                      \
-        -i ${SEEDS} -o ${TARGET}/mopt-out-$I                            \
-        -- ${TARGET}/${AFL_TARGET} ${TARGET_OPTS}                       \
-        > ${TARGET}/mopt-$I.log 2>&1
-    sleep 2
-done
+for BUILD in afl                            \
+             datAFLow-access                \
+             datAFLow-access-heapify-struct \
+             datAFLow-access-idx            \
+             datAFLow-access-idx-heapify-struct; do
+    # Extract target from Docker container
+    docker cp dataflow-${TARGET}:/root/${TARGET}-${BUILD} ${TARGET}/
 
-# Need to fix the interpreter
-patchelf --set-interpreter                                  \
-    "${TARGET}/${DATAFLOW_ACCESS_LD}/ld-linux-x86-64.so.2"  \
-    ${TARGET}/${DATAFLOW_ACCESS_TARGET}
+    EXE_PATH="${TARGET}/${TARGET}-${BUILD}/bin/${EXE}"
+    DEPS_DIR="${EXE_PATH}_deps"
 
-# datAFLow access fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${DATAFLOW_ACCESS_LD}:${LD_LIBRARY_PATH}  \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u    \
-    /usr/bin/time --verbose --output=${TARGET}/datAFLow-access-$I.time  \
-    AFL/afl-fuzz -m none                                                \
-        -i ${SEEDS} -o ${TARGET}/datAFLow-access-out-$I --              \
-        ${TARGET}/${DATAFLOW_ACCESS_TARGET} ${TARGET_OPTS}              \
-        > ${TARGET}/datAFLow-access-$I.log 2>&1
-    sleep 2
-done
+    # Fix the interpreter
+    patchelf --set-interpreter "${DEPS_DIR}/ld-linux-86-64.so.2" ${EXE_PATH}
 
-# datAFLow access MOpt fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${DATAFLOW_ACCESS_LD}:${LD_LIBRARY_PATH}      \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u -q     \
-    /usr/bin/time --verbose --output=${TARGET}/datAFLow-access-mopt-$I.time \
-    "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -L 0 -m none                          \
-        -i ${SEEDS} -o ${TARGET}/datAFLow-access-mopt-out-$I --             \
-        ${TARGET}/${DATAFLOW_ACCESS_TARGET} ${TARGET_OPTS}                  \
-        > ${TARGET}/datAFLow-access-mopt-$I.log 2>&1
-    sleep 2
-done
+    # AFL fuzz
+    for I in $(seq 1 5); do
+        LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
+        sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u           \
+        /usr/bin/time --verbose --output="${TARGET}/${BUILD}-${I}.time"         \
+        AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}" --    \
+            ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/${BUILD}-${I}.log" 2>&1
+        sleep 2
+    done
 
-# Need to fix the interpreter
-patchelf --set-interpreter                                      \
-    "${TARGET}/${DATAFLOW_ACCESS_IDX_LD}/ld-linux-x86-64.so.2"  \
-    ${TARGET}/${DATAFLOW_ACCESS_IDX_TARGET}
-
-# datAFLow access + index fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${DATAFLOW_ACCESS_IDX_LD}:${LD_LIBRARY_PATH}  \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u        \
-    timeout --preserve-status 24h                                           \
-    AFL/afl-fuzz -m none                                                    \
-        -i ${SEEDS} -o ${TARGET}/datAFLow-access-idx-out-$I --              \
-        ${TARGET}/${DATAFLOW_ACCESS_TARGET} ${TARGET_OPTS}                  \
-        > ${TARGET}/datAFLow-access-idx-$I.log 2>&1
-    sleep 2
-done
-
-# datAFLow access + index MOpt fuzz
-for I in $(seq 1 5); do
-    LD_LIBRARY_PATH=${TARGET}/${DATAFLOW_ACCESS_IDX_LD}:${LD_LIBRARY_PATH}      \
-    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u -q         \
-    /usr/bin/time --verbose --output=${TARGET}/datAFLow-access-idx-mopt-$I.time \
-    "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -L 0 -m none                              \
-        -i ${SEEDS} -o ${TARGET}/datAFLow-access-idx-mopt-out-$I --             \
-        ${TARGET}/${DATAFLOW_ACCESS_IDX_TARGET} ${TARGET_OPTS}                  \
-        > ${TARGET}/datAFLow-access-idx-mopt-$I.log 2>&1
-    sleep 2
+    # MOpt fuzz
+    for I in $(seq 1 5); do
+        LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
+        sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u -q        \
+        /usr/bin/time --verbose --output="${TARGET}/mopt-${BUILD}-${I}.time"    \
+        "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -m none -L 0                          \
+            -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}" --                \
+            ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/mopt-${BUILD}-${I}.log" 2>&1
+        sleep 2
+    done
 done
 
 # Wait for campaigns to finish
 sem --wait --id "fuzz-${TARGET}"
+
+# Remove the Docker container
+docker stop dataflow-${TARGET}
+Docker rm -f dataflow-${TARGET}
