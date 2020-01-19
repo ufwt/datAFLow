@@ -12,6 +12,10 @@ RUN mkdir nasm-afl &&                               \
     export CXXFLAGS="-fsanitize=address" &&         \
     ./configure --prefix=${WORKDIR}/nasm-afl &&     \
     make clean && make -j && make install
+RUN cd nasm-afl &&                                              \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+        --out-dir={}_deps {} \;
 
 # Collect tags
 ADD whitelist.txt nasm-2.14.02/

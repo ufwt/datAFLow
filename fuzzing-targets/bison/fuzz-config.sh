@@ -1,6 +1,7 @@
 #!/bin/bash
 
 AFL_TARGET=bison-afl/bin/bison
+AFL_LD=bison-afl/bin/bison_deps
 
 DATAFLOW_ACCESS_TARGET=bison-datAFLow-access/bin/bison
 DATAFLOW_ACCESS_LD=bison-datAFLow-access/bin/bison_prelink

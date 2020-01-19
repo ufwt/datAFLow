@@ -1,6 +1,7 @@
 #!/bin/bash
 
 AFL_TARGET=nasm-afl/bin/nasm
+AFL_LD=nasm-afl/bin/nasm_deps
 
 DATAFLOW_ACCESS_TARGET=nasm-datAFLow-access/bin/nasm
 DATAFLOW_ACCESS_LD=nasm-datAFLow-access/bin/nasm_prelink

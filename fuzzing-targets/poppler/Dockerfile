@@ -22,6 +22,10 @@ RUN mkdir poppler-afl &&                                    \
         -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&         \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
+RUN cd poppler-afl &&                                           \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+        --out-dir={}_deps {} \;
 
 # Collect tags
 ADD whitelist.txt poppler-0.84.0/

@@ -12,6 +12,10 @@ RUN mkdir bison-afl &&                              \
     export CXXFLAGS="-fsanitize=address" &&         \
     ./configure --prefix=${WORKDIR}/bison-afl &&    \
     make clean && make -j && make install
+RUN cd bison-afl &&                                             \
+    find bin -type f -executable -exec                          \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+        --out-dir={}_deps {} \;
 
 # Collect tags
 ADD whitelist.txt bison-3.5/

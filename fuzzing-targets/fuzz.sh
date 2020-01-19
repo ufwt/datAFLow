@@ -14,8 +14,14 @@ SEEDS="${TARGET}/seeds"
 export AFL_NO_UI=1
 . ${SCRIPT_PATH}/${TARGET}/fuzz-config.sh
 
+# Need to fix the interpreter
+patchelf --set-interpreter                      \
+    "${TARGET}/${AFL_LD}/ld-linux-x86-64.so.2"  \
+    ${TARGET}/${AFL_TARGET}
+
 # AFL fuzz
 for I in $(seq 1 5); do
+    LD_LIBRARY_PATH=${TARGET}/${AFL_LD}:${LD_LIBRARY_PATH}              \
     sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u    \
     /usr/bin/time --verbose --output=${TARGET}/afl-$I.time              \
     AFL/afl-fuzz -m none                                                \
@@ -27,6 +33,7 @@ done
 
 # MOpt fuzz
 for I in $(seq 1 5); do
+    LD_LIBRARY_PATH=${TARGET}/${AFL_LD}:${LD_LIBRARY_PATH}              \
     sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${TARGET}" -u -q \
     /usr/bin/time --verbose --output=${TARGET}/mopt-$I.time             \
     "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -L 0 -m none                      \
@@ -36,7 +43,7 @@ for I in $(seq 1 5); do
     sleep 2
 done
 
-# Need to fix up the interpreter
+# Need to fix the interpreter
 patchelf --set-interpreter                                  \
     "${TARGET}/${DATAFLOW_ACCESS_LD}/ld-linux-x86-64.so.2"  \
     ${TARGET}/${DATAFLOW_ACCESS_TARGET}
@@ -65,7 +72,7 @@ for I in $(seq 1 5); do
     sleep 2
 done
 
-# Need to fix up the interpreter
+# Need to fix the interpreter
 patchelf --set-interpreter                                      \
     "${TARGET}/${DATAFLOW_ACCESS_IDX_LD}/ld-linux-x86-64.so.2"  \
     ${TARGET}/${DATAFLOW_ACCESS_IDX_TARGET}
