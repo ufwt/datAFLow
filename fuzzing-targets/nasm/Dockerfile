@@ -42,9 +42,9 @@ RUN mkdir nasm-datAFLow-access &&                                               
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access &&                     \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access &&                                  \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd nasm-datAFLow-access &&                                          \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Build datAFLow memory access + index target
@@ -60,9 +60,9 @@ RUN mkdir nasm-datAFLow-access-idx &&                                           
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx &&                 \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access-idx &&                              \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd nasm-datAFLow-access-idx &&                                      \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Seeds

@@ -64,7 +64,7 @@ build_target() {
   # Prelink target
   echo "Prelinking ${TARGET}"
   (export LD_LIBRARY_PATH=${FUZZALLOC_RELEASE_BUILD_DIR}/src/runtime/malloc;    \
-    ${DIR_NAME}/../fuzzalloc-scripts/prelink_binary.py                          \
+    ${DIR_NAME}/../fuzzalloc-scripts/bintools/prelink_binary.py                 \
     --in-place --out-dir ${RUNDIR}/prelink                                      \
     --base-addr "0xffffffff" ${RUNDIR}/${TARGET}-${FUZZING_ENGINE})
 }

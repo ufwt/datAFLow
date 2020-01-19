@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-#
-# Adapted from prelink_binary.py from
-# https://github.com/vusec/midfat/blob/master/shrinkaddrspace/prelink_binary.py
+
+"""
+Adapted from prelink_binary.py from
+https://github.com/vusec/midfat/blob/master/shrinkaddrspace/prelink_binary.py
+"""
 
 import argparse
 import os
@@ -18,9 +20,29 @@ LDD_REGEX = re.compile(r".*.so.* => (/.*\.so[^ ]*)")
 LDD_NOT_FOUND_REGEX = re.compile(r"(.*.so.*) => not found")
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Shrink address space of the "
+                                     "given binary by prelinking all "
+                                     "dependency libraries.")
+    parser.add_argument("binary", help="The ELF binary")
+    parser.add_argument("--in-place", help="Modify binary in-place",
+                        action="store_true", default=False)
+    parser.add_argument("--set-rpath", action="store_true", default=False,
+                        help="Set RPATH of (new) binary and preload lib to "
+                             "out-dir")
+    parser.add_argument("--out-dir", required=True,
+                        help="Output directory for prelinked libs")
+    parser.add_argument("--base-addr", default="0xffffffff",
+                        help="New base address for libs")
+
+    return parser.parse_args()
+
+
 def ex(cmd):
-    """Execute a given command (string), returning stdout if succesful and
-    raising an exception otherwise."""
+    """
+    Execute a given command (string), returning stdout if succesful and
+    raising an exception otherwise.
+    """
 
     p = subprocess.Popen(shlex.split(cmd), stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE)
@@ -34,8 +56,10 @@ def ex(cmd):
 
 
 def get_overlap(mapping, other_mappings):
-    """Returns the *last* area out of `other_mappings` that overlaps with
-    `mapping`, or None. Assumes `other_mappings` is ordered."""
+    """
+    Returns the *last* area out of `other_mappings` that overlaps with
+    `mapping`, or None. Assumes `other_mappings` is ordered.
+    """
 
     start, size = mapping
     end = start + size
@@ -52,8 +76,10 @@ def get_overlap(mapping, other_mappings):
 
 
 def get_binary_info(prog):
-    """Look for the loader requested by the program, and record existing
-    mappings required by program itself."""
+    """
+    Look for the loader requested by the program, and record existing
+    mappings required by the program itself.
+    """
 
     interp = None
     binary_mappings = []
@@ -72,9 +98,11 @@ def get_binary_info(prog):
 
 
 def get_library_deps(library):
-    """Look for all dependency libraries for a given ELF library/binary, and
+    """
+    Look for all dependency libraries for a given ELF library/binary, and
     return a list of full paths. Uses the ldd command to find this information
-    at load-time, so may not be complete."""
+    at load-time, so may not be complete.
+    """
 
     # TODO: do we have to do this recursively for all deps?
 
@@ -96,10 +124,12 @@ def get_library_deps(library):
 
 
 def prelink_libs(libs, outdir, existing_mappings, baseaddr):
-    """For every library we calculate its size and alignment, find a space in
+    """
+    For every library we calculate its size and alignment, find a space in
     our new compact addr space and create a copy of the library that is
     prelinked to the addr. Start mapping these from the *end* of the addr space
-    down, but leaving a bit of space at the top for stuff like the stack."""
+    down, but leaving a bit of space at the top for stuff like the stack.
+    """
 
     for lib in libs:
         with open(lib, 'rb') as f:
@@ -141,20 +171,7 @@ def prelink_libs(libs, outdir, existing_mappings, baseaddr):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Shrink address space of the "
-                                     "given binary by prelinking all "
-                                     "dependency libraries.")
-    parser.add_argument("binary", help="The ELF binary")
-    parser.add_argument("--in-place", help="Modify binary in-place",
-                        action="store_true", default=False)
-    parser.add_argument("--set-rpath", action="store_true", default=False,
-                        help="Set RPATH of (new) binary and preload lib to "
-                             "out-dir")
-    parser.add_argument("--out-dir", default="",
-                        help="Output directory for prelinked libs")
-    parser.add_argument("--base-addr", default="0xffffffff",
-                        help="New base address for libs")
-    args = parser.parse_args()
+    args = parse_args()
 
     outdir = args.out_dir
     if not args.out_dir:
@@ -191,6 +208,7 @@ def main():
     if args.set_rpath:
         absoutdir = os.path.realpath(outdir)
         ex("patchelf --set-rpath \"%s\" \"%s\"" % (absoutdir, newprog))
+
 
 if __name__ == '__main__':
     main()

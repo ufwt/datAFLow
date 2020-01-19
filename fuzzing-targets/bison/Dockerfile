@@ -42,9 +42,9 @@ RUN mkdir bison-datAFLow-access &&                                              
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     ./configure --prefix=${WORKDIR}/bison-datAFLow-access &&                    \
     make clean && make -j && make install
-RUN cd bison-datAFLow-access &&                                 \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd bison-datAFLow-access &&                                         \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Build datAFLow memory access + index target
@@ -60,9 +60,9 @@ RUN mkdir bison-datAFLow-access-idx &&                                          
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     ./configure --prefix=${WORKDIR}/bison-datAFLow-access-idx &&                \
     make clean && make -j && make install
-RUN cd bison-datAFLow-access-idx &&                             \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd bison-datAFLow-access-idx &&                                     \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Seeds

@@ -18,6 +18,7 @@ fi
 
 export CC="$SRC/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites"
 export CXX="$SRC/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites++"
+export LDFLAGS="-ldl"
 export FUZZALLOC_TAG_LOG="$WORK/tag-sites.csv"
 
 echo " done."

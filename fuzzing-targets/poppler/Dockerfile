@@ -66,9 +66,9 @@ RUN mkdir poppler-datAFLow-access &&                                            
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access &&                               \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd poppler-datAFLow-access &&                                       \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Build datAFLow memory access + index target
@@ -91,9 +91,9 @@ RUN mkdir poppler-datAFLow-access-idx &&                                        
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access-idx &&                           \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/prelink_binary.py   \
+RUN cd poppler-datAFLow-access-idx &&                                   \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_prelink {} \;
 
 # Seeds

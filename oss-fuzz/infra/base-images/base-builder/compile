@@ -123,6 +123,6 @@ if [[ "$FUZZING_ENGINE" == "datAFLow" ]]; then
     DIRNAME=$(dirname $EXE)
 
     [[ $BASENAME == afl-* ]] && continue
-    python3 $SRC/scripts/prelink_binary.py --in-place --out-dir "$DIRNAME/prelink-$BASENAME" $EXE
+    python3 $SRC/scripts/bintools/prelink_binary.py --in-place --out-dir "$DIRNAME/prelink-$BASENAME" $EXE
   done
 fi
