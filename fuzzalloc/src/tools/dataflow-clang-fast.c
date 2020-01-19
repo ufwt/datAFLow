@@ -137,6 +137,11 @@ static void edit_params(u32 argc, char **argv) {
                             "/Transforms/HeapifyObjects/HeapifyGlobalVariables/"
                             "fuzzalloc-heapify-global-vars.so";
 
+  if (getenv("FUZZALLOC_HEAPIFY_STRUCTS")) {
+    cc_params[cc_par_cnt++] = "-mllvm";
+    cc_params[cc_par_cnt++] = "-fuzzalloc-heapify-structs";
+  }
+
   /* Tag dynamically allocated arrays and redirect them to the fuzzalloc
    * allocator library */
 

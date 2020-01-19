@@ -40,8 +40,8 @@ static cl::opt<int> ClMinArraySize(
 
 static cl::opt<bool> ClHeapifyStructs(
     "fuzzalloc-heapify-structs",
-    cl::desc("Heapify alloca structs that ahve their address taken"),
-    cl::init(true), cl::Hidden);
+    cl::desc("Heapify alloca structs that have their address taken"),
+    cl::init(false), cl::Hidden);
 
 STATISTIC(NumOfAllocaArrayHeapification,
           "Number of alloca array heapifications.");
