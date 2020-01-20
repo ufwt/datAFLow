@@ -20,6 +20,8 @@ mkdir -p ${TARGET}
 # Start the Docker container so that we can extract everything from it
 docker run --name dataflow-${TARGET} dataflow/${TARGET}
 
+docker cp dataflow-${TARGET}:/root/seeds ${TARGET}/
+
 for BUILD in afl                            \
              datAFLow-access                \
              datAFLow-access-heapify-struct \
@@ -32,12 +34,13 @@ for BUILD in afl                            \
     DEPS_DIR="${EXE_PATH}_deps"
 
     # Fix the interpreter
-    patchelf --set-interpreter "${DEPS_DIR}/ld-linux-86-64.so.2" ${EXE_PATH}
+    patchelf --set-interpreter "${DEPS_DIR}/ld-linux-x86-64.so.2" ${EXE_PATH}
 
     # AFL fuzz
     for I in $(seq 1 5); do
         LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
         sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u           \
+        --halt now,fail=1                                                       \
         /usr/bin/time --verbose --output="${TARGET}/${BUILD}-${I}.time"         \
         AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}" --    \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/${BUILD}-${I}.log" 2>&1
@@ -48,6 +51,7 @@ for BUILD in afl                            \
     for I in $(seq 1 5); do
         LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
         sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u -q        \
+        --halt now,fail=1                                                       \
         /usr/bin/time --verbose --output="${TARGET}/mopt-${BUILD}-${I}.time"    \
         "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -m none -L 0                          \
             -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}" --                \
@@ -57,8 +61,8 @@ for BUILD in afl                            \
 done
 
 # Wait for campaigns to finish
-sem --wait --id "fuzz-${TARGET}"
+sem --wait --id "fuzz-${EXE}"
 
 # Remove the Docker container
 docker stop dataflow-${TARGET}
-Docker rm -f dataflow-${TARGET}
+docker rm -f dataflow-${TARGET}
