@@ -5,14 +5,21 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-SCRIPT_PATH=$(dirname $(realpath -s $0))
+SCRIPT_DIR=$(dirname $(realpath -s $0))
 TARGET=$1
 TIMEOUT=86400
 JOBS=50
 SEEDS="${TARGET}/seeds"
 
 export AFL_NO_UI=1
-. ${SCRIPT_PATH}/${TARGET}/fuzz-config.sh
+. ${SCRIPT_DIR}/${TARGET}/fuzz-config.sh
+
+# Determine if there is a dictionary to use
+if [ -f "${SCRIPT_DIR}/${TARGET}/${TARGET}.dict" ]; then
+    AFL_DICT="-x ${SCRIPT_DIR}/${TARGET}/${TARGET}.dict"
+else
+    AFL_DICT=
+fi
 
 # Make the target directory
 mkdir -p ${TARGET}
@@ -24,9 +31,9 @@ docker cp dataflow-${TARGET}:/root/seeds ${TARGET}/
 
 for BUILD in afl                            \
              datAFLow-access                \
-             datAFLow-access-heapify-struct \
+             datAFLow-access-heapify-structs\
              datAFLow-access-idx            \
-             datAFLow-access-idx-heapify-struct; do
+             datAFLow-access-idx-heapify-structs; do
     # Extract target from Docker container
     docker cp dataflow-${TARGET}:/root/${TARGET}-${BUILD} ${TARGET}/
 
@@ -42,7 +49,8 @@ for BUILD in afl                            \
         sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u           \
         --halt now,fail=1                                                       \
         /usr/bin/time --verbose --output="${TARGET}/${BUILD}-${I}.time"         \
-        AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}" --    \
+        AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}"       \
+            ${AFL_DICT} --                                                      \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/${BUILD}-${I}.log" 2>&1
         sleep 2
     done
@@ -54,7 +62,8 @@ for BUILD in afl                            \
         --halt now,fail=1                                                       \
         /usr/bin/time --verbose --output="${TARGET}/mopt-${BUILD}-${I}.time"    \
         "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -m none -L 0                          \
-            -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}" --                \
+            -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}"                   \
+            ${AFL_DICT} --                                                      \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/mopt-${BUILD}-${I}.log" 2>&1
         sleep 2
     done
