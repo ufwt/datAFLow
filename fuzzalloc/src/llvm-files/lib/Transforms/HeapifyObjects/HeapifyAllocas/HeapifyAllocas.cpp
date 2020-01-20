@@ -212,7 +212,7 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     AllocatedTyIsArray = true;
   } else if (AllocatedTy->isStructTy()) {
     if (!ClHeapifyStructs) {
-      return Alloca;
+      return nullptr;
     }
     NewAllocaTy = AllocatedTy->getPointerTo();
   }
@@ -354,6 +354,9 @@ bool HeapifyAllocas::runOnModule(Module &M) {
       // Heapify the alloca. After this function call all users of the original
       // alloca are invalid
       auto *NewAlloca = heapifyAlloca(Alloca, LifetimeStarts);
+      if (!NewAlloca) {
+        continue;
+      }
 
       // Check if any of the original allocas (which have now been replaced by
       // the new alloca) are used in any lifetime.end intrinsics. If they are,
