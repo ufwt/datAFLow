@@ -8,7 +8,7 @@ fi
 SCRIPT_PATH=$(dirname $(realpath -s $0))
 TARGET=$1
 TIMEOUT=86400
-JOBS=30
+JOBS=50
 SEEDS="${TARGET}/seeds"
 
 export AFL_NO_UI=1

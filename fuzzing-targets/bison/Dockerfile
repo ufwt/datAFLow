@@ -63,7 +63,7 @@ RUN mkdir bison-datAFLow-access-heapify-structs &&                              
     export FUZZALLOC_TAG_LOG="$(pwd)/bison-3.5-tag-sites.csv" &&                \
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    ./configure --prefix=${WORKDIR}/bison-datAFLow-access &&                    \
+    ./configure --prefix=${WORKDIR}/bison-datAFLow-access-heapify-structs &&    \
     make clean && make -j && make install
 RUN cd bison-datAFLow-access-heapify-structs &&                         \
     find bin -type f -executable -exec                                  \
@@ -100,7 +100,7 @@ RUN mkdir bison-datAFLow-access-idx-heapify-structs &&                          
     export FUZZALLOC_TAG_LOG="$(pwd)/bison-3.5-tag-sites.csv" &&                \
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    ./configure --prefix=${WORKDIR}/bison-datAFLow-access-idx &&                \
+    ./configure --prefix=${WORKDIR}/bison-datAFLow-access-idx-heapify-structs &&\
     make clean && make -j && make install
 RUN cd bison-datAFLow-access-idx-heapify-structs &&                     \
     find bin -type f -executable -exec                                  \

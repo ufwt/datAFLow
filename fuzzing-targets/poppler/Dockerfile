@@ -75,6 +75,34 @@ RUN cd poppler-datAFLow-access &&                                       \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_deps {} \;
 
+# Build datAFLow memory access + heapify structs target
+#
+# Note that we need to use gclang otherwise the CMake tests fail
+RUN mkdir poppler-datAFLow-access-heapify-structs &&                            \
+    mkdir poppler-0.84.0/build &&                                               \
+    cd poppler-0.84.0/build &&                                                  \
+    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+    export CC=gclang && export CXX=gclang++ &&                                  \
+    export CFLAGS="-fsanitize=address" &&                                       \
+    export CXXFLAGS="-fsanitize=address" &&                                     \
+    export FUZZALLOC_TAG_LOG="$(pwd)/../poppler-0.84.0-tag-sites.csv" &&        \
+    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access-heapify-structs      \
+        -DBUILD_GTK_TESTS=Off -DBUILD_QT5_TESTS=Off                             \
+        -DBUILD_CPP_TESTS=Off -DENABLE_CPP=Off                                  \
+        -DENABLE_SPLASH=Off -DENABLE_GTK_DOC=Off                                \
+        -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&                             \
+    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
+    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+    make clean && make -j && make install
+RUN rm -rf poppler-0.84.0/build
+RUN cd poppler-datAFLow-access-heapify-structs &&                       \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+        --in-place --out-dir={}_deps {} \;
+
 # Build datAFLow memory access + index target
 RUN mkdir poppler-datAFLow-access-idx &&                                        \
     mkdir poppler-0.84.0/build &&                                               \
@@ -100,34 +128,6 @@ RUN cd poppler-datAFLow-access-idx &&                                   \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_deps {} \;
 
-# Build datAFLow memory access + heapify structs target
-#
-# Note that we need to use gclang otherwise the CMake tests fail
-RUN mkdir poppler-datAFLow-access-heapify-structs &&                            \
-    mkdir poppler-0.84.0/build &&                                               \
-    cd poppler-0.84.0/build &&                                                  \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC=gclang && export CXX=gclang++ &&                                  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/../poppler-0.84.0-tag-sites.csv" &&        \
-    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access          \
-        -DBUILD_GTK_TESTS=Off -DBUILD_QT5_TESTS=Off                             \
-        -DBUILD_CPP_TESTS=Off -DENABLE_CPP=Off                                  \
-        -DENABLE_SPLASH=Off -DENABLE_GTK_DOC=Off                                \
-        -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&                             \
-    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
-    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    make clean && make -j && make install
-RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access-heapify-structs &&                       \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_deps {} \;
-
 # Build datAFLow memory access + index + heapify structs target
 RUN mkdir poppler-datAFLow-access-idx-heapify-structs &&                        \
     mkdir poppler-0.84.0/build &&                                               \
@@ -138,7 +138,7 @@ RUN mkdir poppler-datAFLow-access-idx-heapify-structs &&                        
     export CFLAGS="-fsanitize=address" &&                                       \
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/../poppler-0.84.0-tag-sites.csv" &&        \
-    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access-idx      \
+    cmake .. -DCMAKE_INSTALL_PREFIX=${WORKDIR}/poppler-datAFLow-access-idx-heapify-structs  \
         -DBUILD_GTK_TESTS=Off -DBUILD_QT5_TESTS=Off                             \
         -DBUILD_CPP_TESTS=Off -DENABLE_CPP=Off                                  \
         -DENABLE_SPLASH=Off -DENABLE_GTK_DOC=Off                                \

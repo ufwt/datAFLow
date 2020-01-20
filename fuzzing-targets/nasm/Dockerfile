@@ -51,6 +51,25 @@ RUN cd nasm-datAFLow-access &&                                          \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_deps {} \;
 
+# Build datAFLow memory access + heapify structs target
+RUN mkdir nasm-datAFLow-access-heapify-structs &&                               \
+    cd nasm-2.14.02 &&                                                          \
+    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
+    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
+    export CFLAGS="-fsanitize=address" &&                                       \
+    export CXXFLAGS="-fsanitize=address" &&                                     \
+    export FUZZALLOC_TAG_LOG="$(pwd)/nasm-2.14.02-tag-sites.csv" &&             \
+    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
+    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-heapify-structs &&     \
+    make clean && make -j && make install
+RUN cd nasm-datAFLow-access-heapify-structs &&                          \
+    find bin -type f -executable -exec                                  \
+        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+        --in-place --out-dir={}_deps {} \;
+
 # Build datAFLow memory access + index target
 RUN mkdir nasm-datAFLow-access-idx &&                                           \
     cd nasm-2.14.02 &&                                                          \
@@ -69,25 +88,6 @@ RUN cd nasm-datAFLow-access-idx &&                                      \
         python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
         --in-place --out-dir={}_deps {} \;
 
-# Build datAFLow memory access + heapify structs target
-RUN mkdir nasm-datAFLow-access-heapify-structs &&                               \
-    cd nasm-2.14.02 &&                                                          \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/nasm-2.14.02-tag-sites.csv" &&             \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access &&                     \
-    make clean && make -j && make install
-RUN cd nasm-datAFLow-access-heapify-structs &&                          \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
-        --in-place --out-dir={}_deps {} \;
-
 # Build datAFLow memory access + index + heapify structs target
 RUN mkdir nasm-datAFLow-access-idx-heapify-structs &&                           \
     cd nasm-2.14.02 &&                                                          \
@@ -100,7 +100,7 @@ RUN mkdir nasm-datAFLow-access-idx-heapify-structs &&                           
     export FUZZALLOC_TAG_LOG="$(pwd)/nasm-2.14.02-tag-sites.csv" &&             \
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx &&                 \
+    ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx-heapify-structs && \
     make clean && make -j && make install
 RUN cd nasm-datAFLow-access-idx-heapify-structs &&                      \
     find bin -type f -executable -exec                                  \
