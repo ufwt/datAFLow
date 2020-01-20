@@ -1,0 +1,8 @@
+[fuzzalloc]
+fun:luaM_malloc
+fun:luaM_new
+fun:luaM_newvector
+fun:luaM_newobject
+fun:luaM_reallocvector
+fun:luaM_reallocv
+fun:luaM_realloc_
