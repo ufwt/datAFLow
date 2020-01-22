@@ -12,6 +12,7 @@ from common import get_binary_info, get_library_deps
 
 
 def parse_args():
+    """Parse command-line arguments."""
     parser = ArgumentParser(description='Extract a binary\'s library '
                                         'dependencies')
     parser.add_argument('--out-dir', required=True,
@@ -22,6 +23,7 @@ def parse_args():
 
 
 def main():
+    """The main function."""
     args = parse_args()
 
     outdir = args.out_dir
