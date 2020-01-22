@@ -1,5 +1,2 @@
-networkx
-pydot
 pyelftools
-sh
 tabulate
