@@ -12,9 +12,8 @@ RUN mkdir nasm-afl &&                               \
     export CXXFLAGS="-fsanitize=address" &&         \
     ./configure --prefix=${WORKDIR}/nasm-afl &&     \
     make clean && make -j && make install
-RUN cd nasm-afl &&                                              \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+RUN find nasm-afl/bin -type f -executable                               \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py  \
         --out-dir={}_deps {} \;
 
 # Collect tags
@@ -46,9 +45,8 @@ RUN mkdir nasm-datAFLow-access &&                                               
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access &&                     \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access &&                                          \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find nasm-datAFLow-access/bin -type f -executable                           \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
@@ -65,9 +63,8 @@ RUN mkdir nasm-datAFLow-access-heapify-structs &&                               
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-heapify-structs &&     \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access-heapify-structs &&                          \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find nasm-datAFLow-access-heapify-structs/bin -type f -executable           \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
@@ -83,9 +80,8 @@ RUN mkdir nasm-datAFLow-access-idx &&                                           
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx &&                 \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access-idx &&                                      \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find nasm-datAFLow-access-idx/bin -type f -executable                   \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py\
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
@@ -102,9 +98,8 @@ RUN mkdir nasm-datAFLow-access-idx-heapify-structs &&                           
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     ./configure --prefix=${WORKDIR}/nasm-datAFLow-access-idx-heapify-structs && \
     make clean && make -j && make install
-RUN cd nasm-datAFLow-access-idx-heapify-structs &&                      \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find nasm-datAFLow-access-idx-heapify-structs/bin -type f -executable   \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py\
         --in-place --out-dir={}_deps {} \;
 
 # Seeds

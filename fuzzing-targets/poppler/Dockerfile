@@ -22,9 +22,8 @@ RUN mkdir poppler-afl &&                                    \
         -DENABLE_QT5=Off -DBUILD_SHARED_LIBS=Off &&         \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-afl &&                                           \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+RUN find poppler-afl/bin -type f -executable                            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py  \
         --out-dir={}_deps {} \;
 
 # Collect tags
@@ -70,9 +69,8 @@ RUN mkdir poppler-datAFLow-access &&                                            
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access &&                                       \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find poppler-datAFLow-access/bin -type f -executable                        \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
@@ -98,9 +96,8 @@ RUN mkdir poppler-datAFLow-access-heapify-structs &&                            
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access-heapify-structs &&                       \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find poppler-datAFLow-access-heapify-structs/bin -type f -executable        \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
@@ -123,9 +120,8 @@ RUN mkdir poppler-datAFLow-access-idx &&                                        
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access-idx &&                                   \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find poppler-datAFLow-access-idx/bin -type f -executable                    \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
@@ -149,9 +145,8 @@ RUN mkdir poppler-datAFLow-access-idx-heapify-structs &&                        
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     make clean && make -j && make install
 RUN rm -rf poppler-0.84.0/build
-RUN cd poppler-datAFLow-access-idx-heapify-structs &&                   \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find poppler-datAFLow-access-idx-heapify-structs/bin -type f -executable    \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Seeds

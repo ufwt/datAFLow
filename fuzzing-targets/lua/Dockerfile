@@ -19,9 +19,8 @@ RUN mkdir lua-afl &&                                \
     export CFLAGS="-fsanitize=address" &&           \
     export CXXFLAGS="-fsanitize=address" &&         \
     make clean && make linux -j && make install
-RUN cd lua-afl &&                                               \
-    find bin -type f -executable -exec                          \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py\
+RUN find lua-afl/bin -type f -executable                                \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py  \
         --out-dir={}_deps {} \;
 
 # Collect tags
@@ -52,9 +51,8 @@ RUN mkdir lua-datAFLow-access &&                                                
     export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make linux -j && make install
-RUN cd lua-datAFLow-access &&                                           \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find lua-datAFLow-access/bin -type f -executable                            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs target
@@ -71,9 +69,8 @@ RUN mkdir lua-datAFLow-access-heapify-structs &&                                
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
     make clean && make linux -j && make install
-RUN cd lua-datAFLow-access-heapify-structs &&                           \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find lua-datAFLow-access-heapify-structs/bin -type f -executable            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index target
@@ -89,9 +86,8 @@ RUN mkdir lua-datAFLow-access-idx &&                                            
     export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     make clean && make linux -j && make install
-RUN cd lua-datAFLow-access-idx &&                                       \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find lua-datAFLow-access-idx/bin -type f -executable                        \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs target
@@ -108,9 +104,8 @@ RUN mkdir lua-datAFLow-access-idx-heapify-structs &&                            
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
     make clean && make linux -j && make install
-RUN cd lua-datAFLow-access-idx-heapify-structs &&                       \
-    find bin -type f -executable -exec                                  \
-        python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py  \
+RUN find lua-datAFLow-access-idx-heapify-structs/bin -type f -executable    \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py\
         --in-place --out-dir={}_deps {} \;
 
 # Seeds
