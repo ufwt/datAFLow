@@ -10,6 +10,7 @@ file.
 from argparse import ArgumentParser
 from collections import defaultdict
 import csv
+from functools import partial
 import os
 
 import pandas as pd
@@ -46,8 +47,30 @@ def main():
         plot_data_paths.add(plot_data)
 
     csv.register_dialect('afl_plot_data', delimiter=',', skipinitialspace=True)
-    plot_data = defaultdict(lambda: defaultdict(dict))
 
+    # From all the AFL plot_data files, constract a dictionary with the
+    # following format:
+    #
+    # {
+    #   time_0: {
+    #     'cycles_done': [ v_1, v_2, ..., v_n],
+    #     'cur_path': [v_1, v_2, ..., v_n],
+    #     ...
+    #   },
+    #   time_1: {
+    #     'cycles_done': [ v_1, v_2, ..., v_n],
+    #     'cur_path': [v_1, v_2, ..., v_n],
+    #     ...
+    #   },
+    #   ...
+    # }
+    #
+    # The dictionary is keyed with a normalized time value (current time - start
+    # time). At each time sample, the dictionary contains the AFL plot data for
+    # all `n` runs. Because AFL may sample plot data at different intervals
+    # across runs, a value may be `None`. This gets fixed later
+
+    plot_data = defaultdict(lambda: defaultdict(dict))
     for i, plot_data_path in enumerate(plot_data_paths):
         with open(plot_data_path, 'r') as plot_data_file:
             reader = csv.DictReader(plot_data_file,
@@ -58,58 +81,62 @@ def main():
 
             start_time = None
             for row in reader:
+                # Normalize time
                 unix_time = int(row['unix_time'])
                 if not start_time:
                     start_time = unix_time
-
                 time = unix_time - start_time
-                cycles_done = int(row['cycles_done'])
-                cur_path = int(row['cur_path'])
-                paths_total = int(row['paths_total'])
-                pending_total = int(row['pending_total'])
-                pending_favs = int(row['pending_favs'])
-                map_size = float(row['map_size'].split('%')[0])
-                unique_crashes = int(row['unique_crashes'])
-                unique_hangs = int(row['unique_hangs'])
-                max_depth = int(row['max_depth'])
-                execs_per_second = float(row['execs_per_sec'])
 
-                plot_data[time]['cycles_done'][i] = cycles_done
-                plot_data[time]['cur_path'][i] = cur_path
-                plot_data[time]['paths_total'][i] = paths_total
-                plot_data[time]['pending_total'][i] = pending_total
-                plot_data[time]['pending_favs'][i] = pending_favs
-                plot_data[time]['map_size'][i] = map_size
-                plot_data[time]['unique_crashes'][i] = unique_crashes
-                plot_data[time]['unique_hangs'][i] = unique_hangs
-                plot_data[time]['max_depth'][i] = max_depth
-                plot_data[time]['execs_per_sec'][i] = execs_per_sec
+                for field in PLOT_DATA_FIELDS[1:]:
+                    if field == 'map_size':
+                        value = float(row['map_size'].split('%')[0])
+                    elif field == 'execs_per_sec':
+                        value = float(row['execs_per_sec'])
+                    else:
+                        value = int(row[field])
 
-    cycles_done_key = lambda i: 'cycles_done_%d' % i
-    map_size_key = lambda i: 'map_size_%d' % i
-    unique_crashes_key = lambda i: 'unique_crashes_%d' % i
+                    plot_data[time][field][i] = value
+
+    # Create a dictionary that maps AFL plot data field names (e.g.,
+    # cycles_done, unique_crashes, etc.) to a function that generates a column
+    # name for a particular run.
+    #
+    # E.g.,
+    #
+    # {
+    #   'cycles_done': lambda i: 'cycles_done_%d' % i,
+    #   'unique_crashes': lambda i: 'unique_crashes_%d' % i,
+    #   ...
+    # }
+    gen_plot_data_key = lambda s, i: '%s_%d' % (s, i)
+    plot_data_keys = {s: partial(gen_plot_data_key, s) for s in
+                      PLOT_DATA_FIELDS[1:]}
 
     num_campaigns = len(plot_data_paths)
     columns = ['time'] + \
-              [cycles_done_key(i) for i in range(0, num_campaigns)] + \
-              [map_size_key(i) for i in range(0, num_campaigns)] + \
-              [unique_crashes_key(i) for i in range(0, num_campaigns)]
+              [plot_data_key(i) for i in range(0, num_campaigns)
+               for plot_data_key in plot_data_keys.values()]
 
+    # Aggregate all the AFL plot data into a single Pandas' data frame. Values
+    # that are `None` (because of AFL's sampling rate) are forward filled. The
+    # data frame has the following format:
+    #
+    # time cycles_done_0 ... unique_crashes_0 ... cycles_done_n ...
+    #    0 ...
+    #    1 ...
+    #
+    # Where `n` is the number of AFL runs
     aggregated_plot_data = defaultdict(list)
-
     for time, data in sorted(plot_data.items()):
         aggregated_plot_data['time'].append(time)
 
         for i in range(0, num_campaigns):
-            cycles_done = data['cycles_done'].get(i)
-            map_size = data['map_size'].get(i)
-            unique_crashes = data['unique_crashes'].get(i)
-
-            aggregated_plot_data[cycles_done_key(i)].append(cycles_done)
-            aggregated_plot_data[map_size_key(i)].append(map_size)
-            aggregated_plot_data[unique_crashes_key(i)].append(unique_crashes)
-
+            for field in PLOT_DATA_FIELDS[1:]:
+                value = data[field].get(i)
+                aggregated_plot_data[plot_data_keys[field](i)].append(value)
     df = pd.DataFrame(data=aggregated_plot_data).ffill()
+
+    # Save the data frame to a CSV file
     with open(args.output, 'w') as outf:
         df.to_csv(outf, index=False)
 
