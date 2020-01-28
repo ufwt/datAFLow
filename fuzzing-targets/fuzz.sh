@@ -47,7 +47,7 @@ for BUILD in afl                            \
     for I in $(seq 1 5); do
         LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
         sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u           \
-        --halt now,fail=1                                                       \
+            --halt now,fail=1                                                   \
         /usr/bin/time --verbose --output="${TARGET}/${BUILD}-${I}.time"         \
         AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}"       \
             ${AFL_DICT} --                                                      \
@@ -59,7 +59,7 @@ for BUILD in afl                            \
     for I in $(seq 1 5); do
         LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                          \
         sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u -q        \
-        --halt now,fail=1                                                       \
+            --halt now,fail=1                                                   \
         /usr/bin/time --verbose --output="${TARGET}/mopt-${BUILD}-${I}.time"    \
         "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -m none -L 0                          \
             -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}"                   \
