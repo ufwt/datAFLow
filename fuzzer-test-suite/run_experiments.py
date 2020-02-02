@@ -52,7 +52,7 @@ def parse_args():
                         help='Maximum number of processes to run concurrently')
     parser.add_argument('-m', '--afl-opt', required=False, action='store_true',
                         help='Use AFL-Opt')
-    parser.add_argument('benchmarks', dest='benchmark_dir',
+    parser.add_argument('benchmarks',
                         help='Path to ALL_BENCHMARKS-* directory')
 
     return parser.parse_args()
@@ -197,7 +197,7 @@ def main():
         raise Exception('YAML config %s is empty' % config_path)
 
     # Check that the benchmarks path is valid
-    benchmark_dir = args.benchmark_dir
+    benchmark_dir = args.benchmarks
     if not os.path.isdir(benchmark_dir):
         raise Exception('Fuzzer benchmark directory %s is invalid' %
                         benchmark_dir)
