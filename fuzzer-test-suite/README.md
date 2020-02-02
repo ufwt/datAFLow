@@ -142,3 +142,14 @@ AFL_NO_UI=1 nohup timeout 24h $FUZZER_TEST_SUITE/AFL/afl-fuzz                  \
     $FUZZER_TEST_SUITE/RUNDIR-datAFLow-libxml2-v2.9.2/BUILD/.libs/xmllint      \
     -o /dev/null @@
 ```
+
+# Automate fuzzing campaigns
+
+Use the `run_experiments.py` script. This assumes that you have run one of the
+`build-everything-*.sh` scripts.
+
+```bash
+./run_experiments.py -e datAFLow -a $FUZZER_TEST_SUITE/AFL          \
+    -f $FUZZER_TEST_SUITE/fuzzer-test-suite -c fuzzer-config.yaml   \
+    $FUZZER_TEST_SUITE/ALL_BENCHMARKS-datAFLow-asan
+```

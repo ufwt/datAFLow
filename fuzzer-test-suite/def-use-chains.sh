@@ -1,4 +1,6 @@
 #!/bin/bash
+#
+# Run SVF pointer analysis to statically determine all def-use chains
 
 export DIR_NAME=$(readlink -f $(dirname $0))
 
