@@ -9,8 +9,8 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV WORKDIR /root
 WORKDIR ${WORKDIR}
 
-RUN apt update &&       \
-    apt install -y git
+RUN apt-get update &&       \
+    apt-get install -y git
 
 RUN mkdir ${WORKDIR}/.ssh &&    \
     chmod 700 ${WORKDIR}/.ssh
@@ -32,12 +32,12 @@ MAINTAINER adrian.herrera02@gmail.com
 ENV DEBIAN_FRONTEND noninteractive
 
 # Install required packages
-RUN apt update &&                                               \
-    apt install -y build-essential git autogen autoconf texinfo \
-        automake tzdata libtool cmake ninja-build pkg-config    \
-        curl flex bison python python3 python3-dev python3-pip  \
-        time prelink patchelf &&                                \
-    apt autoremove -y
+RUN apt-get update &&                                               \
+    apt-get install -y build-essential git autogen autoconf texinfo \
+        automake tzdata libtool cmake ninja-build pkg-config        \
+        curl flex bison python python3 python3-dev python3-pip      \
+        time prelink patchelf &&                                    \
+    apt-get autoremove -y
 
 ENV WORKDIR /root
 WORKDIR ${WORKDIR}
@@ -150,3 +150,5 @@ RUN mkdir llvm-datAFLow &&                                  \
 RUN cmake --build llvm-project/build &&                 \
     cmake --build llvm-project/build --target install
 RUN rm -rf llvm-project
+
+ADD build.sh ${WORKDIR}/

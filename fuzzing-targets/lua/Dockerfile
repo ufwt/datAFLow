@@ -10,103 +10,50 @@ RUN curl -L https://www.lua.org/ftp/lua-5.3.5.tar.gz | tar xzvf -
 ADD Makefile ${WORKDIR}/lua-5.3.5/
 ADD src/Makefile ${WORKDIR}/lua-5.3.5/src/
 
-# Build AFL target
-RUN mkdir lua-afl &&                                \
-    cd lua-5.3.5 &&                                 \
-    export INSTALL_TOP="${WORKDIR}/lua-afl" &&      \
-    export CC="${AFL_PATH}/afl-clang-fast" &&       \
-    export CXX="${AFL_PATH}/afl-clang-fast++" &&    \
-    export CFLAGS="-fsanitize=address" &&           \
-    export CXXFLAGS="-fsanitize=address" &&         \
-    make clean && make linux -j && make install
-RUN find lua-afl/bin -type f -executable                                \
-        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py  \
-        --out-dir={}_deps {} \;
+ENV TARGET "lua"
+ENV TARGET_SRC "lua-5.3.5"
 
-# Collect tags
-ADD whitelist.txt ${WORKDIR}/lua-5.3.5/
-RUN cd lua-5.3.5 &&                                                                     \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                               \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" &&         \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites" &&      \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites++" &&   \
-    export FUZZALLOC_WHITELIST="$(pwd)/whitelist.txt" &&                                \
-    export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                        \
-    make clean && make linux -j1
-RUN cd lua-5.3.5 &&                                                 \
-    python3 ${WORKDIR}/datAFLow/scripts/remove_duplicate_lines.py   \
-        lua-5.3.5-tag-sites.csv > temp.csv &&                       \
-    mv temp.csv lua-5.3.5-tag-sites.csv
+ENV BUILD_CMD_AFL   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+ENV BUILD_CMD_AFL_DBG  \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
 
-# Build datAFLow memory access target
-RUN mkdir lua-datAFLow-access &&                                                \
-    cd lua-5.3.5 &&                                                             \
-    export INSTALL_TOP="${WORKDIR}/lua-datAFLow-access" &&                      \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    make clean && make linux -j && make install
-RUN find lua-datAFLow-access/bin -type f -executable                            \
-        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
-        --in-place --out-dir={}_deps {} \;
+ENV BUILD_CMD_DATAFLOW_TAGS \
+    "make clean && make linux -j1"
 
-# Build datAFLow memory access + heapify structs target
-RUN mkdir lua-datAFLow-access-heapify-structs &&                                \
-    cd lua-5.3.5 &&                                                             \
-    export INSTALL_TOP="${WORKDIR}/lua-datAFLow-access-heapify-structs" &&      \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    make clean && make linux -j && make install
-RUN find lua-datAFLow-access-heapify-structs/bin -type f -executable            \
-        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
-        --in-place --out-dir={}_deps {} \;
+ENV BUILD_CMD_DATAFLOW_ACCESS   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+ENV BUILD_CMD_DATAFLOW_ACCESS_DBG   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
 
-# Build datAFLow memory access + index target
-RUN mkdir lua-datAFLow-access-idx &&                                            \
-    cd lua-5.3.5 &&                                                             \
-    export INSTALL_TOP="${WORKDIR}/lua-datAFLow-access-idx" &&                  \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
-    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    make clean && make linux -j && make install
-RUN find lua-datAFLow-access-idx/bin -type f -executable                        \
-        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
-        --in-place --out-dir={}_deps {} \;
+ENV BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&   \
+    make clean && make linux -j && make install"
+ENV BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
 
-# Build datAFLow memory access + index + heapify structs target
-RUN mkdir lua-datAFLow-access-idx-heapify-structs &&                            \
-    cd lua-5.3.5 &&                                                             \
-    export INSTALL_TOP="${WORKDIR}/lua-datAFLow-access-idx-heapify-structs" &&  \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&     \
-    export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&  \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/lua-5.3.5-tag-sites.csv" &&                \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    make clean && make linux -j && make install
-RUN find lua-datAFLow-access-idx-heapify-structs/bin -type f -executable    \
-        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py\
-        --in-place --out-dir={}_deps {} \;
+ENV BUILD_CMD_DATAFLOW_ACCESS_IDX   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+ENV BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+
+ENV BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+ENV BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&           \
+    make clean && make linux -j && make install"
+
+ADD whitelist.txt ${WORKDIR}/${TARGET_SRC}
+RUN ${WORKDIR}/build.sh
+
 
 # Seeds
 RUN mkdir seeds
