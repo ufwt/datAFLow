@@ -1,0 +1,7 @@
+[fuzzalloc]
+fun:default_malloc
+fun:memctl_malloc
+
+fun:SLJIT_MALLOC
+
+fun:_pcre2_memctl_malloc
