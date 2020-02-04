@@ -15,19 +15,20 @@ find ${TARGET}-afl/bin -type f -executable                                  \
     --out-dir={}_deps {} \;
 
 # Build AFL debug target
-mkdir ${TARGET}-afl-debug
-(cd ${TARGET_SRC} &&                                                        \
-    export INSTALL_PREFIX="${WORKDIR}/${TARGET}-afl-debug" &&               \
-    export CC=gclang &&                                                     \
-    export CXX=gclang++ &&                                                  \
-    export LLVM_CC_NAME="${AFL_PATH}/afl-clang-fast" &&                     \
-    export LLVM_CXX_NAME="${AFL_PATH}/afl-clang-fast++" &&                  \
-    export AFL_DEBUG="1" &&                                                 \
-    eval ${BUILD_CMD_AFL_DBG})
-
-find ${TARGET}-afl-debug/bin -type f -executable                            \
-    -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
-    --out-dir={}_deps {} \;
+if [[ ! -z "${BUILD_CMD_AFL_DBG}" ]]; then
+    mkdir ${TARGET}-afl-debug
+    (cd ${TARGET_SRC} &&                                                        \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-afl-debug" &&               \
+        export CC=gclang &&                                                     \
+        export CXX=gclang++ &&                                                  \
+        export LLVM_CC_NAME="${AFL_PATH}/afl-clang-fast" &&                     \
+        export LLVM_CXX_NAME="${AFL_PATH}/afl-clang-fast++" &&                  \
+        export AFL_DEBUG="1" &&                                                 \
+        eval ${BUILD_CMD_AFL_DBG})
+    find ${TARGET}-afl-debug/bin -type f -executable                            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
+        --out-dir={}_deps {} \;
+fi
 
 # Collect tags
 (cd ${TARGET_SRC} &&                                                                    \
@@ -60,24 +61,26 @@ find ${TARGET}-datAFLow-access/bin -type f -executable                          
         --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access debug target
-mkdir ${TARGET}-datAFLow-access-debug
-(cd ${TARGET_SRC} &&                                                            \
-    export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-debug" &&       \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC=gclang &&                                                         \
-    export CXX=gclang++ &&                                                      \
-    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
-    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
-    export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_DBG})
-find ${TARGET}-datAFLow-access-debug/bin -type f -executable -exec          \
-    get-bc {} \;
-find bin ${TARGET}-datAFLow-access-debug/bin -type f -executable            \
-    -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
-    --in-place --out-dir={}_deps {} \;
+if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_DBG}" ]]; then
+    mkdir ${TARGET}-datAFLow-access-debug
+    (cd ${TARGET_SRC} &&                                                            \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-debug" &&       \
+        export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+        export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+        export CC=gclang &&                                                         \
+        export CXX=gclang++ &&                                                      \
+        export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+        export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+        export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
+        export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+        export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_DBG})
+    find ${TARGET}-datAFLow-access-debug/bin -type f -executable -exec          \
+        get-bc {} \;
+    find bin ${TARGET}-datAFLow-access-debug/bin -type f -executable            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
+        --in-place --out-dir={}_deps {} \;
+fi
 
 # Build datAFLow memory access + heapify structs target
 mkdir ${TARGET}-datAFLow-access-heapify-structs
@@ -98,25 +101,27 @@ find ${TARGET}-datAFLow-access-heapify-structs/bin -type f -executable      \
     --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + heapify structs debug target
-mkdir ${TARGET}-datAFLow-access-heapify-structs-debug
-(cd ${TARGET_SRC} &&                                                            \
-    export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-heapify-structs-debug" &&   \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC=gclang &&                                                         \
-    export CXX=gclang++ &&                                                      \
-    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
-    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
-    export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-3.5-tag-sites.csv" &&            \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG})
-find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
-    -exec get-bc {} \;
-find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
-    -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py        \
-    --in-place --out-dir={}_deps {} \;
+if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG}" ]]; then
+    mkdir ${TARGET}-datAFLow-access-heapify-structs-debug
+    (cd ${TARGET_SRC} &&                                                            \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-heapify-structs-debug" &&   \
+        export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+        export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+        export CC=gclang &&                                                         \
+        export CXX=gclang++ &&                                                      \
+        export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+        export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+        export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-3.5-tag-sites.csv" &&            \
+        export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
+        export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
+        export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG})
+    find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
+        -exec get-bc {} \;
+    find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py        \
+        --in-place --out-dir={}_deps {} \;
+fi
 
 # Build datAFLow memory access + index target
 mkdir ${TARGET}-datAFLow-access-idx
@@ -136,24 +141,26 @@ find ${TARGET}-datAFLow-access-idx/bin -type f -executable                  \
     --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index debug target
-mkdir ${TARGET}-datAFLow-access-idx-debug
-(cd ${TARGET_SRC} &&                                                            \
-    export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-debug" &&   \
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC=gclang &&                                                         \
-    export CXX=gclang++ &&                                                      \
-    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
-    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
-    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG})
-find ${TARGET}-datAFLow-access-idx-debug/bin -type f -executable            \
-    -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
-    --in-place --out-dir={}_deps {} \;
+if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG}" ]]; then
+    mkdir ${TARGET}-datAFLow-access-idx-debug
+    (cd ${TARGET_SRC} &&                                                            \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-debug" &&   \
+        export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+        export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+        export CC=gclang &&                                                         \
+        export CXX=gclang++ &&                                                      \
+        export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+        export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+        export CFLAGS="-fsanitize=address" &&                                       \
+        export CXXFLAGS="-fsanitize=address" &&                                     \
+        export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
+        export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
+        export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG})
+    find ${TARGET}-datAFLow-access-idx-debug/bin -type f -executable            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
+        --in-place --out-dir={}_deps {} \;
+fi
 
 # Build datAFLow memory access + index + heapify structs target
 mkdir ${TARGET}-datAFLow-access-idx-heapify-structs
@@ -174,22 +181,24 @@ find ${TARGET}-datAFLow-access-idx-heapify-structs/bin -type f -executable  \
     --in-place --out-dir={}_deps {} \;
 
 # Build datAFLow memory access + index + heapify structs debug target
-mkdir ${TARGET}-datAFLow-access-idx-heapify-structs-debug
-(cd ${TARGET_SRC} &&                                                            \
-    export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-heapify-structs-debug" &&\
-    export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
-    export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
-    export CC=gclang &&                                                         \
-    export CXX=gclang++ &&                                                      \
-    export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
-    export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
-    export CFLAGS="-fsanitize=address" &&                                       \
-    export CXXFLAGS="-fsanitize=address" &&                                     \
-    export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
-    export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
-    export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG})
-find ${TARGET}-datAFLow-access-idx-heapify-structs-debug/bin -type f -executable\
-    -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py        \
-    --in-place --out-dir={}_deps {} \;
+if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG}" ]]; then
+    mkdir ${TARGET}-datAFLow-access-idx-heapify-structs-debug
+    (cd ${TARGET_SRC} &&                                                            \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-heapify-structs-debug" &&\
+        export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
+        export LD_LIBRARY_PATH="${WORKDIR}/llvm-datAFLow/lib:${LD_LIBRARY_PATH}" && \
+        export CC=gclang &&                                                         \
+        export CXX=gclang++ &&                                                      \
+        export LLVM_CC_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast" &&       \
+        export LLVM_CXX_NAME="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-clang-fast++" &&    \
+        export CFLAGS="-fsanitize=address" &&                                       \
+        export CXXFLAGS="-fsanitize=address" &&                                     \
+        export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
+        export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
+        export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
+        export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG})
+    find ${TARGET}-datAFLow-access-idx-heapify-structs-debug/bin -type f -executable\
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py        \
+        --in-place --out-dir={}_deps {} \;
+fi
