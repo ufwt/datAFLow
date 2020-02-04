@@ -59,7 +59,6 @@ ADD whitelist.txt ${WORKDIR}/${TARGET_SRC}
 RUN ${WORKDIR}/build.sh
 
 # Seeds
-RUN mkdir seeds
 RUN cp ${TARGET_SRC}/testdata/* seeds/
 
 CMD ["bash"]

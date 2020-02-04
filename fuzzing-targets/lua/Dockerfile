@@ -56,7 +56,6 @@ RUN ${WORKDIR}/build.sh
 
 
 # Seeds
-RUN mkdir seeds
 RUN echo "" > seeds/empty
 
 CMD ["bash"]

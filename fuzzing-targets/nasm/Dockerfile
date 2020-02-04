@@ -49,7 +49,6 @@ ADD whitelist.txt ${WORKDIR}/${TARGET_SRC}
 RUN ${WORKDIR}/build.sh
 
 # Seeds
-RUN mkdir seeds
 RUN cp -n $(find ${TARGET_SRC} -type f -name '*.asm' -exec realpath {} \+) seeds
 
 CMD ["bash"]

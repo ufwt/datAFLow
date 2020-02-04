@@ -152,3 +152,4 @@ RUN cmake --build llvm-project/build &&                 \
 RUN rm -rf llvm-project
 
 ADD build.sh ${WORKDIR}/
+RUN mkdir ${WORKDIR}/seeds

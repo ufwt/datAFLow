@@ -150,7 +150,6 @@ RUN find poppler-datAFLow-access-idx-heapify-structs/bin -type f -executable    
         --in-place --out-dir={}_deps {} \;
 
 # Seeds
-RUN mkdir seeds
 RUN cp fuzzdata/samples/pdf/* seeds/
 
 CMD ["bash"]
