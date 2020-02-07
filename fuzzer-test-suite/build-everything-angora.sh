@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 export DIR_NAME=$(readlink -f $(dirname $0))
 
@@ -46,4 +46,6 @@ build_target() {
 
 export -f build_target
 BENCHMARKS="${ABS_SCRIPT_DIR}/*/"
-parallel build_target ::: ${BENCHMARKS}
+for BENCHMARK in ${BENCHMARKS}; do
+  build_target ${BENCHMARK}
+done

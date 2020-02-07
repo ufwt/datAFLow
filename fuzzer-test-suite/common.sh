@@ -125,6 +125,7 @@ elif [[ $FUZZING_ENGINE == "angora_fast" ]]; then
   export LD=${LLVM_CC_NAME}
   export LD_LIBRARY_PATH="${ANGORA_BUILD_DIR}/lib:${LD_LIBRARY_PATH}"
 
+  unset USE_TRACK
   export USE_FAST=1
 
   if [ ! -z $ASAN_ENABLE ]; then
@@ -145,6 +146,7 @@ elif [[ $FUZZING_ENGINE == "angora_track" ]]; then
   export LD=${LLVM_CC_NAME}
   export LD_LIBRARY_PATH="${ANGORA_BUILD_DIR}/lib:${LD_LIBRARY_PATH}"
 
+  unset USE_FAST
   export USE_TRACK=1
 
   if [ -f "${SCRIPT_DIR}/abilist.txt" ]; then

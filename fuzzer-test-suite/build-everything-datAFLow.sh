@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 
 export DIR_NAME=$(readlink -f $(dirname $0))
 
