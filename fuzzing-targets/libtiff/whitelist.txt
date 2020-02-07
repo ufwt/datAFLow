@@ -1,0 +1,5 @@
+[fuzzalloc]
+fun:_TIFFmalloc
+fun:_TIFFCheckMalloc
+fun:_TIFFcalloc
+fun:_TIFFrealloc
