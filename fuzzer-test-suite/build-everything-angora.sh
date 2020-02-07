@@ -40,8 +40,8 @@ build_target() {
   ${ABS_SCRIPT_DIR}/build.sh "${TARGET}" > ${TARGET}-${FUZZING_ENGINE}-build.log 2>&1
 
   # Create the empty seed
-  mkdir -p ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-fast-${TARGET}/empty-seed
-  echo "" > ${PARENT_DIR}/RUNDIR-${FUZZING_ENGINE}-fast-${TARGET}/empty-seed/seed
+  mkdir -p ${PARENT_DIR}/RUNDIR-angora_fast-${TARGET}/empty-seed
+  echo "" > ${PARENT_DIR}/RUNDIR-angora_fast-${TARGET}/empty-seed/seed
 }
 
 export -f build_target
