@@ -36,4 +36,4 @@ done
 # Cleanup previous address space shrinkages
 rm -rf prefix-*
 
-echo "Setup complete! Now run runspec --config=fuzzalloc --tune=base --noreportable all_except_fortran"
+echo "Setup complete! Now run of \`runspec --config=fuzzalloc-{access, access-heapify-structs, access-idx, access-idx-heapify-structs} --tune=base --noreportable all_except_fortran\`"
