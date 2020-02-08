@@ -54,7 +54,6 @@ ENV BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG   \
 ADD whitelist.txt ${WORKDIR}/${TARGET_SRC}
 RUN ${WORKDIR}/build.sh
 
-
 # Seeds
 RUN echo "" > seeds/empty
 
