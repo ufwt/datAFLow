@@ -1,0 +1,173 @@
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+                           SPEC(R) CINT2006 Summary
+                                    -- --
+                           Sat Feb  8 07:07:13 2020
+
+CPU2006 License #0     Test date: July-2019    Hardware availability: --
+Test sponsor: --                               Software availability: --
+
+                                  Estimated                       Estimated
+                Base     Base       Base        Peak     Peak       Peak
+Benchmarks      Ref.   Run Time     Ratio       Ref.   Run Time     Ratio
+-------------- ------  ---------  ---------    ------  ---------  ---------
+400.perlbench    9770        959      10.2  S                                  
+400.perlbench    9770        958      10.2  *                                  
+400.perlbench    9770        954      10.2  S                                  
+401.bzip2        9650       1040       9.26 S                                  
+401.bzip2        9650       1100       8.80 S                                  
+401.bzip2        9650       1050       9.18 *                                  
+403.gcc          8050        487      16.5  S                                  
+403.gcc          8050        482      16.7  S                                  
+403.gcc          8050        483      16.7  *                                  
+429.mcf          9120        540      16.9  *                                  
+429.mcf          9120        541      16.9  S                                  
+429.mcf          9120        531      17.2  S                                  
+445.gobmk       10490       1210       8.65 S                                  
+445.gobmk       10490       1210       8.69 S                                  
+445.gobmk       10490       1210       8.65 *                                  
+456.hmmer        9330       1720       5.44 S                                  
+456.hmmer        9330       1720       5.42 S                                  
+456.hmmer        9330       1720       5.44 *                                  
+458.sjeng       12100       1910       6.33 S                                  
+458.sjeng       12100       1900       6.36 S                                  
+458.sjeng       12100       1910       6.35 *                                  
+462.libquantum  20720        582      35.6  *                                  
+462.libquantum  20720        601      34.5  S                                  
+462.libquantum  20720        577      35.9  S                                  
+464.h264ref     22130       1240      17.8  *                                  
+464.h264ref     22130       1240      17.8  S                                  
+464.h264ref     22130       1240      17.8  S                                  
+471.omnetpp      6250        539      11.6  S                                  
+471.omnetpp      6250        535      11.7  S                                  
+471.omnetpp      6250        536      11.7  *                                  
+473.astar        7020        708       9.91 S                                  
+473.astar        7020        705       9.96 *                                  
+473.astar        7020        701      10.0  S                                  
+483.xalancbmk    6900        505      13.7  S                                  
+483.xalancbmk    6900        518      13.3  S                                  
+483.xalancbmk    6900        506      13.6  *                                  
+==============================================================================
+400.perlbench    9770        958      10.2  *                                  
+401.bzip2        9650       1050       9.18 *                                  
+403.gcc          8050        483      16.7  *                                  
+429.mcf          9120        540      16.9  *                                  
+445.gobmk       10490       1210       8.65 *                                  
+456.hmmer        9330       1720       5.44 *                                  
+458.sjeng       12100       1910       6.35 *                                  
+462.libquantum  20720        582      35.6  *                                  
+464.h264ref     22130       1240      17.8  *                                  
+471.omnetpp      6250        536      11.7  *                                  
+473.astar        7020        705       9.96 *                                  
+483.xalancbmk    6900        506      13.6  *                                  
+ Est. SPECint(R)_base2006             11.9 
+ Est. SPECint2006                                                   Not Run
+
+
+                                   HARDWARE
+                                   --------
+            CPU Name: --
+ CPU Characteristics:  
+             CPU MHz: --
+                 FPU: --
+      CPU(s) enabled: -1 cores, -1 chips, -1 cores/chip, -1 threads/core
+    CPU(s) orderable: --
+       Primary Cache: --
+     Secondary Cache: --
+            L3 Cache: --
+         Other Cache: --
+              Memory: --
+      Disk Subsystem: --
+      Other Hardware: --
+
+
+                                   SOFTWARE
+                                   --------
+    Operating System: --
+            Compiler: --
+       Auto Parallel: --
+         File System: --
+        System State: --
+       Base Pointers: --
+       Peak Pointers: --
+      Other Software: --
+
+
+                                General Notes
+                                -------------
+     PORTABILITY=-DSPEC_CPU_LP64 is applied to all benchmarks in base.
+     400.perlbench: -DSPEC_CPU_LINUX_X64
+     462.libquantum: -DSPEC_CPU_LINUX
+     C base flags: 
+     C++ base flags: 
+     Fortran base flags: 
+
+                              Base Unknown Flags
+                              ------------------
+  400.perlbench: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+                 "-std=gnu89" (in CPORTABILITY)
+
+      401.bzip2: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+        403.gcc: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+        429.mcf: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+      445.gobmk: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+      456.hmmer: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+      458.sjeng: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+ 462.libquantum: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+    464.h264ref: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in CC)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast" (in LD)
+
+    471.omnetpp: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in CXX)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in LD)
+
+      473.astar: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in CXX)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in LD)
+                 "-Wno-reserved-user-defined-literal" (in CXXPORTABILITY)
+
+  483.xalancbmk: "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in CXX)
+                 "/scratch/adrianh/SPECcpu2006/fuzzalloc-debug/src/tools/dataflow-clang-fast++" (in LD)
+                 "-std=gnu++98 -include cstdlib -include cstring" (in CXXPORTABILITY)
+
+
+    SPEC and SPECint are registered trademarks of the Standard Performance
+    Evaluation Corporation.  All other brand and product names appearing
+    in this result are trademarks or registered trademarks of their
+    respective holders.
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+-----------------------------------------------------------------------------
+For questions about this result, please contact the tester.
+For other inquiries, please contact webmaster@spec.org.
+Copyright 2006 Standard Performance Evaluation Corporation
+Generated on Sat Feb  8 20:42:31 2020 by SPEC CPU2006 ASCII formatter v4626
