@@ -36,6 +36,9 @@ for BUILD in afl                            \
              datAFLow-access-idx-heapify-structs; do
     # Extract target from Docker container
     docker cp dataflow-${TARGET}:/root/${TARGET}-${BUILD} ${TARGET}/
+    if [ $? -ne 0 ]; then
+        continue
+    fi
 
     EXE_PATH="${TARGET}/${TARGET}-${BUILD}/bin/${EXE}"
     DEPS_DIR="${EXE_PATH}_deps"

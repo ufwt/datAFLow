@@ -1,7 +1,7 @@
 #!/bin/bash -x
 
 # Build AFL target
-mkdir ${TARGET}-afl
+mkdir -p ${TARGET}-afl/bin
 (cd ${TARGET_SRC} &&                                                        \
     export INSTALL_PREFIX="${WORKDIR}/${TARGET}-afl" &&                     \
     export CC="${AFL_PATH}/afl-clang-fast" &&                               \
@@ -16,7 +16,7 @@ find ${TARGET}-afl/bin -type f -executable                                  \
 
 # Build AFL debug target
 if [[ ! -z "${BUILD_CMD_AFL_DBG}" ]]; then
-    mkdir ${TARGET}-afl-debug
+    mkdir -p ${TARGET}-afl-debug/bin
     (cd ${TARGET_SRC} &&                                                        \
         export INSTALL_PREFIX="${WORKDIR}/${TARGET}-afl-debug" &&               \
         export CC=gclang &&                                                     \
@@ -44,7 +44,7 @@ python3 ${WORKDIR}/datAFLow/scripts/remove_duplicate_lines.py               \
 mv ${TARGET_SRC}/temp.csv ${TARGET_SRC}/${TARGET}-tag-sites.csv
 
 # Build datAFLow memory access target
-mkdir ${TARGET}-datAFLow-access
+mkdir -p ${TARGET}-datAFLow-access/bin
 (cd ${TARGET_SRC} &&                                                            \
     export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access" &&             \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -62,7 +62,7 @@ find ${TARGET}-datAFLow-access/bin -type f -executable                          
 
 # Build datAFLow memory access debug target
 if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_DBG}" ]]; then
-    mkdir ${TARGET}-datAFLow-access-debug
+    mkdir -p ${TARGET}-datAFLow-access-debug/bin
     (cd ${TARGET_SRC} &&                                                            \
         export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-debug" &&       \
         export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -83,7 +83,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_DBG}" ]]; then
 fi
 
 # Build datAFLow memory access + heapify structs target
-mkdir ${TARGET}-datAFLow-access-heapify-structs
+mkdir -p ${TARGET}-datAFLow-access-heapify-structs/bin
 (cd ${TARGET_SRC} &&                                                            \
     export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-heapify-structs" && \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -102,7 +102,7 @@ find ${TARGET}-datAFLow-access-heapify-structs/bin -type f -executable      \
 
 # Build datAFLow memory access + heapify structs debug target
 if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG}" ]]; then
-    mkdir ${TARGET}-datAFLow-access-heapify-structs-debug
+    mkdir -p ${TARGET}-datAFLow-access-heapify-structs-debug/bin
     (cd ${TARGET_SRC} &&                                                            \
         export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-heapify-structs-debug" &&   \
         export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -124,7 +124,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG}" ]]; then
 fi
 
 # Build datAFLow memory access + index target
-mkdir ${TARGET}-datAFLow-access-idx
+mkdir -p ${TARGET}-datAFLow-access-idx/bin
 (cd ${TARGET_SRC} &&                                                            \
     export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx" &&         \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -142,7 +142,7 @@ find ${TARGET}-datAFLow-access-idx/bin -type f -executable                  \
 
 # Build datAFLow memory access + index debug target
 if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG}" ]]; then
-    mkdir ${TARGET}-datAFLow-access-idx-debug
+    mkdir -p ${TARGET}-datAFLow-access-idx-debug/bin
     (cd ${TARGET_SRC} &&                                                            \
         export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-debug" &&   \
         export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -163,7 +163,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG}" ]]; then
 fi
 
 # Build datAFLow memory access + index + heapify structs target
-mkdir ${TARGET}-datAFLow-access-idx-heapify-structs
+mkdir -p ${TARGET}-datAFLow-access-idx-heapify-structs/bin
 (cd ${TARGET_SRC} &&                                                            \
     export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-heapify-structs" && \
     export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \
@@ -182,7 +182,7 @@ find ${TARGET}-datAFLow-access-idx-heapify-structs/bin -type f -executable  \
 
 # Build datAFLow memory access + index + heapify structs debug target
 if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG}" ]]; then
-    mkdir ${TARGET}-datAFLow-access-idx-heapify-structs-debug
+    mkdir -p  ${TARGET}-datAFLow-access-idx-heapify-structs-debug/bin
     (cd ${TARGET_SRC} &&                                                            \
         export INSTALL_PREFIX="${WORKDIR}/${TARGET}-datAFLow-access-idx-heapify-structs-debug" &&\
         export PATH="${WORKDIR}/llvm-datAFLow/bin:${PATH}" &&                       \

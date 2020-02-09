@@ -106,7 +106,7 @@ RUN cd MOpt-AFL/MOpt-AFL\ V1.0 &&   \
 RUN export CC="${AFL_PATH}/afl-clang-fast" &&                                                           \
     export CXX="${AFL_PATH}/afl-clang-fast++" &&                                                        \
     ${CC} -O2 -c ${WORKDIR}/llvm-project/compiler-rt/lib/fuzzer/standalone/StandaloneFuzzTargetMain.c &&\
-    ar rc ${AFL_PATH}/libaflfuzz.a StandaloneFuzzTargetMain.o &&                                        \
+    ar rc ${AFL_PATH}/libfuzzStandalone.a StandaloneFuzzTargetMain.o &&                                 \
     rm StandaloneFuzzTargetMain.o
 
 # datAFLow
