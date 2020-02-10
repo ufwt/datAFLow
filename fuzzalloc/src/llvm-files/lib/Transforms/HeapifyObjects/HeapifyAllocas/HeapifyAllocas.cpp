@@ -89,7 +89,7 @@ static bool isHeapifiableAlloca(AllocaInst *Alloca) {
   }
 
   // Otherwise, heapify structs/classes (not from libstdc++) that escape the
-  // function in why they are defined
+  // function in which they are defined
 
   if (!isa<StructType>(AllocatedTy)) {
     return false;
