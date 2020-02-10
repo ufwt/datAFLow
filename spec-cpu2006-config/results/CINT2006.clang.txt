@@ -1,0 +1,173 @@
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+                           SPEC(R) CINT2006 Summary
+                                    -- --
+                           Mon Feb 10 08:36:58 2020
+
+CPU2006 License #0     Test date: July-2019    Hardware availability: --
+Test sponsor: --                               Software availability: --
+
+                                  Estimated                       Estimated
+                Base     Base       Base        Peak     Peak       Peak
+Benchmarks      Ref.   Run Time     Ratio       Ref.   Run Time     Ratio
+-------------- ------  ---------  ---------    ------  ---------  ---------
+400.perlbench    9770        239       40.9 S                                  
+400.perlbench    9770        240       40.7 *                                  
+400.perlbench    9770        240       40.7 S                                  
+401.bzip2        9650        398       24.3 S                                  
+401.bzip2        9650        401       24.1 S                                  
+401.bzip2        9650        400       24.1 *                                  
+403.gcc          8050        232       34.6 S                                  
+403.gcc          8050        233       34.6 *                                  
+403.gcc          8050        233       34.5 S                                  
+429.mcf          9120        230       39.7 S                                  
+429.mcf          9120        240       37.9 S                                  
+429.mcf          9120        233       39.2 *                                  
+445.gobmk       10490        375       28.0 S                                  
+445.gobmk       10490        376       27.9 *                                  
+445.gobmk       10490        382       27.5 S                                  
+456.hmmer        9330        274       34.0 S                                  
+456.hmmer        9330        275       33.9 S                                  
+456.hmmer        9330        275       33.9 *                                  
+458.sjeng       12100        390       31.0 S                                  
+458.sjeng       12100        382       31.7 *                                  
+458.sjeng       12100        382       31.7 S                                  
+462.libquantum  20720        312       66.3 S                                  
+462.libquantum  20720        306       67.7 *                                  
+462.libquantum  20720        294       70.4 S                                  
+464.h264ref     22130        369       59.9 *                                  
+464.h264ref     22130        369       60.0 S                                  
+464.h264ref     22130        373       59.3 S                                  
+471.omnetpp      6250        278       22.5 S                                  
+471.omnetpp      6250        288       21.7 S                                  
+471.omnetpp      6250        280       22.4 *                                  
+473.astar        7020        332       21.1 S                                  
+473.astar        7020        332       21.1 *                                  
+473.astar        7020        334       21.0 S                                  
+483.xalancbmk    6900        166       41.6 *                                  
+483.xalancbmk    6900        173       39.8 S                                  
+483.xalancbmk    6900        166       41.6 S                                  
+==============================================================================
+400.perlbench    9770        240       40.7 *                                  
+401.bzip2        9650        400       24.1 *                                  
+403.gcc          8050        233       34.6 *                                  
+429.mcf          9120        233       39.2 *                                  
+445.gobmk       10490        376       27.9 *                                  
+456.hmmer        9330        275       33.9 *                                  
+458.sjeng       12100        382       31.7 *                                  
+462.libquantum  20720        306       67.7 *                                  
+464.h264ref     22130        369       59.9 *                                  
+471.omnetpp      6250        280       22.4 *                                  
+473.astar        7020        332       21.1 *                                  
+483.xalancbmk    6900        166       41.6 *                                  
+ Est. SPECint(R)_base2006              34.8
+ Est. SPECint2006                                                   Not Run
+
+
+                                   HARDWARE
+                                   --------
+            CPU Name: --
+ CPU Characteristics:  
+             CPU MHz: --
+                 FPU: --
+      CPU(s) enabled: -1 cores, -1 chips, -1 cores/chip, -1 threads/core
+    CPU(s) orderable: --
+       Primary Cache: --
+     Secondary Cache: --
+            L3 Cache: --
+         Other Cache: --
+              Memory: --
+      Disk Subsystem: --
+      Other Hardware: --
+
+
+                                   SOFTWARE
+                                   --------
+    Operating System: --
+            Compiler: --
+       Auto Parallel: --
+         File System: --
+        System State: --
+       Base Pointers: --
+       Peak Pointers: --
+      Other Software: --
+
+
+                                General Notes
+                                -------------
+     PORTABILITY=-DSPEC_CPU_LP64 is applied to all benchmarks in base.
+     400.perlbench: -DSPEC_CPU_LINUX_X64
+     462.libquantum: -DSPEC_CPU_LINUX
+     C base flags: -O3 -g -funroll-loops
+     C++ base flags: -O3 -g -funroll-loops
+     Fortran base flags: 
+
+                              Base Unknown Flags
+                              ------------------
+  400.perlbench: "clang-7" (in CC) "clang-7" (in LD)
+                 "-std=gnu89" (in CPORTABILITY)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+      401.bzip2: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+        403.gcc: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+        429.mcf: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+      445.gobmk: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+      456.hmmer: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+      458.sjeng: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+ 462.libquantum: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+    464.h264ref: "clang-7" (in CC) "clang-7" (in LD)
+                 "-O3 -g -funroll-loops" (in COPTIMIZE)
+
+    471.omnetpp: "clang++-7" (in CXX) "clang++-7" (in LD)
+                 "-O3 -g -funroll-loops" (in CXXOPTIMIZE)
+
+      473.astar: "clang++-7" (in CXX) "clang++-7" (in LD)
+                 "-Wno-reserved-user-defined-literal" (in CXXPORTABILITY)
+                 "-O3 -g -funroll-loops" (in CXXOPTIMIZE)
+
+  483.xalancbmk: "clang++-7" (in CXX) "clang++-7" (in LD)
+                 "-std=gnu++98 -include cstdlib -include cstring" (in CXXPORTABILITY)
+                 "-O3 -g -funroll-loops" (in CXXOPTIMIZE)
+
+
+    SPEC and SPECint are registered trademarks of the Standard Performance
+    Evaluation Corporation.  All other brand and product names appearing
+    in this result are trademarks or registered trademarks of their
+    respective holders.
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+-----------------------------------------------------------------------------
+For questions about this result, please contact the tester.
+For other inquiries, please contact webmaster@spec.org.
+Copyright 2006 Standard Performance Evaluation Corporation
+Generated on Mon Feb 10 13:38:50 2020 by SPEC CPU2006 ASCII formatter v4626
