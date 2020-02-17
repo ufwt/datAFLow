@@ -30,6 +30,8 @@ docker run --name dataflow-${TARGET} dataflow/${TARGET}
 docker cp dataflow-${TARGET}:/root/seeds ${TARGET}/
 
 for BUILD in afl                            \
+             angora-fast                    \
+             angora-track                   \
              datAFLow-access                \
              datAFLow-access-heapify-structs\
              datAFLow-access-idx            \

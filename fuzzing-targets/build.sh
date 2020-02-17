@@ -9,7 +9,6 @@ mkdir -p ${TARGET}-afl/bin
     export CFLAGS="-fsanitize=address" &&                                   \
     export CXXFLAGS="-fsanitize=address" &&                                 \
     eval ${BUILD_CMD_AFL})
-
 find ${TARGET}-afl/bin -type f -executable                                  \
     -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
     --out-dir={}_deps {} \;
@@ -26,6 +25,38 @@ if [[ ! -z "${BUILD_CMD_AFL_DBG}" ]]; then
         export AFL_DEBUG="1" &&                                                 \
         eval ${BUILD_CMD_AFL_DBG})
     find ${TARGET}-afl-debug/bin -type f -executable                            \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
+        --out-dir={}_deps {} \;
+fi
+
+# Build Angora target
+if [[ ! -z "${BUILD_CMD_ANGORA}" ]]; then
+    mkdir -p ${TARGET}-angora-fast/bin
+    (cd ${TARGET_SRC} &&                                                        \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-angora-fast" &&             \
+        export PATH="${ANGORA_PATH}:${PATH}" &&                                 \
+        export LD_LIBRARY_PATH="${ANGORA_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}" &&\
+        export CC="${WORKDIR}/angora/bin/angora-clang" &&                       \
+        export CXX="${WORKDIR}/angora/bin/angora-clang++" &&                    \
+        export LD="${WORKDIR}/angora/bin/angora-clang" &&                       \
+        export ANGORA_USE_ASAN="1"                                              \
+        export USE_FAST="1" &&                                                  \
+        eval ${BUILD_CMD_ANGORA})
+    find ${TARGET}-angora-fast/bin -type f -executable                          \
+        -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
+        --out-dir={}_deps {} \;
+
+    mkdir -p ${TARGET}-angora-track/bin
+    (cd ${TARGET_SRC} &&                                                        \
+        export INSTALL_PREFIX="${WORKDIR}/${TARGET}-angora-track" &&            \
+        export PATH="${ANGORA_PATH}:${PATH}" &&                                 \
+        export LD_LIBRARY_PATH="${ANGORA_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH}" &&\
+        export CC="${WORKDIR}/angora/bin/angora-clang" &&                       \
+        export CXX="${WORKDIR}/angora/bin/angora-clang++" &&                    \
+        export LD="${WORKDIR}/angora/bin/angora-clang" &&                       \
+        export USE_TRACK="1" &&                                                 \
+        eval ${BUILD_CMD_ANGORA})
+    find ${TARGET}-angora-track/bin -type f -executable                         \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
         --out-dir={}_deps {} \;
 fi

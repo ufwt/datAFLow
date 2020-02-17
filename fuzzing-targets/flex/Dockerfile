@@ -14,6 +14,10 @@ ENV BUILD_CMD_AFL_DBG   \
     "./autogen.sh && ./configure --disable-shared --enable-static --prefix=\${INSTALL_PREFIX} && \
     make clean && make -j && make install"
 
+ENV BUILD_CMD_ANGORA   \
+    "./autogen.sh && ./configure --disable-shared --enable-static --prefix=\${INSTALL_PREFIX} && \
+    make clean && make -j && make install"
+
 ENV BUILD_CMD_DATAFLOW_TAGS \
     "./autogen.sh && ./configure --disable-shared --enable-static &&                             \
     make clean && make -j1"

@@ -12,6 +12,10 @@ ENV BUILD_CMD_AFL   \
     "./configure --prefix=\${INSTALL_PREFIX} &&     \
      make -j && make install && make clean distclean"
 
+ENV BUILD_CMD_ANGORA   \
+    "./configure --prefix=\${INSTALL_PREFIX} &&     \
+     make -j && make install && make clean distclean"
+
 ENV BUILD_CMD_DATAFLOW_TAGS \
     "./configure &&                                 \
      make -j1 && make clean distclean"

@@ -20,6 +20,10 @@ ENV BUILD_CMD_AFL_DBG  \
     "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
     make clean && make linux -j && make install"
 
+ENV BUILD_CMD_ANOGRA   \
+    "export INSTALL_TOP=\${INSTALL_PREFIX} &&       \
+    make clean && make linux -j && make install"
+
 ENV BUILD_CMD_DATAFLOW_TAGS \
     "make clean && make linux -j1"
 

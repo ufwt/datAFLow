@@ -15,6 +15,11 @@ ENV BUILD_CMD_AFL_DBG   \
     make clean && make -j && make install &&    \
     mv ${WORKDIR}/\${TARGET_SRC}/pcre2fuzzcheck \${INSTALL_PREFIX}/bin/"
 
+ENV BUILD_CMD_ANGORA   \
+    "./configure --disable-shared --enable-static --enable-fuzz-support --prefix=\${INSTALL_PREFIX} &&  \
+    make clean && make -j && make install &&    \
+    mv ${WORKDIR}/\${TARGET_SRC}/pcre2fuzzcheck \${INSTALL_PREFIX}/bin/"
+
 ENV BUILD_CMD_DATAFLOW_TAGS \
     "./configure --disable-shared --enable-static --enable-fuzz-support &&                              \
     make clean && make -j1"
