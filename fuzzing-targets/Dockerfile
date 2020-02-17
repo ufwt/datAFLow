@@ -36,7 +36,8 @@ RUN apt-get update &&                                               \
     apt-get install -y build-essential git autogen autoconf texinfo \
         automake tzdata libtool cmake ninja-build pkg-config        \
         curl flex bison python python3 python3-dev python3-pip      \
-        time prelink patchelf &&                                    \
+        time prelink patchelf                                       \
+        wget zlib1g-dev &&                                          \
     apt-get autoremove -y
 
 ENV WORKDIR /root
@@ -52,6 +53,9 @@ ENV PATH ${GOROOT}/bin:${GOPATH}/bin:${PATH}
 
 # wllvm
 RUN go get github.com/SRI-CSL/gllvm/cmd/...
+
+# Alias python3
+RUN ln -s /usr/bin/pip3 /usr/bin/pip
 
 # binutils
 RUN git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
@@ -101,6 +105,22 @@ RUN git clone --depth=1 https://github.com/puppet-meteor/MOpt-AFL
 RUN cd MOpt-AFL/MOpt-AFL\ V1.0 &&   \
     make clean && make -j &&        \
     make -j -C llvm_mode
+
+# Angora - adapted from Angora Dockerfile
+ENV RUSTUP_HOME=/usr/local/rustup                                           \
+    CARGO_HOME=/usr/local/cargo                                             \
+    PATH=/usr/local/cargo/bin:${PATH}                                       \
+    ANGORA_PATH=${WORKDIR}/angora/angora_llvm/clang+llvm/bin                \
+    ANGORA_LD_LIBRARY_PATH=${WORKDIR}/angora/angora_llvm/clang+llvm/lib
+RUN git clone https://github.com/AngoraFuzzer/Angora angora &&              \
+    mkdir -p angora/angora_llvm
+RUN cd ${WORKDIR}/angora/ && ./build/install_rust.sh
+RUN cd ${WORKDIR}/angora/ &&    \
+    PREFIX=${WORKDIR}/angora/angora_llvm ./build/install_llvm.sh
+RUN cd ${WORKDIR}/angora/ &&    \
+    PATH=${ANGORA_PATH}:${PATH} LD_LIBRARY_PATH=${ANGORA_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH} ./build/install_tools.sh
+RUN cd ${WORKDIR}/angora/ &&    \
+    PATH=${ANGORA_PATH}:${PATH} LD_LIBRARY_PATH=${ANGORA_LD_LIBRARY_PATH}:${LD_LIBRARY_PATH} ./build/build.sh
 
 # libFuzzer - AFL
 RUN export CC="${AFL_PATH}/afl-clang-fast" &&                                                           \
