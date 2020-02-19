@@ -9,10 +9,15 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-THIS_DIR="." #$(readlink -f $(dirname "${0}"))
+THIS_DIR=$(dirname $(realpath -s $0))
+SCRIPT_DIR=$(dirname $(realpath $0))
 TARGET=${1}
 
 export PATH="$(pwd)/AFL:${PATH}"
+. ${SCRIPT_DIR}/${TARGET}/fuzz-config.sh
+
+# Clear out old junk
+find "${THIS_DIR}/${TARGET}" -name 'plot_data.bak' -exec bash -c 'cp $0 $(dirname $0)/plot_data' {} \;
 
 #
 # Aggregate raw AFL/datAFLow data
