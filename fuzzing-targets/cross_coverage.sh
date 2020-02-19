@@ -21,7 +21,7 @@ export PATH="$(pwd)/AFL:${PATH}"
 PLOT_DATA="${THIS_DIR}/${TARGET}/afl-out-*/plot_data"
 ${THIS_DIR}/fuzzing-data-analysis/afl_scripts/aggregate_plot_data.py -o ${THIS_DIR}/${TARGET}/afl.csv                      \
     ${PLOT_DATA}
-PLOT_DATA="${THIS_DIR}/${TARGET}/mopt-out-*/plot_data"
+PLOT_DATA="${THIS_DIR}/${TARGET}/mopt-afl-out-*/plot_data"
 ${THIS_DIR}/fuzzing-data-analysis/afl_scripts/aggregate_plot_data.py -o ${THIS_DIR}/${TARGET}/mopt_afl.csv                 \
     ${PLOT_DATA}
 PLOT_DATA="${THIS_DIR}/${TARGET}/datAFLow-access-out-*/plot_data"
@@ -48,7 +48,7 @@ done
 
 for I in $(seq 1 5); do
   LD_LIBRARY_PATH=${THIS_DIR}/${TARGET}/${TARGET}-afl/bin/${TARGET}_deps                 \
-  ${THIS_DIR}/fuzzing-data-analysis/afl_scripts/plot_data_testcase.py -i -b ${THIS_DIR}/${TARGET}/mopt-out-$I
+  ${THIS_DIR}/fuzzing-data-analysis/afl_scripts/plot_data_testcase.py -i -b ${THIS_DIR}/${TARGET}/mopt-afl-out-$I
 done
 
 for I in $(seq 1 5); do
