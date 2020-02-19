@@ -5,7 +5,8 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-SCRIPT_DIR=$(dirname $(realpath -s $0))
+THIS_DIR=$(dirname $(realpath -s $0))
+SCRIPT_DIR=$(dirname $(realpath $0))
 TARGET=$1
 TIMEOUT=86400
 JOBS=50
@@ -30,8 +31,6 @@ docker run --name dataflow-${TARGET} dataflow/${TARGET}
 docker cp dataflow-${TARGET}:/root/seeds ${TARGET}/
 
 for BUILD in afl                            \
-             angora-fast                    \
-             angora-track                   \
              datAFLow-access                \
              datAFLow-access-heapify-structs\
              datAFLow-access-idx            \
@@ -42,7 +41,7 @@ for BUILD in afl                            \
         continue
     fi
 
-    EXE_PATH="${TARGET}/${TARGET}-${BUILD}/bin/${EXE}"
+    EXE_PATH=$(realpath "${TARGET}/${TARGET}-${BUILD}/bin/${EXE}")
     DEPS_DIR="${EXE_PATH}_deps"
 
     # Fix the interpreter
@@ -72,6 +71,28 @@ for BUILD in afl                            \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/mopt-${BUILD}-${I}.log" 2>&1
         sleep 2
     done
+done
+
+# Fuzz with Angora
+docker cp dataflow-${TARGET}:/root/${TARGET}-angora-fast ${TARGET}/
+docker cp dataflow-${TARGET}:/root/${TARGET}-angora-track ${TARGET}/
+docker cp dataflow-${TARGET}:/root/angora/bin/fuzzer ./angora_fuzzer
+
+FAST_EXE_PATH=$(realpath "${TARGET}/${TARGET}-angora-fast/bin/${EXE}")
+TRACK_EXE_PATH=$(realpath "${TARGET}/${TARGET}-angora-track/bin/${EXE}")
+DEPS_DIR="${FAST_EXE_PATH}_deps"
+patchelf --set-interpreter "${DEPS_DIR}/ld-linux-x86-64.so.2" ${FAST_EXE_PATH}
+patchelf --set-interpreter "${DEPS_DIR}/ld-linux-x86-64.so.2" ${TRACK_EXE_PATH}
+
+for I in $(seq 1 5); do
+    LD_LIBRARY_PATH=${DEPS_DIR}:${LD_LIBRARY_PATH}                              \
+    sem --timeout ${TIMEOUT} --jobs ${JOBS} --id "fuzz-${EXE}" -u               \
+        --halt now,fail=1                                                       \
+    /usr/bin/time --verbose --output="${TARGET}/angora-${I}.time"               \
+    ${THIS_DIR}/angora_fuzzer -M 0 -i ${SEEDS} -o "${TARGET}/angora-out-${I}"   \
+        -t ${TRACK_EXE_PATH} --                                                 \
+        ${FAST_EXE_PATH} ${EXE_OPTS} > "${TARGET}/angora-${I}.log" 2>&1
+    sleep 2
 done
 
 # Wait for campaigns to finish
