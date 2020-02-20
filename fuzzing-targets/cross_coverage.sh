@@ -11,7 +11,7 @@ fi
 
 THIS_DIR=$(dirname $(realpath -s $0))
 SCRIPT_DIR=$(dirname $(realpath $0))
-TARGET=${1}
+TARGET=${1%/}
 
 export PATH="$(pwd)/AFL:${PATH}"
 . ${SCRIPT_DIR}/${TARGET}/fuzz-config.sh
