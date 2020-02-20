@@ -1,2 +1,2 @@
 EXE="nasm"
-EXE_OPTS="-o dev/null @@"
+EXE_OPTS="-o /dev/null @@"
