@@ -1,0 +1,169 @@
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# 465.tonto base did not have enough runs!                                   #
+# 453.povray base did not have enough runs!                                  #
+# 444.namd base did not have enough runs!                                    #
+# 416.gamess base did not have enough runs!                                  #
+# 436.cactusADM base did not have enough runs!                               #
+# 459.GemsFDTD base did not have enough runs!                                #
+# 450.soplex base did not have enough runs!                                  #
+# 437.leslie3d base did not have enough runs!                                #
+# 447.dealII base did not have enough runs!                                  #
+# 481.wrf base did not have enough runs!                                     #
+# 410.bwaves base did not have enough runs!                                  #
+# 435.gromacs base did not have enough runs!                                 #
+# 434.zeusmp base did not have enough runs!                                  #
+# 454.calculix base did not have enough runs!                                #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+# Error 444.namd: Error with make!                                           #
+# Error 447.dealII: Error with make!                                         #
+# Error 450.soplex: Error with make!                                         #
+# Error 453.povray: Error with make!                                         #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+                           SPEC(R) CFP2006 Summary
+                                    -- --
+                           Sat Feb 15 21:23:23 2020
+
+CPU2006 License #0     Test date: July-2019    Hardware availability: --
+Test sponsor: --                               Software availability: --
+
+                                  Estimated                       Estimated
+                Base     Base       Base        Peak     Peak       Peak
+Benchmarks      Ref.   Run Time     Ratio       Ref.   Run Time     Ratio
+-------------- ------  ---------  ---------    ------  ---------  ---------
+410.bwaves                                  NR                                 
+416.gamess                                  NR                                 
+433.milc         9180   4000          2.30  *                                  
+433.milc         9180   3990          2.30  S                                  
+433.milc         9180   4020          2.28  S                                  
+434.zeusmp                                  NR                                 
+435.gromacs                                 NR                                 
+436.cactusADM                               NR                                 
+437.leslie3d                                NR                                 
+444.namd         8020         --            CE                                 
+447.dealII      11440         --            CE                                 
+450.soplex       8340         --            CE                                 
+453.povray       5320         --            CE                                 
+454.calculix                                NR                                 
+459.GemsFDTD                                NR                                 
+465.tonto                                   NR                                 
+470.lbm         13740   4160          3.30  S                                  
+470.lbm         13740   4200          3.27  *                                  
+470.lbm         13740   4370          3.14  S                                  
+481.wrf                                     NR                                 
+482.sphinx3     19490  11000          1.77  *                                  
+482.sphinx3     19490  10600          1.83  S                                  
+482.sphinx3     19490  11300          1.73  S                                  
+==============================================================================
+410.bwaves                                  NR                                 
+416.gamess                                  NR                                 
+433.milc         9180   4000          2.30  *                                  
+434.zeusmp                                  NR                                 
+435.gromacs                                 NR                                 
+436.cactusADM                               NR                                 
+437.leslie3d                                NR                                 
+444.namd                                    NR                                 
+447.dealII                                  NR                                 
+450.soplex                                  NR                                 
+453.povray                                  NR                                 
+454.calculix                                NR                                 
+459.GemsFDTD                                NR                                 
+465.tonto                                   NR                                 
+470.lbm         13740   4200          3.27  *                                  
+481.wrf                                     NR                                 
+482.sphinx3     19490  11000          1.77  *                                  
+ Est. SPECfp(R)_base2006                 --
+ Est. SPECfp2006                                                    Not Run
+
+
+                                   HARDWARE
+                                   --------
+            CPU Name: --
+ CPU Characteristics:  
+             CPU MHz: --
+                 FPU: --
+      CPU(s) enabled: -1 cores, -1 chips, -1 cores/chip, -1 threads/core
+    CPU(s) orderable: --
+       Primary Cache: --
+     Secondary Cache: --
+            L3 Cache: --
+         Other Cache: --
+              Memory: --
+      Disk Subsystem: --
+      Other Hardware: --
+
+
+                                   SOFTWARE
+                                   --------
+    Operating System: --
+            Compiler: --
+       Auto Parallel: --
+         File System: --
+        System State: --
+       Base Pointers: --
+       Peak Pointers: --
+      Other Software: --
+
+
+                                General Notes
+                                -------------
+     PORTABILITY=-DSPEC_CPU_LP64 is applied to all benchmarks in base.
+     C base flags: 
+     C++ base flags: 
+     Fortran base flags: 
+
+                              Base Unknown Flags
+                              ------------------
+    433.milc: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in CC)
+              "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in LD)
+
+     470.lbm: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in CC)
+              "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in LD)
+
+ 482.sphinx3: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in CC)
+              "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang" (in LD)
+
+
+    SPEC and SPECfp are registered trademarks of the Standard Performance
+    Evaluation Corporation.  All other brand and product names appearing
+    in this result are trademarks or registered trademarks of their
+    respective holders.
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# 465.tonto base did not have enough runs!                                   #
+# 453.povray base did not have enough runs!                                  #
+# 444.namd base did not have enough runs!                                    #
+# 416.gamess base did not have enough runs!                                  #
+# 436.cactusADM base did not have enough runs!                               #
+# 459.GemsFDTD base did not have enough runs!                                #
+# 450.soplex base did not have enough runs!                                  #
+# 437.leslie3d base did not have enough runs!                                #
+# 447.dealII base did not have enough runs!                                  #
+# 481.wrf base did not have enough runs!                                     #
+# 410.bwaves base did not have enough runs!                                  #
+# 435.gromacs base did not have enough runs!                                 #
+# 434.zeusmp base did not have enough runs!                                  #
+# 454.calculix base did not have enough runs!                                #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+# Error 444.namd: Error with make!                                           #
+# Error 447.dealII: Error with make!                                         #
+# Error 450.soplex: Error with make!                                         #
+# Error 453.povray: Error with make!                                         #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+-----------------------------------------------------------------------------
+For questions about this result, please contact the tester.
+For other inquiries, please contact webmaster@spec.org.
+Copyright 2006 Standard Performance Evaluation Corporation
+Generated on Thu Feb 20 20:55:54 2020 by SPEC CPU2006 ASCII formatter v4626
