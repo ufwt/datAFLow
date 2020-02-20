@@ -50,6 +50,9 @@ def main():
     plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=num_fuzzers)
     plt.xticks(index + bar_width, df.target, rotation=90)
 
+    print('Mean overhead')
+    print(df.mean(skipna=None))
+
     plt.tight_layout()
     plt.savefig(sys.argv[1])
 
