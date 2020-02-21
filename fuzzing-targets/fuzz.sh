@@ -22,6 +22,13 @@ else
     AFL_DICT=
 fi
 
+# Determine if there is a timeout to use
+if [ ! -z "${TIMEOUT_OPT}" ]; then
+    AFL_TIMEOUT="-t ${TIMEOUT_OPT}"
+else
+    AFL_TIMEOUT=
+fi
+
 # Make the target directory
 mkdir -p ${TARGET}
 
@@ -54,7 +61,7 @@ for BUILD in afl                            \
             --halt now,fail=1                                                   \
         /usr/bin/time --verbose --output="${TARGET}/${BUILD}-${I}.time"         \
         AFL/afl-fuzz -m none -i ${SEEDS} -o "${TARGET}/${BUILD}-out-${I}"       \
-            ${AFL_DICT} --                                                      \
+            ${AFL_TIMEOUT} ${AFL_DICT} --                                       \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/${BUILD}-${I}.log" 2>&1
         sleep 2
     done
@@ -67,7 +74,7 @@ for BUILD in afl                            \
         /usr/bin/time --verbose --output="${TARGET}/mopt-${BUILD}-${I}.time"    \
         "MOpt-AFL/MOpt-AFL V1.0/afl-fuzz" -m none -L 0                          \
             -i ${SEEDS} -o "${TARGET}/mopt-${BUILD}-out-${I}"                   \
-            ${AFL_DICT} --                                                      \
+            ${AFL_TIMEOUT} ${AFL_DICT} --                                       \
             ${EXE_PATH} ${EXE_OPTS} > "${TARGET}/mopt-${BUILD}-${I}.log" 2>&1
         sleep 2
     done
