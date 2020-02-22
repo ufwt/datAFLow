@@ -1,0 +1,145 @@
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# 456.hmmer base did not have enough runs!                                   #
+# 445.gobmk base did not have enough runs!                                   #
+# 458.sjeng base did not have enough runs!                                   #
+# 429.mcf base did not have enough runs!                                     #
+# 400.perlbench base did not have enough runs!                               #
+# 464.h264ref base did not have enough runs!                                 #
+# 462.libquantum base did not have enough runs!                              #
+# 401.bzip2 base did not have enough runs!                                   #
+# 403.gcc base did not have enough runs!                                     #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+                           SPEC(R) CINT2006 Summary
+                                    -- --
+                           Fri Feb 21 13:26:41 2020
+
+CPU2006 License #0     Test date: July-2019    Hardware availability: --
+Test sponsor: --                               Software availability: --
+
+                                  Estimated                       Estimated
+                Base     Base       Base        Peak     Peak       Peak
+Benchmarks      Ref.   Run Time     Ratio       Ref.   Run Time     Ratio
+-------------- ------  ---------  ---------    ------  ---------  ---------
+400.perlbench                               NR                                 
+401.bzip2                                   NR                                 
+403.gcc                                     NR                                 
+429.mcf                                     NR                                 
+445.gobmk                                   NR                                 
+456.hmmer                                   NR                                 
+458.sjeng                                   NR                                 
+462.libquantum                              NR                                 
+464.h264ref                                 NR                                 
+471.omnetpp      6250       5200       1.20 S                                  
+471.omnetpp      6250       3460       1.81 S                                  
+471.omnetpp      6250       3500       1.79 *                                  
+473.astar        7020       5590       1.26 S                                  
+473.astar        7020       5550       1.26 *                                  
+473.astar        7020       5540       1.27 S                                  
+483.xalancbmk    6900       4980       1.39 S                                  
+483.xalancbmk    6900       4990       1.38 S                                  
+483.xalancbmk    6900       4980       1.38 *                                  
+==============================================================================
+400.perlbench                               NR                                 
+401.bzip2                                   NR                                 
+403.gcc                                     NR                                 
+429.mcf                                     NR                                 
+445.gobmk                                   NR                                 
+456.hmmer                                   NR                                 
+458.sjeng                                   NR                                 
+462.libquantum                              NR                                 
+464.h264ref                                 NR                                 
+471.omnetpp      6250       3500       1.79 *                                  
+473.astar        7020       5550       1.26 *                                  
+483.xalancbmk    6900       4980       1.38 *                                  
+ Est. SPECint(R)_base2006                --
+ Est. SPECint2006                                                   Not Run
+
+
+                                   HARDWARE
+                                   --------
+            CPU Name: --
+ CPU Characteristics:  
+             CPU MHz: --
+                 FPU: --
+      CPU(s) enabled: -1 cores, -1 chips, -1 cores/chip, -1 threads/core
+    CPU(s) orderable: --
+       Primary Cache: --
+     Secondary Cache: --
+            L3 Cache: --
+         Other Cache: --
+              Memory: --
+      Disk Subsystem: --
+      Other Hardware: --
+
+
+                                   SOFTWARE
+                                   --------
+    Operating System: --
+            Compiler: --
+       Auto Parallel: --
+         File System: --
+        System State: --
+       Base Pointers: --
+       Peak Pointers: --
+      Other Software: --
+
+
+                                General Notes
+                                -------------
+     PORTABILITY=-DSPEC_CPU_LP64 is applied to all benchmarks in base.
+     400.perlbench: -DSPEC_CPU_LINUX_X64
+     462.libquantum: -DSPEC_CPU_LINUX
+     C base flags: 
+     C++ base flags: 
+     Fortran base flags: 
+
+                              Base Unknown Flags
+                              ------------------
+   471.omnetpp: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in CXX)
+                "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in LD)
+
+     473.astar: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in CXX)
+                "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in LD)
+                "-Wno-reserved-user-defined-literal" (in CXXPORTABILITY)
+
+ 483.xalancbmk: "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in CXX)
+                "/scratch/adrianh/SPECcpu2006/angora/bin/angora-clang++" (in LD)
+                "-std=gnu++98 -include cstdlib -include cstring" (in CXXPORTABILITY)
+
+
+    SPEC and SPECint are registered trademarks of the Standard Performance
+    Evaluation Corporation.  All other brand and product names appearing
+    in this result are trademarks or registered trademarks of their
+    respective holders.
+##############################################################################
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+#                                                                            #
+# 'reportable' flag not set during run                                       #
+# 456.hmmer base did not have enough runs!                                   #
+# 445.gobmk base did not have enough runs!                                   #
+# 458.sjeng base did not have enough runs!                                   #
+# 429.mcf base did not have enough runs!                                     #
+# 400.perlbench base did not have enough runs!                               #
+# 464.h264ref base did not have enough runs!                                 #
+# 462.libquantum base did not have enough runs!                              #
+# 401.bzip2 base did not have enough runs!                                   #
+# 403.gcc base did not have enough runs!                                     #
+# Unknown flags were used! See                                               #
+#      http://www.spec.org/auto/cpu2006/Docs/runspec.html#flagsurl           #
+# for information about how to get rid of this error.                        #
+#                                                                            #
+#   INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN -- INVALID RUN  #
+##############################################################################
+-----------------------------------------------------------------------------
+For questions about this result, please contact the tester.
+For other inquiries, please contact webmaster@spec.org.
+Copyright 2006 Standard Performance Evaluation Corporation
+Generated on Sat Feb 22 11:35:33 2020 by SPEC CPU2006 ASCII formatter v4626
