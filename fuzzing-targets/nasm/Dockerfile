@@ -4,7 +4,6 @@ MAINTAINER adrian.herrera02@gmail.com
 RUN curl -L https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.gz | tar xzvf -
 
 ENV TARGET "nasm"
-
 ENV TARGET_SRC "nasm-2.14.02"
 
 ENV BUILD_CMD_AFL   \

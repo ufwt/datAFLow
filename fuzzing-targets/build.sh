@@ -1,5 +1,7 @@
 #!/bin/bash -x
 
+TARGET_SRC=$(realpath ${TARGET_SRC})
+
 # Build AFL target
 mkdir -p ${TARGET}-afl/bin
 (cd ${TARGET_SRC} &&                                                        \
@@ -8,7 +10,7 @@ mkdir -p ${TARGET}-afl/bin
     export CXX="${AFL_PATH}/afl-clang-fast++" &&                            \
     export CFLAGS="-fsanitize=address" &&                                   \
     export CXXFLAGS="-fsanitize=address" &&                                 \
-    eval ${BUILD_CMD_AFL})
+    eval ${BUILD_CMD_AFL} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 find ${TARGET}-afl/bin -type f -executable                                  \
     -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
     --out-dir={}_deps {} \;
@@ -23,7 +25,7 @@ if [[ ! -z "${BUILD_CMD_AFL_DBG}" ]]; then
         export LLVM_CC_NAME="${AFL_PATH}/afl-clang-fast" &&                     \
         export LLVM_CXX_NAME="${AFL_PATH}/afl-clang-fast++" &&                  \
         export AFL_DEBUG="1" &&                                                 \
-        eval ${BUILD_CMD_AFL_DBG})
+        eval ${BUILD_CMD_AFL_DBG} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-afl-debug/bin -type f -executable                            \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
         --out-dir={}_deps {} \;
@@ -41,7 +43,7 @@ if [[ ! -z "${BUILD_CMD_ANGORA}" ]]; then
         export LD="${WORKDIR}/angora/bin/angora-clang" &&                       \
         export ANGORA_USE_ASAN="1"                                              \
         export USE_FAST="1" &&                                                  \
-        eval ${BUILD_CMD_ANGORA})
+        eval ${BUILD_CMD_ANGORA} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-angora-fast/bin -type f -executable                          \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
         --out-dir={}_deps {} \;
@@ -55,7 +57,7 @@ if [[ ! -z "${BUILD_CMD_ANGORA}" ]]; then
         export CXX="${WORKDIR}/angora/bin/angora-clang++" &&                    \
         export LD="${WORKDIR}/angora/bin/angora-clang" &&                       \
         export USE_TRACK="1" &&                                                 \
-        eval ${BUILD_CMD_ANGORA})
+        eval ${BUILD_CMD_ANGORA} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-angora-track/bin -type f -executable                         \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/get_libs.py          \
         --out-dir={}_deps {} \;
@@ -69,7 +71,7 @@ fi
     export CXX="${WORKDIR}/fuzzalloc-debug/src/tools/dataflow-collect-tag-sites++" &&   \
     export FUZZALLOC_WHITELIST="$(pwd)/whitelist.txt" &&                                \
     export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                        \
-    eval ${BUILD_CMD_DATAFLOW_TAGS})
+    eval ${BUILD_CMD_DATAFLOW_TAGS} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 python3 ${WORKDIR}/datAFLow/scripts/remove_duplicate_lines.py               \
     ${TARGET_SRC}/${TARGET}-tag-sites.csv > ${TARGET_SRC}/temp.csv &&       \
 mv ${TARGET_SRC}/temp.csv ${TARGET_SRC}/${TARGET}-tag-sites.csv
@@ -86,7 +88,7 @@ mkdir -p ${TARGET}-datAFLow-access/bin
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS})
+    eval ${BUILD_CMD_DATAFLOW_ACCESS} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 find ${TARGET}-datAFLow-access/bin -type f -executable                          \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
@@ -105,7 +107,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_DBG}" ]]; then
         export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
         export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
         export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-        eval ${BUILD_CMD_DATAFLOW_ACCESS_DBG})
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_DBG} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-datAFLow-access-debug/bin -type f -executable -exec          \
         get-bc {} \;
     find bin ${TARGET}-datAFLow-access-debug/bin -type f -executable            \
@@ -126,7 +128,7 @@ mkdir -p ${TARGET}-datAFLow-access-heapify-structs/bin
     export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS})
+    eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 find ${TARGET}-datAFLow-access-heapify-structs/bin -type f -executable      \
     -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
     --in-place --out-dir={}_deps {} \;
@@ -146,7 +148,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG}" ]]; then
         export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
         export FUZZALLOC_SENSITIVITY="mem-access" &&                                \
         export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-        eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG})
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_HEAPIFY_STRUCTS_DBG} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
         -exec get-bc {} \;
     find ${TARGET}-datAFLow-access-heapify-structs-debug/bin -type f -executable    \
@@ -166,7 +168,7 @@ mkdir -p ${TARGET}-datAFLow-access-idx/bin
     export CXXFLAGS="-fsanitize=address" &&                                     \
     export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX})
+    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 find ${TARGET}-datAFLow-access-idx/bin -type f -executable                  \
     -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
     --in-place --out-dir={}_deps {} \;
@@ -187,7 +189,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG}" ]]; then
         export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
         export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
         export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG})
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_DBG} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-datAFLow-access-idx-debug/bin -type f -executable            \
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
         --in-place --out-dir={}_deps {} \;
@@ -206,7 +208,7 @@ mkdir -p ${TARGET}-datAFLow-access-idx-heapify-structs/bin
     export FUZZALLOC_TAG_LOG="$(pwd)/${TARGET}-tag-sites.csv" &&                \
     export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
     export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
-    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS})
+    eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
 find ${TARGET}-datAFLow-access-idx-heapify-structs/bin -type f -executable  \
     -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py    \
     --in-place --out-dir={}_deps {} \;
@@ -228,7 +230,7 @@ if [[ ! -z "${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG}" ]]; then
         export FUZZALLOC_HEAPIFY_STRUCTS="1" &&                                     \
         export FUZZALLOC_SENSITIVITY="mem-access-idx" &&                            \
         export FUZZALLOC_DEBUG_INSTRUMENT="1" &&                                    \
-        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG})
+        eval ${BUILD_CMD_DATAFLOW_ACCESS_IDX_HEAPIFY_STRUCTS_DBG} 2>&1 | tee ${INSTALL_PREFIX}/build.log)
     find ${TARGET}-datAFLow-access-idx-heapify-structs-debug/bin -type f -executable\
         -exec python3 ${WORKDIR}/datAFLow/scripts/bintools/prelink_binary.py        \
         --in-place --out-dir={}_deps {} \;
