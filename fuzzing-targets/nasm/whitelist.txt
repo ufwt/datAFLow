@@ -1,5 +1,0 @@
-[fuzzalloc]
-fun:nasm_malloc
-fun:nasm_calloc
-fun:nasm_realloc
-fun:nasm_zalloc

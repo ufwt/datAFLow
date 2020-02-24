@@ -1,9 +1,0 @@
-[fuzzalloc]
-fun:yyalloc
-fun:yyrealloc
-
-fun:allocate_integer_array
-fun:reallocate_integer_array
-
-fun:allocate_array
-fun:reallocarray

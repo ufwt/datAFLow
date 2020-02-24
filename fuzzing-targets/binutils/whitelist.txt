@@ -1,6 +1,0 @@
-[fuzzalloc]
-fun:xcalloc
-fun:xmalloc
-fun:xmalloc_failed
-fun:xmalloc_set_program_name
-fun:xrealloc
