@@ -8,16 +8,15 @@ Author: Adrian Herrera
 
 
 from argparse import ArgumentParser
-from datetime import datetime
 from enum import Enum
-from itertools import cycle
 import logging
 import multiprocessing
 import os
 from shutil import which
-from subprocess import CalledProcessError, CompletedProcess, PIPE, TimeoutExpired
+from subprocess import PIPE, run
+from threading import Semaphore, Thread
+from time import sleep
 
-from psutil import Popen
 import yaml
 try:
     from yaml import CLoader as YamlLoader
@@ -114,7 +113,7 @@ def create_cmd(afl_fuzz_path, target_conf, target_dir, engine, out_dir, fts_dir,
     }
 
 
-def run_cmd(cpu, cmd_dict):
+def run_cmd(cmd_dict, sem):
     """Run AFL command."""
     env = os.environ.copy()
     env['AFL_NO_UI'] = '1'
@@ -125,24 +124,11 @@ def run_cmd(cpu, cmd_dict):
         env['LD_LIBRARY_PATH'] = '%s:%s' % (prefix_dir,
                                             env.get('LD_LIBRARY_PATH', ''))
 
-    logging.info('running `%s` on CPU %d', ' '.join(cmd_dict['cmd']), cpu)
-    with Popen(cmd_dict['cmd'], env=env, stdout=PIPE, stderr=PIPE) as proc:
-        try:
-            proc.cpu_affinity([cpu])
-            stdout, stderr = proc.communicate()
-        except TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            raise
-        except:
-            proc.kill()
-            raise
-        retcode = proc.poll()
-        if retcode:
-            raise CalledProcessError(retcode, proc.args, output=stdout,
-                                     stderr=stderr)
+    logging.info('running `%s`', ' '.join(cmd_dict['cmd']))
+    proc = run(cmd_dict['cmd'], env=env, stdout=PIPE, stderr=PIPE)
+    sem.release()
 
-    return cmd_dict, CompletedProcess(proc.args, retcode, stdout, stderr)
+    return proc
 
 def write_logs(proc, out_dir):
     """Write logs from the given process."""
@@ -156,23 +142,18 @@ def write_logs(proc, out_dir):
 
 def run_fuzzers(cmds, num_processes):
     """Run the list of AFL commands."""
-    cmds_w_cpu = zip(cycle(range(num_processes)), cmds)
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        try:
-            results = pool.starmap_async(run_cmd, cmds_w_cpu).get()
-            for cmd, proc in results:
-                write_logs(proc, cmd['out_dir'])
-        except CalledProcessError as err:
-            with open('fuzz-failures.log', 'a') as failure_log:
-                logging.error('fuzzer failure: %s', err)
-                time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                failure_log.write('time: %s' % time)
-                failure_log.write('cmd: %s\n' % ' '.join(err.cmd))
-                failure_log.write('stdout: %s\n' % err.stdout)
-                failure_log.write('stderr: %s\n' % err.stderr)
+    threads = []
+    sem = Semaphore(num_processes)
 
-        pool.close()
-        pool.join()
+    for cmd in cmds:
+        sem.acquire()
+        thread = Thread(target=run_cmd, args=(cmd, sem))
+        threads.append(thread)
+        thread.start()
+        sleep(2)
+
+    for thread in threads:
+        thread.join()
 
 
 def main():
