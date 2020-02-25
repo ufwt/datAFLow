@@ -102,7 +102,7 @@ def create_cmd(afl_fuzz_path, target_conf, target_dir, engine, out_dir, fts_dir,
         cmd_args.extend(['-t', target_conf['timeout']])
 
     cmd_args.extend(['--', os.path.join(target_dir,
-                                        '%s-%s' % (target, engine))])
+                                        '%s-%s' % (target, engine)), '-100'])
 
     return {
         'target_dir': target_dir,
