@@ -24,6 +24,9 @@ except ImportError:
     from yaml import YamlLoader
 
 
+SEMAPHORE = None
+
+
 class FTSLocation(Enum):
     """Describes the location of inputs seeds or an AFL dictionary."""
     FUZZER_TEST_SUITE = 1
@@ -113,8 +116,10 @@ def create_cmd(afl_fuzz_path, target_conf, target_dir, engine, out_dir, fts_dir,
     }
 
 
-def run_cmd(cmd_dict, sem):
+def run_cmd(cmd_dict):
     """Run AFL command."""
+    global SEMAPHORE
+
     env = os.environ.copy()
     env['AFL_NO_UI'] = '1'
 
@@ -126,9 +131,10 @@ def run_cmd(cmd_dict, sem):
 
     logging.info('running `%s`', ' '.join(cmd_dict['cmd']))
     proc = run(cmd_dict['cmd'], env=env, stdout=PIPE, stderr=PIPE)
-    sem.release()
 
-    return proc
+    SEMAPHORE.release()
+    write_logs(proc, cmd_dict['out_dir'])
+
 
 def write_logs(proc, out_dir):
     """Write logs from the given process."""
@@ -143,11 +149,13 @@ def write_logs(proc, out_dir):
 def run_fuzzers(cmds, num_processes):
     """Run the list of AFL commands."""
     threads = []
-    sem = Semaphore(num_processes)
+
+    global SEMAPHORE
+    SEMAPHORE = Semaphore(num_processes)
 
     for cmd in cmds:
-        sem.acquire()
-        thread = Thread(target=run_cmd, args=(cmd, sem))
+        SEMAPHORE.acquire()
+        thread = Thread(target=run_cmd, args=(cmd, ))
         threads.append(thread)
         thread.start()
         sleep(2)
