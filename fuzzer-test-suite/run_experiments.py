@@ -14,6 +14,7 @@ from itertools import cycle
 import logging
 import multiprocessing
 import os
+from shutil import which
 from subprocess import CalledProcessError, CompletedProcess, PIPE, TimeoutExpired
 
 from psutil import Popen
@@ -78,9 +79,9 @@ def create_cmd(afl_fuzz_path, target_conf, target_dir, engine, out_dir, fts_dir,
     target = target_conf['name']
 
     cmd_args = [
-        'time',
+        which('time'),
         '--verbose',
-        'timeout',
+        which('timeout'),
         '--preserve-status',
         '%ds' % timeout,
         afl_fuzz_path,
