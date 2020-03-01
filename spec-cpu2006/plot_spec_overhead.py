@@ -17,7 +17,7 @@ rc('text', usetex=True)
 FUZZERS = {'afl': 'AFL',
         'angora-track': 'Angora',
         'datAFLow-access': 'datAFLow (A)',
-        'datAFLow-access-idx': 'datAFLow (A + I)',
+        'datAFLow-access-idx': 'datAFLow (A + O)',
         }
 
 
