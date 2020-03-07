@@ -4,28 +4,35 @@ set -ex
 
 ROOT_DIR=${PWD}
 SRC_DIR=$(dirname "$(readlink -f "${0}")")
-AFL_PATH=${SRC_DIR}/../afl-2.52b
 CONFIG_DIR=${SRC_DIR}/config
 
 # Activate SPEC CPU2006 environment
 source ${ROOT_DIR}/shrc
 
-# Get AFL
-export AFL_PATH
-make -j -C ${AFL_PATH} clean all
-make -j -C ${AFL_PATH}/llvm_mode clean all
-ln -sf ${AFL_PATH} afl
+# Get and build AFL
+if [[ ! -d "afl" ]]; then
+  git clone --depth=1 https://github.com/google/AFL afl
+  make -C afl -j && make -C afl/llvm_mode -j
+fi
 
-# Build the fuzzalloc libraries and tools
+# Get and build datAFLow
+if [[ ! -d "datAFLow" ]]; then
+  git clone --depth=1 https://github.com/HexHive/datAFlow datAFLow
+fi
+
 mkdir -p fuzzalloc-release && \
-  (cd fuzzalloc-release && cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Release ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-release &&
+  cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On \
+    -DCMAKE_BUILD_TYPE=Release datAFLow/fuzzalloc &&
   make -j)
 mkdir -p fuzzalloc-debug && \
-  (cd fuzzalloc-debug && cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On -DCMAKE_BUILD_TYPE=Debug ${SRC_DIR}/../fuzzalloc &&
+  (cd fuzzalloc-debug &&
+  cmake -DFUZZALLOC_USE_LOCKS=False -DAFL_INSTRUMENT=On \
+    -DCMAKE_BUILD_TYPE=Debug datAFLow/fuzzalloc &&
   make -j)
 
 # Add helper scripts
-ln -sf ${SRC_DIR}/../scripts fuzzalloc-scripts
+ln -sf datAFLow/scripts fuzzalloc-scripts
 
 # Add config files and cleanup previous results
 for CONFIG in $(ls ${CONFIG_DIR}); do

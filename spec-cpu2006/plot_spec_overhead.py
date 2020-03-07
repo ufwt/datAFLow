@@ -14,11 +14,12 @@ rc('font', **{'family': 'serif', 'serif': ['Palatino']})
 rc('text', usetex=True)
 
 
-FUZZERS = {'afl': 'AFL',
-        'angora-track': 'Angora',
-        'datAFLow-access': 'datAFLow (A)',
-        'datAFLow-access-idx': 'datAFLow (A + O)',
-        }
+FUZZERS = {
+    'afl': 'AFL',
+    'angora-track': 'Angora',
+    'datAFLow-access': 'datAFLow (A)',
+    'datAFLow-access-idx': 'datAFLow (A + O)',
+}
 
 
 THIS_DIR = os.path.dirname(__file__)
@@ -48,13 +49,14 @@ def main():
     plt.xlabel('Benchmark')
     plt.ylabel('Overhead (×)')
     plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=num_fuzzers)
-    plt.xticks(index + bar_width, df.target, rotation=90)
+    plt.xticks(index + bar_width * (num_fuzzers - 1) / 2, df.target,
+               rotation=90)
     plt.ylim(bottom=1)
 
     print('Mean overhead')
     print(df.mean(skipna=None))
 
-    plt.savefig(sys.argv[1], bbox_inches="tight")
+    plt.savefig(sys.argv[1], bbox_inches='tight')
 
 
 if __name__ == '__main__':
