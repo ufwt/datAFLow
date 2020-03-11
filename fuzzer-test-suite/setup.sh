@@ -7,8 +7,6 @@ FUZZER_TEST_SUITE="fuzzer-test-suite"
 FUZZER_TEST_SUITE_URL="https://github.com/adrianherrera/${FUZZER_TEST_SUITE}.git"
 FUZZER_TEST_SUITE_BRANCH="datAFLow-experiments"
 
-AFL_PATH=${SRC_DIR}/../afl-2.52b
-
 COMPILER_RT="compiler-rt"
 COMPILER_RT_TAR="compiler-rt-7.0.1.src.tar.xz"
 COMPILER_RT_URL="http://releases.llvm.org/7.0.1/${COMPILER_RT_TAR}"
@@ -23,11 +21,11 @@ if [ ! -d "${FUZZER_TEST_SUITE}" ]; then
   git clone -b ${FUZZER_TEST_SUITE_BRANCH} --single-branch --depth 1 -- ${FUZZER_TEST_SUITE_URL} ${FUZZER_TEST_SUITE}
 fi
 
-# Build AFL
-export AFL_PATH
-make -j -C ${AFL_PATH} clean all
-make -j -C ${AFL_PATH}/llvm_mode clean all
-ln -sf ${AFL_PATH} AFL
+# Get and build AFL
+if [[ ! -d "AFL" ]]; then
+  git clone --depth=1 https://github.com/Google/AFL
+  make -C AFL -j && make -C AFL/llvm_mode -j
+fi
 
 # Get compiler-rt
 if [ -z "${COMPILER_RT_PATH-}" ]; then
