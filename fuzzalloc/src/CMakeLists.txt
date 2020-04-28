@@ -5,7 +5,7 @@ endif()
 set(SVF_PATH "${CMAKE_SOURCE_DIR}/../SVF")
 
 if(NOT DEFINED AFL_PATH)
-    message(FATAL_ERROR "AFL source code path not specified."
+    message(FATAL_ERROR "AFL source code path not specified. "
                         "Set AFL_PATH appropriately.")
 endif()
 
