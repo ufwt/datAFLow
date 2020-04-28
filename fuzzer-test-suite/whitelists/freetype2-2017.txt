@@ -1,7 +1,0 @@
-[fuzzalloc]
-fun:ft_alloc
-fun:ft_realloc
-fun:ft_mem_alloc
-fun:ft_mem_qalloc
-fun:ft_mem_realloc
-fun:ft_mem_qrealloc

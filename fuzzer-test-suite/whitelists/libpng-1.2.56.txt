@@ -1,4 +1,0 @@
-[fuzzalloc]
-fun:png_malloc*
-fun:png_calloc*
-fun:png_realloc*

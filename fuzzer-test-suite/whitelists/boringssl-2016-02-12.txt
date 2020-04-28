@@ -1,5 +1,0 @@
-[fuzzalloc]
-fun:OPENSSL_malloc
-fun:OPENSSL_realloc
-
-fun:OPENSSL_realloc_clean
