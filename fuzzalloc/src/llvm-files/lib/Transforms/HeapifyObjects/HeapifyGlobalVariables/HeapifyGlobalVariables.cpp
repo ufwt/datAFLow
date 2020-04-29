@@ -187,32 +187,37 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
     const GlobalVariable *OrigGV, GlobalVariable *NewGV) {
   LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << '\n');
 
-  ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
-  Type *ElemTy = ArrayTy->getArrayElementType();
-  uint64_t ArrayNumElems = ArrayTy->getNumElements();
-
-  // Insert a new global variable into the module and initialize it with a call
-  // to malloc in a constructor
+  // Create a new module constructor to initialize the heapified global variable
   IRBuilder<> IRB = createHeapifyCtor(NewGV);
 
   Module *M = NewGV->getParent();
   LLVMContext &C = M->getContext();
   const DataLayout &DL = M->getDataLayout();
+  Type *ValueTy = OrigGV->getValueType();
+  Instruction *MallocCall = nullptr;
 
-  auto *MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
-                                       OrigGV->getName() + "_malloccall");
+  if (auto *ArrayTy = dyn_cast<ArrayType>(ValueTy)) {
+    // Insert array malloc call
+    Type *ElemTy = ArrayTy->getArrayElementType();
+    uint64_t ArrayNumElems = ArrayTy->getNumElements();
+
+    MallocCall = createArrayMalloc(C, DL, IRB, ElemTy, ArrayNumElems,
+                                   OrigGV->getName() + "_malloccall");
+  }
+
+  assert(MallocCall && "malloc call should have been created");
 
   // If the array had an initializer, we must replicate it so that the malloc'd
   // memory contains the same data when it is first used. How we do this depends
   // on the initializer
   if (OrigGV->hasInitializer()) {
-    if (isa<ConstantAggregateZero>(OrigGV->getInitializer())) {
+    if (auto *Initializer =
+            dyn_cast<ConstantAggregateZero>(OrigGV->getInitializer())) {
       // If the initializer is the zeroinitializer, just memset the dynamically
       // allocated memory to zero. Likewise with heapified allocas that are
       // memset, reset the destination alignment
-      uint64_t Size = DL.getTypeAllocSize(ElemTy) * ArrayNumElems;
       IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
-                       Size, NewGV->getAlignment());
+                       DL.getTypeAllocSize(ValueTy), NewGV->getAlignment());
     } else if (auto *Initializer =
                    dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
       // If the initializer is a constant data array, we store the data into the
@@ -240,6 +245,7 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
 }
 
 void HeapifyGlobalVariables::expandConstantExpression(ConstantExpr *ConstExpr) {
+  // Recursively expand constant users of the constant user
   for (auto *U : ConstExpr->users()) {
     if (auto *CE = dyn_cast<ConstantExpr>(U)) {
       expandConstantExpression(CE);
@@ -271,7 +277,7 @@ void HeapifyGlobalVariables::expandConstantExpression(ConstantExpr *ConstExpr) {
       Inst->replaceUsesOfWith(ConstExpr, NewInst);
     } else if (auto *Const = dyn_cast<Constant>(U)) {
       Const->removeDeadConstantUsers();
-      assert(Const->hasNUses(0));
+      assert(Const->hasNUses(0) && "Constant expression should have no users");
     } else {
       assert(false && "Unsupported constant expression user");
     }
@@ -283,9 +289,14 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   LLVM_DEBUG(dbgs() << "heapifying " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
-  ArrayType *ArrayTy = cast<ArrayType>(OrigGV->getValueType());
-  PointerType *NewGVTy = ArrayTy->getArrayElementType()->getPointerTo();
+  const Type *ValueTy = OrigGV->getValueType();
+  PointerType *NewGVTy = nullptr;
 
+  if (ValueTy->isArrayTy()) {
+    NewGVTy = ValueTy->getArrayElementType()->getPointerTo();
+  }
+
+  assert(NewGVTy && "New global variable must have a type");
   GlobalVariable *NewGV = new GlobalVariable(
       *M, NewGVTy, /* isConstant */ false, OrigGV->getLinkage(),
       // If the original global variable had an initializer, replace it with the
@@ -310,11 +321,11 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
     NumOfGlobalVariableArrayHeapification++;
   }
 
-  // Now that the global variable has been heapified to the heap, it must be
-  // loaded before we can do anything else to it. This means that any constant
-  // expressions that used the old global variable must be replaced, because a
-  // load instruction is not a constant expression. To do this we just expand
-  // all constant expression users to instructions.
+  // Now that the global variable has been heapified, it must be loaded before
+  // we can do anything else to it. This means that any constant expressions
+  // that used the old global variable must be replaced, because a load
+  // instruction is not a constant expression. To do this we just expand all
+  // constant expression users to instructions
   SmallVector<ConstantExpr *, 4> CEUsers;
   for (auto *U : OrigGV->users()) {
     if (auto *CE = dyn_cast<ConstantExpr>(U)) {

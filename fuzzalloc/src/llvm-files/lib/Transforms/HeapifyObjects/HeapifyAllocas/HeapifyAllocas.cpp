@@ -43,10 +43,8 @@ static cl::opt<bool> ClHeapifyStructs(
     cl::desc("Heapify alloca structs that have their address taken"),
     cl::init(false), cl::Hidden);
 
-STATISTIC(NumOfAllocaArrayHeapification,
-          "Number of alloca array heapifications.");
-STATISTIC(NumOfAllocaStructHeapification,
-          "Number of alloca struct heapifications.");
+STATISTIC(NumOfAllocaHeapification,
+          "Number of alloca heapifications.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {
@@ -80,6 +78,8 @@ public:
 
 char HeapifyAllocas::ID = 0;
 
+// This defines our "heapification policy"; i.e., which allocas who's def/use
+// chains will be tracked at runtime
 static bool isHeapifiableAlloca(AllocaInst *Alloca) {
   Type *AllocatedTy = Alloca->getAllocatedType();
 
@@ -90,12 +90,12 @@ static bool isHeapifiableAlloca(AllocaInst *Alloca) {
 
   // Otherwise, heapify structs/classes (not from libstdc++) that escape the
   // function in which they are defined
-
-  if (!isa<StructType>(AllocatedTy)) {
+  StructType *AllocatedStructTy = dyn_cast<StructType>(AllocatedTy);
+  if (!AllocatedStructTy || !ClHeapifyStructs) {
     return false;
   }
 
-  StructType *AllocatedStructTy = cast<StructType>(AllocatedTy);
+  // Check if the struct escapes
   bool AllocaEscapes = PointerMayBeCaptured(Alloca, /* ReturnCaptures */ false,
                                             /*StoreCaptures */ true);
   if (!AllocaEscapes) {
@@ -143,10 +143,10 @@ Instruction *HeapifyAllocas::insertMalloc(const AllocaInst *OrigAlloca,
 
     MallocCall = createArrayMalloc(C, *this->DL, IRB, ElemTy, ArrayNumElems,
                                    NewAlloca->getName() + "_malloccall");
-  } else if (auto *StructTy = dyn_cast<StructType>(AllocatedTy)) {
-    // Insert struct malloc call
-    MallocCall = createStructMalloc(C, *this->DL, IRB, StructTy,
-                                    NewAlloca->getName() + "_malloccall");
+  } else {
+    // Insert non-array malloc call
+    MallocCall = createMalloc(C, *this->DL, IRB, AllocatedTy,
+                              NewAlloca->getName() + "_malloccall");
   }
 
   assert(MallocCall && "malloc call should have been created");
@@ -203,21 +203,16 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   //  - `Size` is the size of the allocated buffer (equivalent to
   //    `NumElements * sizeof(Ty)`)
 
-  Type *AllocatedTy = Alloca->getAllocatedType();
+  const Type *AllocatedTy = Alloca->getAllocatedType();
   PointerType *NewAllocaTy = nullptr;
-  bool AllocatedTyIsArray = false;
 
   if (AllocatedTy->isArrayTy()) {
     NewAllocaTy = AllocatedTy->getArrayElementType()->getPointerTo();
-    AllocatedTyIsArray = true;
-  } else if (AllocatedTy->isStructTy()) {
-    if (!ClHeapifyStructs) {
-      return nullptr;
-    }
+  } else {
     NewAllocaTy = AllocatedTy->getPointerTo();
   }
 
-  assert(NewAllocaTy && "new alloca must have a type");
+  assert(NewAllocaTy && "New alloca must have a type");
   auto *NewAlloca = new AllocaInst(NewAllocaTy, this->DL->getAllocaAddrSpace(),
                                    Alloca->getName(), Alloca);
   NewAlloca->setMetadata(M->getMDKindID("fuzzalloc.heapified_alloca"),
@@ -280,12 +275,7 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     }
   }
 
-  if (AllocatedTyIsArray) {
-    NumOfAllocaArrayHeapification++;
-  } else {
-    NumOfAllocaStructHeapification++;
-  }
-
+  NumOfAllocaHeapification++;
   return NewAlloca;
 }
 
@@ -354,9 +344,6 @@ bool HeapifyAllocas::runOnModule(Module &M) {
       // Heapify the alloca. After this function call all users of the original
       // alloca are invalid
       auto *NewAlloca = heapifyAlloca(Alloca, LifetimeStarts);
-      if (!NewAlloca) {
-        continue;
-      }
 
       // Check if any of the original allocas (which have now been replaced by
       // the new alloca) are used in any lifetime.end intrinsics. If they are,
@@ -384,12 +371,10 @@ bool HeapifyAllocas::runOnModule(Module &M) {
     }
   }
 
-  printStatistic(M, NumOfAllocaArrayHeapification);
-  printStatistic(M, NumOfAllocaStructHeapification);
+  printStatistic(M, NumOfAllocaHeapification);
   printStatistic(M, NumOfFreeInsert);
 
-  return NumOfAllocaArrayHeapification > 0 ||
-         NumOfAllocaStructHeapification > 0;
+  return NumOfAllocaHeapification > 0;
 }
 
 static RegisterPass<HeapifyAllocas>

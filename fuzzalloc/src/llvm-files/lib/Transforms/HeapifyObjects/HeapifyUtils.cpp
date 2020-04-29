@@ -88,9 +88,8 @@ Instruction *createArrayMalloc(LLVMContext &C, const DataLayout &DL,
                                 nullptr, Name);
 }
 
-Instruction *createStructMalloc(LLVMContext &C, const DataLayout &DL,
-                                IRBuilder<> &IRB, StructType *AllocTy,
-                                const Twine &Name) {
+Instruction *createMalloc(LLVMContext &C, const DataLayout &DL,
+                          IRBuilder<> &IRB, Type *AllocTy, const Twine &Name) {
   IntegerType *IntPtrTy = DL.getIntPtrType(C);
 
   return CallInst::CreateMalloc(&*IRB.GetInsertPoint(), IntPtrTy, AllocTy,

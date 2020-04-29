@@ -34,7 +34,7 @@ const unsigned kHeapifyGVCtorAndDtorPriority = 0;
 /// Update a GEP instruction to use the given value
 llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
 
-/// Returns \c true if the given type is heapifiable to dynamic allocation.
+/// Returns \c true if the given type is heapifiable
 bool isHeapifiableType(llvm::Type *);
 
 /// Returns \c true if the given value is from the C++ standard library and
@@ -47,11 +47,11 @@ llvm::Instruction *createArrayMalloc(llvm::LLVMContext &,
                                      llvm::IRBuilder<> &, llvm::Type *,
                                      uint64_t, const llvm::Twine & = "");
 
-/// Create a callc to \c malloc that will create a struct on the heap.
-llvm::Instruction *createStructMalloc(llvm::LLVMContext &,
-                                      const llvm::DataLayout &,
-                                      llvm::IRBuilder<> &, llvm::StructType *,
-                                      const llvm::Twine & = "");
+/// Create a call to \c malloc that will create a non-array variable on the
+/// heap.
+llvm::Instruction *createMalloc(llvm::LLVMContext &, const llvm::DataLayout &,
+                                llvm::IRBuilder<> &, llvm::Type *,
+                                const llvm::Twine & = "");
 
 /// Insert a call to \c free for the given alloca
 void insertFree(llvm::Value *, llvm::Instruction *);
