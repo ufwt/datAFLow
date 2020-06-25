@@ -2,55 +2,86 @@
 string(REPLACE " -Werror" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 
 set(SVF_SOURCES
-    ${SVF_PATH}/lib/Util/AnalysisUtil.cpp
-    ${SVF_PATH}/lib/Util/CPPUtil.cpp
-    ${SVF_PATH}/lib/Util/DataFlowUtil.cpp
-    ${SVF_PATH}/lib/Util/PTACallGraph.cpp
-    ${SVF_PATH}/lib/Util/RaceAnnotator.cpp
-    ${SVF_PATH}/lib/Util/ThreadCallGraph.cpp
-    ${SVF_PATH}/lib/Util/BreakConstantExpr.cpp
-    ${SVF_PATH}/lib/Util/Conditions.cpp
-    ${SVF_PATH}/lib/Util/ExtAPI.cpp
-    ${SVF_PATH}/lib/Util/PathCondAllocator.cpp
-    ${SVF_PATH}/lib/Util/PTAStat.cpp
-    ${SVF_PATH}/lib/Util/ThreadAPI.cpp
-    ${SVF_PATH}/lib/Util/SVFModule.cpp
-    ${SVF_PATH}/lib/MemoryModel/ConsG.cpp
-    ${SVF_PATH}/lib/MemoryModel/LocationSet.cpp
-    ${SVF_PATH}/lib/MemoryModel/LocMemModel.cpp
-    ${SVF_PATH}/lib/MemoryModel/MemModel.cpp
-    ${SVF_PATH}/lib/MemoryModel/PAGBuilder.cpp
-    ${SVF_PATH}/lib/MemoryModel/PAG.cpp
-    ${SVF_PATH}/lib/MemoryModel/CHA.cpp
-    ${SVF_PATH}/lib/MemoryModel/PointerAnalysis.cpp
-    ${SVF_PATH}/lib/MSSA/MemPartition.cpp
-    ${SVF_PATH}/lib/MSSA/MemRegion.cpp
-    ${SVF_PATH}/lib/MSSA/MemSSA.cpp
-    ${SVF_PATH}/lib/MSSA/SVFGBuilder.cpp
-    ${SVF_PATH}/lib/MSSA/SVFG.cpp
-    ${SVF_PATH}/lib/MSSA/SVFGOPT.cpp
-    ${SVF_PATH}/lib/MSSA/SVFGStat.cpp
-    ${SVF_PATH}/lib/SABER/DoubleFreeChecker.cpp
-    ${SVF_PATH}/lib/SABER/FileChecker.cpp
-    ${SVF_PATH}/lib/SABER/LeakChecker.cpp
-    ${SVF_PATH}/lib/SABER/ProgSlice.cpp
-    ${SVF_PATH}/lib/SABER/SaberAnnotator.cpp
-    ${SVF_PATH}/lib/SABER/SaberCheckerAPI.cpp
-    ${SVF_PATH}/lib/SABER/SaberSVFGBuilder.cpp
-    ${SVF_PATH}/lib/SABER/SrcSnkDDA.cpp
-    ${SVF_PATH}/lib/WPA/Andersen.cpp
-    ${SVF_PATH}/lib/WPA/AndersenLCD.cpp
-    ${SVF_PATH}/lib/WPA/AndersenStat.cpp
-    ${SVF_PATH}/lib/WPA/AndersenWave.cpp
-    ${SVF_PATH}/lib/WPA/AndersenWaveDiff.cpp
-    ${SVF_PATH}/lib/WPA/AndersenWaveDiffWithType.cpp
-    ${SVF_PATH}/lib/WPA/FlowSensitive.cpp
-    ${SVF_PATH}/lib/WPA/FlowSensitiveStat.cpp
-    ${SVF_PATH}/lib/WPA/TypeAnalysis.cpp
-    ${SVF_PATH}/lib/WPA/WPAPass.cpp)
+   ${SVF_PATH}/lib/DDA/ContextDDA.cpp
+   ${SVF_PATH}/lib/DDA/DDAClient.cpp
+   ${SVF_PATH}/lib/DDA/DDAPass.cpp
+   ${SVF_PATH}/lib/DDA/DDAStat.cpp
+   ${SVF_PATH}/lib/DDA/FlowDDA.cpp
+   ${SVF_PATH}/lib/Graphs/ConsG.cpp
+   ${SVF_PATH}/lib/Graphs/ExternalPAG.cpp
+   ${SVF_PATH}/lib/Graphs/ICFG.cpp
+   ${SVF_PATH}/lib/Graphs/OfflineConsG.cpp
+   ${SVF_PATH}/lib/Graphs/PAG.cpp
+   ${SVF_PATH}/lib/Graphs/PTACallGraph.cpp
+   ${SVF_PATH}/lib/Graphs/SVFG.cpp
+   ${SVF_PATH}/lib/Graphs/SVFGOPT.cpp
+   ${SVF_PATH}/lib/Graphs/SVFGStat.cpp
+   ${SVF_PATH}/lib/Graphs/ThreadCallGraph.cpp
+   ${SVF_PATH}/lib/Graphs/VFG.cpp
+   ${SVF_PATH}/lib/MemoryModel/LocationSet.cpp
+   ${SVF_PATH}/lib/MemoryModel/MemModel.cpp
+   ${SVF_PATH}/lib/MemoryModel/PAGBuilderFromFile.cpp
+   ${SVF_PATH}/lib/MemoryModel/PointerAnalysis.cpp
+   ${SVF_PATH}/lib/MemoryModel/PointerAnalysisImpl.cpp
+   ${SVF_PATH}/lib/MSSA/MemPartition.cpp
+   ${SVF_PATH}/lib/MSSA/MemRegion.cpp
+   ${SVF_PATH}/lib/MSSA/MemSSA.cpp
+   ${SVF_PATH}/lib/MSSA/SVFGBuilder.cpp
+   ${SVF_PATH}/lib/MTA/FSMPTA.cpp
+   ${SVF_PATH}/lib/MTA/LockAnalysis.cpp
+   ${SVF_PATH}/lib/MTA/MHP.cpp
+   ${SVF_PATH}/lib/MTA/MTAAnnotator.cpp
+   ${SVF_PATH}/lib/MTA/MTA.cpp
+   ${SVF_PATH}/lib/MTA/MTAResultValidator.cpp
+   ${SVF_PATH}/lib/MTA/MTAStat.cpp
+   ${SVF_PATH}/lib/MTA/PCG.cpp
+   ${SVF_PATH}/lib/MTA/TCT.cpp
+   ${SVF_PATH}/lib/SABER/DoubleFreeChecker.cpp
+   ${SVF_PATH}/lib/SABER/FileChecker.cpp
+   ${SVF_PATH}/lib/SABER/LeakChecker.cpp
+   ${SVF_PATH}/lib/SABER/ProgSlice.cpp
+   ${SVF_PATH}/lib/SABER/SaberAnnotator.cpp
+   ${SVF_PATH}/lib/SABER/SaberCheckerAPI.cpp
+   ${SVF_PATH}/lib/SABER/SaberSVFGBuilder.cpp
+   ${SVF_PATH}/lib/SABER/SrcSnkDDA.cpp
+   ${SVF_PATH}/lib/SVF-FE/BreakConstantExpr.cpp
+   ${SVF_PATH}/lib/SVF-FE/CallGraphBuilder.cpp
+   ${SVF_PATH}/lib/SVF-FE/CHG.cpp
+   ${SVF_PATH}/lib/SVF-FE/CPPUtil.cpp
+   ${SVF_PATH}/lib/SVF-FE/DataFlowUtil.cpp
+   ${SVF_PATH}/lib/SVF-FE/DCHG.cpp
+   ${SVF_PATH}/lib/SVF-FE/Graph2Json.cpp
+   ${SVF_PATH}/lib/SVF-FE/ICFGBuilder.cpp
+   ${SVF_PATH}/lib/SVF-FE/LLVMModule.cpp
+   ${SVF_PATH}/lib/SVF-FE/LLVMUtil.cpp
+   ${SVF_PATH}/lib/SVF-FE/LocMemModel.cpp
+   ${SVF_PATH}/lib/SVF-FE/PAGBuilder.cpp
+   ${SVF_PATH}/lib/SVF-FE/SymbolTableInfo.cpp
+   ${SVF_PATH}/lib/Util/Conditions.cpp
+   ${SVF_PATH}/lib/Util/ExtAPI.cpp
+   ${SVF_PATH}/lib/Util/PathCondAllocator.cpp
+   ${SVF_PATH}/lib/Util/PTAStat.cpp
+   ${SVF_PATH}/lib/Util/SVFUtil.cpp
+   ${SVF_PATH}/lib/Util/ThreadAPI.cpp
+   ${SVF_PATH}/lib/Util/TypeBasedHeapCloning.cpp
+   ${SVF_PATH}/lib/WPA/Andersen.cpp
+   ${SVF_PATH}/lib/WPA/AndersenHCD.cpp
+   ${SVF_PATH}/lib/WPA/AndersenHLCD.cpp
+   ${SVF_PATH}/lib/WPA/AndersenLCD.cpp
+   ${SVF_PATH}/lib/WPA/AndersenSCD.cpp
+   ${SVF_PATH}/lib/WPA/AndersenSFR.cpp
+   ${SVF_PATH}/lib/WPA/AndersenStat.cpp
+   ${SVF_PATH}/lib/WPA/AndersenWaveDiff.cpp
+   ${SVF_PATH}/lib/WPA/AndersenWaveDiffWithType.cpp
+   ${SVF_PATH}/lib/WPA/CSC.cpp
+   ${SVF_PATH}/lib/WPA/FlowSensitive.cpp
+   ${SVF_PATH}/lib/WPA/FlowSensitiveStat.cpp
+   ${SVF_PATH}/lib/WPA/FlowSensitiveTBHC.cpp
+   ${SVF_PATH}/lib/WPA/TypeAnalysis.cpp
+   ${SVF_PATH}/lib/WPA/WPAPass.cpp)
 
 include_directories(${SVF_PATH}/include)
 
-add_llvm_loadable_module(fuzzalloc-svf-analysis
-                         ${SVF_SOURCES} SVFAnalysis.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-svf-analysis
+                 MODULE ${SVF_SOURCES} SVFAnalysis.cpp
+                 PLUGIN_TOOL opt)
