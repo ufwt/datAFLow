@@ -1,3 +1,3 @@
-add_llvm_loadable_module(fuzzalloc-expand-gv-initializers
-                         ${SOURCE} ExpandGVInitializers.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-expand-gv-initializers
+                 MODULE ${SOURCE} ExpandGVInitializers.cpp
+                 PLUGIN_TOOL opt)

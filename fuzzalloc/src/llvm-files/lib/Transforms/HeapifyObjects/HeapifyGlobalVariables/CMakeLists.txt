@@ -1,3 +1,3 @@
-add_llvm_loadable_module(fuzzalloc-heapify-global-vars
-                         ${SOURCE} HeapifyGlobalVariables.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-heapify-global-vars
+                 MODULE ${SOURCE} HeapifyGlobalVariables.cpp
+                 PLUGIN_TOOL opt)

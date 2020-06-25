@@ -1,3 +1,3 @@
-add_llvm_loadable_module(fuzzalloc-collect-stats
-                         CollectStats.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-collect-stats
+                 MODULE CollectStats.cpp
+                 PLUGIN_TOOL opt)

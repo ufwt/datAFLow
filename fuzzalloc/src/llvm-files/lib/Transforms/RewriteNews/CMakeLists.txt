@@ -1,3 +1,3 @@
-add_llvm_loadable_module(fuzzalloc-rewrite-news
-                         RewriteNews.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-rewrite-news
+                 MODULE RewriteNews.cpp
+                 PLUGIN_TOOL opt)

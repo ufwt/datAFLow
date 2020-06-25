@@ -266,8 +266,8 @@ static GEPOperator *getUseSiteGEP(Value *V, DataLayout &DL,
                Operator::getOpcode(V) == Instruction::AddrSpaceCast) {
       V = cast<Operator>(V)->getOperand(0);
     } else {
-      if (auto CS = CallSite(V)) {
-        if (auto *RP = getArgumentAliasingToReturnedPointer(CS)) {
+      if (auto *Call = dyn_cast<CallBase>(V)) {
+        if (auto *RP = getArgumentAliasingToReturnedPointer(Call)) {
           V = RP;
           continue;
         }

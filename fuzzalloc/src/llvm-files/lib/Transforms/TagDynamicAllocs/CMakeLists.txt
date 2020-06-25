@@ -1,4 +1,4 @@
-add_llvm_loadable_module(fuzzalloc-tag-dyn-allocs
-                         TagDynamicAllocs.cpp
-                         LINK_LIBS fuzzalloc-utils
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-tag-dyn-allocs
+                 MODULE TagDynamicAllocs.cpp
+                 LINK_LIBS fuzzalloc-utils
+                 PLUGIN_TOOL opt)

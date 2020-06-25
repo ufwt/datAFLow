@@ -1,3 +1,3 @@
-add_llvm_loadable_module(fuzzalloc-collect-tag-sites
-                         CollectTagSites.cpp
-                         PLUGIN_TOOL opt)
+add_llvm_library(fuzzalloc-collect-tag-sites
+                 MODULE CollectTagSites.cpp
+                 PLUGIN_TOOL opt)

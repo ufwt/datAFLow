@@ -95,7 +95,7 @@ Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
       // An alloca can't be further simplified.
       return V;
     } else {
-      if (auto CS = CallSite(V)) {
+      if (auto *Call = dyn_cast<CallBase>(V)) {
         // CaptureTracking can know about special capturing properties of some
         // intrinsics like launder.invariant.group, that can't be expressed with
         // the attributes, but have properties like returning aliasing pointer.
@@ -105,7 +105,7 @@ Value *GetUnderlyingObjectThroughLoads(Value *V, const DataLayout &DL,
         // because it should be in sync with CaptureTracking. Not using it may
         // cause weird miscompilations where 2 aliasing pointers are assumed to
         // noalias.
-        if (auto *RP = getArgumentAliasingToReturnedPointer(CS)) {
+        if (auto *RP = getArgumentAliasingToReturnedPointer(Call)) {
           V = RP;
           continue;
         }
