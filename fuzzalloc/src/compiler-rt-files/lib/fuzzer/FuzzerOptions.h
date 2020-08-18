@@ -53,16 +53,12 @@ struct FuzzingOptions {
   bool PrintNewCovPcs = false;
   int PrintNewCovFuncs = 0;
   bool PrintFinalStats = false;
-  bool PrintMutationStats = false;
   bool PrintCorpusStats = false;
   bool PrintCoverage = false;
-  bool PrintUnstableStats = false;
-  bool PrintDataFlows = false;
-  int HandleUnstable = 0;
   bool DumpCoverage = false;
   bool DetectLeaks = true;
   int PurgeAllocatorIntervalSec = 1;
-  int TraceMalloc = 0;
+  int  TraceMalloc = 0;
   bool HandleAbrt = false;
   bool HandleBus = false;
   bool HandleFpe = false;
@@ -75,6 +71,6 @@ struct FuzzingOptions {
   bool HandleUsr2 = false;
 };
 
-} // namespace fuzzer
+}  // namespace fuzzer
 
-#endif // LLVM_FUZZER_OPTIONS_H
+#endif  // LLVM_FUZZER_OPTIONS_H

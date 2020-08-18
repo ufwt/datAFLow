@@ -30,7 +30,8 @@ namespace fuzzer {
 // conditions inside __sanitizer_cov_trace_cmp*.
 // After the unit has been executed we may decide to use the contents of
 // this table to populate a Dictionary.
-template <class T, size_t kSizeT> struct TableOfRecentCompares {
+template<class T, size_t kSizeT>
+struct TableOfRecentCompares {
   static const size_t kSize = kSizeT;
   struct Pair {
     T A, B;
@@ -47,14 +48,14 @@ template <class T, size_t kSizeT> struct TableOfRecentCompares {
   Pair Table[kSize];
 };
 
-template <size_t kSizeT> struct MemMemTable {
+template <size_t kSizeT>
+struct MemMemTable {
   static const size_t kSize = kSizeT;
   Word MemMemWords[kSize];
   Word EmptyWord;
 
   void Add(const uint8_t *Data, size_t Size) {
-    if (Size <= 2)
-      return;
+    if (Size <= 2) return;
     Size = std::min(Size, Word::GetMaxSize());
     size_t Idx = SimpleFastHash(Data, Size) % kSize;
     MemMemWords[Idx].Set(Data, Size);
@@ -62,8 +63,7 @@ template <size_t kSizeT> struct MemMemTable {
   const Word &Get(size_t Idx) {
     for (size_t i = 0; i < kSize; i++) {
       const Word &W = MemMemWords[(Idx + i) % kSize];
-      if (W.size())
-        return W;
+      if (W.size()) return W;
     }
     EmptyWord.Set(nullptr, 0);
     return EmptyWord;
@@ -71,15 +71,10 @@ template <size_t kSizeT> struct MemMemTable {
 };
 
 class TracePC {
-public:
+ public:
   static const size_t kNumPCs = 1 << 21;
   // How many bits of PC are used from __sanitizer_cov_trace_pc.
   static const size_t kTracePcBits = 18;
-
-  enum HandleUnstableOptions {
-    MinUnstable = 1,
-    ZeroUnstable = 2,
-  };
 
   void HandleInit(uint32_t *Start, uint32_t *Stop);
   void HandleInline8bitCountersInit(uint8_t *Start, uint8_t *Stop);
@@ -93,7 +88,6 @@ public:
   void SetUseDataFlow(bool UDF) { UseDataFlow = UDF; }
   void SetPrintNewPCs(bool P) { DoPrintNewPCs = P; }
   void SetPrintNewFuncs(size_t P) { NumPrintNewFuncs = P; }
-  void SetPrintDataFlows(bool P) { DoPrintDataFlows = P; }
   void UpdateObservedPCs();
   template <class Callback> void CollectFeatures(Callback CB) const;
 
@@ -115,9 +109,9 @@ public:
 
   void PrintCoverage();
   void DumpCoverage();
-  void PrintUnstableStats();
 
-  template <class CallBack> void IterateCoveredFunctions(CallBack CB);
+  template<class CallBack>
+  void IterateCoveredFunctions(CallBack CB);
 
   void AddValueForMemcmp(void *caller_pc, const void *s1, const void *s2,
                          size_t n, bool StopAtZero);
@@ -138,7 +132,8 @@ public:
   void RecordInitialStack();
   uintptr_t GetMaxStackOffset() const;
 
-  template <class CallBack> void ForEachObservedPC(CallBack CB) {
+  template<class CallBack>
+  void ForEachObservedPC(CallBack CB) {
     for (auto PC : ObservedPCs)
       CB(PC);
   }
@@ -146,23 +141,11 @@ public:
   void SetFocusFunction(const std::string &FuncName);
   bool ObservedFocusFunction();
 
-  void InitializeUnstableCounters();
-  void UpdateUnstableCounters(int UnstableMode);
-  void ApplyUnstableCounters();
-
 private:
-  struct UnstableEdge {
-    uint8_t Counter;
-    bool IsUnstable;
-  };
-
-  UnstableEdge UnstableCounters[kNumPCs];
-
   bool UseCounters = false;
   uint32_t UseValueProfileMask = false;
   bool UseDataFlow = false;
   bool DoPrintNewPCs = false;
-  bool DoPrintDataFlows = false;
   size_t NumPrintNewFuncs = 0;
 
   struct Module {
@@ -170,22 +153,18 @@ private:
   };
 
   Module Modules[4096];
-  size_t NumModules; // linker-initialized.
+  size_t NumModules;  // linker-initialized.
   size_t NumGuards;  // linker-initialized.
 
-  struct {
-    uint8_t *Start, *Stop;
-  } ModuleCounters[4096];
-  size_t NumModulesWithInline8bitCounters; // linker-initialized.
+  struct { uint8_t *Start, *Stop; } ModuleCounters[4096];
+  size_t NumModulesWithInline8bitCounters;  // linker-initialized.
   size_t NumInline8bitCounters;
 
   struct PCTableEntry {
     uintptr_t PC, PCFlags;
   };
 
-  struct {
-    const PCTableEntry *Start, *Stop;
-  } ModulePCTable[4096];
+  struct { const PCTableEntry *Start, *Stop; } ModulePCTable[4096];
   size_t NumPCTables;
   size_t NumPCsInPCTables;
 
@@ -193,11 +172,9 @@ private:
   uintptr_t *PCs() const;
 
   Set<uintptr_t> ObservedPCs;
-  std::unordered_map<uintptr_t, uintptr_t> ObservedFuncs; // PC => Counter.
+  std::unordered_map<uintptr_t, uintptr_t> ObservedFuncs;  // PC => Counter.
 
-  template <class Callback> void IterateInline8bitCounters(Callback CB) const;
-
-  std::pair<size_t, size_t> FocusFunction = {-1, -1}; // Module and PC IDs.
+  std::pair<size_t, size_t> FocusFunction = {-1, -1};  // Module and PC IDs.
 
   ValueBitMap ValueProfileMap;
   ValueBitMap DataFlowMap;
@@ -206,9 +183,9 @@ private:
 
 template <class Callback>
 // void Callback(size_t FirstFeature, size_t Idx, uint8_t Value);
-ATTRIBUTE_NO_SANITIZE_ALL void
-ForEachNonZeroByte(const uint8_t *Begin, const uint8_t *End,
-                   size_t FirstFeature, Callback Handle8bitCounter) {
+ATTRIBUTE_NO_SANITIZE_ALL
+void ForEachNonZeroByte(const uint8_t *Begin, const uint8_t *End,
+                        size_t FirstFeature, Callback Handle8bitCounter) {
   typedef uintptr_t LargeType;
   const size_t Step = sizeof(LargeType) / sizeof(uint8_t);
   const size_t StepMask = Step - 1;
@@ -232,44 +209,39 @@ ForEachNonZeroByte(const uint8_t *Begin, const uint8_t *End,
 }
 
 // Given a non-zero Counter returns a number in the range [0,7].
-template <class T> unsigned CounterToFeature(T Counter) {
-  // Returns a feature number by placing Counters into buckets as illustrated
-  // below.
-  //
-  // Counter bucket: [1] [2] [3] [4-7] [8-15] [16-31] [32-127] [128+]
-  // Feature number:  0   1   2    3     4       5       6       7
-  //
-  // This is a heuristic taken from AFL (see
-  // http://lcamtuf.coredump.cx/afl/technical_details.txt).
-  //
-  // This implementation may change in the future so clients should
-  // not rely on it.
-  assert(Counter);
-  unsigned Bit = 0;
-  /**/ if (Counter >= 128)
-    Bit = 7;
-  else if (Counter >= 32)
-    Bit = 6;
-  else if (Counter >= 16)
-    Bit = 5;
-  else if (Counter >= 8)
-    Bit = 4;
-  else if (Counter >= 4)
-    Bit = 3;
-  else if (Counter >= 3)
-    Bit = 2;
-  else if (Counter >= 2)
-    Bit = 1;
-  return Bit;
+template<class T>
+unsigned CounterToFeature(T Counter) {
+    // Returns a feature number by placing Counters into buckets as illustrated
+    // below.
+    //
+    // Counter bucket: [1] [2] [3] [4-7] [8-15] [16-31] [32-127] [128+]
+    // Feature number:  0   1   2    3     4       5       6       7
+    //
+    // This is a heuristic taken from AFL (see
+    // http://lcamtuf.coredump.cx/afl/technical_details.txt).
+    //
+    // This implementation may change in the future so clients should
+    // not rely on it.
+    assert(Counter);
+    unsigned Bit = 0;
+    /**/ if (Counter >= 128) Bit = 7;
+    else if (Counter >= 32) Bit = 6;
+    else if (Counter >= 16) Bit = 5;
+    else if (Counter >= 8) Bit = 4;
+    else if (Counter >= 4) Bit = 3;
+    else if (Counter >= 3) Bit = 2;
+    else if (Counter >= 2) Bit = 1;
+    return Bit;
 }
 
-template <class Callback> // void Callback(size_t Feature)
-ATTRIBUTE_NO_SANITIZE_ADDRESS __attribute__((noinline)) void
-TracePC::CollectFeatures(Callback HandleFeature) const {
+template <class Callback>  // void Callback(size_t Feature)
+ATTRIBUTE_NO_SANITIZE_ADDRESS
+__attribute__((noinline))
+void TracePC::CollectFeatures(Callback HandleFeature) const {
   uint8_t *Counters = this->Counters();
   size_t N = GetNumPCs();
-  auto Handle8bitCounter = [&](size_t FirstFeature, size_t Idx,
-                               uint8_t Counter) {
+  auto Handle8bitCounter = [&](size_t FirstFeature,
+                               size_t Idx, uint8_t Counter) {
     if (UseCounters)
       HandleFeature(FirstFeature + Idx * 8 + CounterToFeature(Counter));
     else
@@ -296,8 +268,9 @@ TracePC::CollectFeatures(Callback HandleFeature) const {
   FirstFeature += (ExtraCountersEnd() - ExtraCountersBegin()) * 8;
 
   if (UseValueProfileMask) {
-    ValueProfileMap.ForEach(
-        [&](size_t Idx) { HandleFeature(FirstFeature + Idx); });
+    ValueProfileMap.ForEach([&](size_t Idx) {
+      HandleFeature(FirstFeature + Idx);
+    });
     FirstFeature += ValueProfileMap.SizeInBits();
   }
 
@@ -308,11 +281,9 @@ TracePC::CollectFeatures(Callback HandleFeature) const {
 
   // Step function, grows similar to 8 * Log_2(A).
   auto StackDepthStepFunction = [](uint32_t A) -> uint32_t {
-    if (!A)
-      return A;
+    if (!A) return A;
     uint32_t Log2 = Log(A);
-    if (Log2 < 3)
-      return A;
+    if (Log2 < 3) return A;
     Log2 -= 3;
     return (Log2 + 1) * 8 + ((A >> Log2) & 7);
   };
@@ -326,6 +297,6 @@ TracePC::CollectFeatures(Callback HandleFeature) const {
 
 extern TracePC TPC;
 
-} // namespace fuzzer
+}  // namespace fuzzer
 
-#endif // LLVM_FUZZER_TRACE_PC
+#endif  // LLVM_FUZZER_TRACE_PC

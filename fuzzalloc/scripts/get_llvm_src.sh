@@ -5,5 +5,5 @@
 set -ex
 
 # Get LLVM
-git clone -b release/7.x --single-branch --depth 1 https://github.com/llvm/llvm-project.git
+git clone -b release/8.x --single-branch --depth 1 https://github.com/llvm/llvm-project.git
 mv -f llvm-project/{.[!.],}* .

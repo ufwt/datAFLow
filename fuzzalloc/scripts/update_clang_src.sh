@@ -13,7 +13,7 @@ LLVM=$(pwd)
 CLANG_DEST=${LLVM}/clang
 
 ln -sf ${CLANG_SRC}/include/clang/Driver/CC1Options.td ${CLANG_DEST}/include/clang/Driver/CC1Options.td
-ln -sf ${CLANG_SRC}/include/clang/Frontend/CodeGenOptions.def ${CLANG_DEST}/include/clang/Frontend/CodeGenOptions.def
+ln -sf ${CLANG_SRC}/include/clang/Basic/CodeGenOptions.def ${CLANG_DEST}/include/clang/Basic/CodeGenOptions.def
 
 ln -sf ${CLANG_SRC}/lib/CodeGen/CGExprConstant.cpp ${CLANG_DEST}/lib/CodeGen/CGExprConstant.cpp
 ln -sf ${CLANG_SRC}/lib/Frontend/CompilerInvocation.cpp ${CLANG_DEST}/lib/Frontend/CompilerInvocation.cpp

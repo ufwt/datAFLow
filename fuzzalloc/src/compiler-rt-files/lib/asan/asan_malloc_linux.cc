@@ -15,10 +15,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "sanitizer_common/sanitizer_platform.h"
-#if SANITIZER_FREEBSD || SANITIZER_FUCHSIA || SANITIZER_LINUX ||               \
+#if SANITIZER_FREEBSD || SANITIZER_FUCHSIA || SANITIZER_LINUX || \
     SANITIZER_NETBSD || SANITIZER_RTEMS || SANITIZER_SOLARIS
 
-// clang-format off
 #include "sanitizer_common/sanitizer_allocator_checks.h"
 #include "sanitizer_common/sanitizer_errno.h"
 #include "sanitizer_common/sanitizer_tls_get_addr.h"
@@ -27,10 +26,9 @@
 #include "asan_internal.h"
 #include "asan_malloc_local.h"
 #include "asan_stack.h"
-// clang-format on
 
 // ---------------------- Replacement functions ---------------- {{{1
-using namespace __asan; // NOLINT
+using namespace __asan;  // NOLINT
 
 #if FUZZALLOC_ASAN
 #include "sanitizer_common/fuzzalloc.h"
@@ -50,7 +48,7 @@ static INLINE bool IsInDlsymAllocPool(const void *ptr) {
 
 static void *AllocateFromLocalPool(uptr size_in_bytes) {
   uptr size_in_words = RoundUpTo(size_in_bytes, kWordSize) / kWordSize;
-  void *mem = (void *)&alloc_memory_for_dlsym[allocated_for_dlsym];
+  void *mem = (void*)&alloc_memory_for_dlsym[allocated_for_dlsym];
   last_dlsym_alloc_size_in_words = size_in_words;
   allocated_for_dlsym += size_in_words;
   CHECK_LT(allocated_for_dlsym, kDlsymAllocPoolSize);
@@ -62,7 +60,7 @@ static void DeallocateFromLocalPool(const void *ptr) {
   // error messages and instead uses malloc followed by free. To avoid pool
   // exhaustion due to long object filenames, handle that special case here.
   uptr prev_offset = allocated_for_dlsym - last_dlsym_alloc_size_in_words;
-  void *prev_mem = (void *)&alloc_memory_for_dlsym[prev_offset];
+  void *prev_mem = (void*)&alloc_memory_for_dlsym[prev_offset];
   if (prev_mem == ptr) {
     REAL(memset)(prev_mem, 0, last_dlsym_alloc_size_in_words * kWordSize);
     allocated_for_dlsym = prev_offset;
@@ -81,25 +79,27 @@ static int PosixMemalignFromLocalPool(void **memptr, uptr alignment,
   uptr aligned_addr = RoundUpTo(addr, alignment);
   uptr aligned_size = RoundUpTo(size_in_bytes, kWordSize);
 
-  uptr *end_mem = (uptr *)(aligned_addr + aligned_size);
+  uptr *end_mem = (uptr*)(aligned_addr + aligned_size);
   uptr allocated = end_mem - alloc_memory_for_dlsym;
   if (allocated >= kDlsymAllocPoolSize)
     return errno_ENOMEM;
 
   allocated_for_dlsym = allocated;
-  *memptr = (void *)aligned_addr;
+  *memptr = (void*)aligned_addr;
   return 0;
 }
 
 #if SANITIZER_RTEMS
-void *MemalignFromLocalPool(uptr alignment, uptr size) {
+void* MemalignFromLocalPool(uptr alignment, uptr size) {
   void *ptr = nullptr;
   alignment = Max(alignment, kWordSize);
   PosixMemalignFromLocalPool(&ptr, alignment, size);
   return ptr;
 }
 
-bool IsFromLocalPool(const void *ptr) { return IsInDlsymAllocPool(ptr); }
+bool IsFromLocalPool(const void *ptr) {
+  return IsInDlsymAllocPool(ptr);
+}
 #endif
 
 static INLINE bool MaybeInDlsym() {
@@ -107,7 +107,9 @@ static INLINE bool MaybeInDlsym() {
   return !SANITIZER_FUCHSIA && asan_init_is_running;
 }
 
-static INLINE bool UseLocalPool() { return EarlyMalloc() || MaybeInDlsym(); }
+static INLINE bool UseLocalPool() {
+  return EarlyMalloc() || MaybeInDlsym();
+}
 
 static void *ReallocFromLocalPool(void *ptr, uptr size) {
   const uptr offset = (uptr)ptr - (uptr)alloc_memory_for_dlsym;
@@ -142,7 +144,7 @@ INTERCEPTOR(void, cfree, void *ptr) {
 }
 #endif // SANITIZER_INTERCEPT_CFREE
 
-INTERCEPTOR(void *, malloc, uptr size) {
+INTERCEPTOR(void*, malloc, uptr size) {
   if (UNLIKELY(UseLocalPool()))
     // Hack: dlsym calls malloc before REAL(malloc) is retrieved from dlsym.
     return AllocateFromLocalPool(size);
@@ -151,7 +153,7 @@ INTERCEPTOR(void *, malloc, uptr size) {
   return asan_malloc(size, &stack);
 }
 
-INTERCEPTOR(void *, calloc, uptr nmemb, uptr size) {
+INTERCEPTOR(void*, calloc, uptr nmemb, uptr size) {
   if (UNLIKELY(UseLocalPool()))
     // Hack: dlsym calls calloc before REAL(calloc) is retrieved from dlsym.
     return AllocateFromLocalPool(nmemb * size);
@@ -160,7 +162,7 @@ INTERCEPTOR(void *, calloc, uptr nmemb, uptr size) {
   return asan_calloc(nmemb, size, &stack);
 }
 
-INTERCEPTOR(void *, realloc, void *ptr, uptr size) {
+INTERCEPTOR(void*, realloc, void *ptr, uptr size) {
   if (UNLIKELY(IsInDlsymAllocPool(ptr)))
     return ReallocFromLocalPool(ptr, size);
   if (UNLIKELY(UseLocalPool()))
@@ -213,12 +215,12 @@ INTERCEPTOR(void *, __tagged_realloc, TAG_T alloc_site_tag, void *ptr,
 #endif // FUZZALLOC_ASAN
 
 #if SANITIZER_INTERCEPT_MEMALIGN
-INTERCEPTOR(void *, memalign, uptr boundary, uptr size) {
+INTERCEPTOR(void*, memalign, uptr boundary, uptr size) {
   GET_STACK_TRACE_MALLOC;
   return asan_memalign(boundary, size, &stack, FROM_MALLOC);
 }
 
-INTERCEPTOR(void *, __libc_memalign, uptr boundary, uptr size) {
+INTERCEPTOR(void*, __libc_memalign, uptr boundary, uptr size) {
   GET_STACK_TRACE_MALLOC;
   void *res = asan_memalign(boundary, size, &stack, FROM_MALLOC);
   DTLS_on_libc_memalign(res, size);
@@ -227,7 +229,7 @@ INTERCEPTOR(void *, __libc_memalign, uptr boundary, uptr size) {
 #endif // SANITIZER_INTERCEPT_MEMALIGN
 
 #if SANITIZER_INTERCEPT_ALIGNED_ALLOC
-INTERCEPTOR(void *, aligned_alloc, uptr boundary, uptr size) {
+INTERCEPTOR(void*, aligned_alloc, uptr boundary, uptr size) {
   GET_STACK_TRACE_MALLOC;
   return asan_aligned_alloc(boundary, size, &stack);
 }
@@ -254,7 +256,9 @@ INTERCEPTOR(struct fake_mallinfo, mallinfo, void) {
   return res;
 }
 
-INTERCEPTOR(int, mallopt, int cmd, int value) { return -1; }
+INTERCEPTOR(int, mallopt, int cmd, int value) {
+  return 0;
+}
 #endif // SANITIZER_INTERCEPT_MALLOPT_AND_MALLINFO
 
 INTERCEPTOR(int, posix_memalign, void **memptr, uptr alignment, uptr size) {
@@ -264,19 +268,21 @@ INTERCEPTOR(int, posix_memalign, void **memptr, uptr alignment, uptr size) {
   return asan_posix_memalign(memptr, alignment, size, &stack);
 }
 
-INTERCEPTOR(void *, valloc, uptr size) {
+INTERCEPTOR(void*, valloc, uptr size) {
   GET_STACK_TRACE_MALLOC;
   return asan_valloc(size, &stack);
 }
 
 #if SANITIZER_INTERCEPT_PVALLOC
-INTERCEPTOR(void *, pvalloc, uptr size) {
+INTERCEPTOR(void*, pvalloc, uptr size) {
   GET_STACK_TRACE_MALLOC;
   return asan_pvalloc(size, &stack);
 }
 #endif // SANITIZER_INTERCEPT_PVALLOC
 
-INTERCEPTOR(void, malloc_stats, void) { __asan_print_accumulated_stats(); }
+INTERCEPTOR(void, malloc_stats, void) {
+  __asan_print_accumulated_stats();
+}
 
 #if SANITIZER_ANDROID
 // Format of __libc_malloc_dispatch has changed in Android L.
@@ -299,27 +305,20 @@ struct MallocDebugL {
   uptr (*malloc_usable_size)(void *mem);
   void *(*memalign)(uptr alignment, uptr bytes);
   int (*posix_memalign)(void **memptr, uptr alignment, uptr size);
-  void *(*pvalloc)(uptr size);
+  void* (*pvalloc)(uptr size);
   void *(*realloc)(void *oldMem, uptr bytes);
-  void *(*valloc)(uptr size);
+  void* (*valloc)(uptr size);
 };
 
-ALIGNED(32)
-const MallocDebugK asan_malloc_dispatch_k = {
+ALIGNED(32) const MallocDebugK asan_malloc_dispatch_k = {
     WRAP(malloc),  WRAP(free),     WRAP(calloc),
     WRAP(realloc), WRAP(memalign), WRAP(malloc_usable_size)};
 
-ALIGNED(32)
-const MallocDebugL asan_malloc_dispatch_l = {WRAP(calloc),
-                                             WRAP(free),
-                                             WRAP(mallinfo),
-                                             WRAP(malloc),
-                                             WRAP(malloc_usable_size),
-                                             WRAP(memalign),
-                                             WRAP(posix_memalign),
-                                             WRAP(pvalloc),
-                                             WRAP(realloc),
-                                             WRAP(valloc)};
+ALIGNED(32) const MallocDebugL asan_malloc_dispatch_l = {
+    WRAP(calloc),         WRAP(free),               WRAP(mallinfo),
+    WRAP(malloc),         WRAP(malloc_usable_size), WRAP(memalign),
+    WRAP(posix_memalign), WRAP(pvalloc),            WRAP(realloc),
+    WRAP(valloc)};
 
 namespace __asan {
 void ReplaceSystemMalloc() {
@@ -335,14 +334,15 @@ void ReplaceSystemMalloc() {
       *__libc_malloc_dispatch_p = (void *)&asan_malloc_dispatch_l;
   }
 }
-} // namespace __asan
+}  // namespace __asan
 
 #else  // SANITIZER_ANDROID
 
 namespace __asan {
-void ReplaceSystemMalloc() {}
-} // namespace __asan
-#endif // SANITIZER_ANDROID
+void ReplaceSystemMalloc() {
+}
+}  // namespace __asan
+#endif  // SANITIZER_ANDROID
 
-#endif // SANITIZER_FREEBSD || SANITIZER_FUCHSIA || SANITIZER_LINUX ||
-       // SANITIZER_NETBSD || SANITIZER_SOLARIS
+#endif  // SANITIZER_FREEBSD || SANITIZER_FUCHSIA || SANITIZER_LINUX ||
+        // SANITIZER_NETBSD || SANITIZER_SOLARIS

@@ -260,8 +260,7 @@ void Fuzzer::ExitCallback() {
 }
 
 void Fuzzer::MaybeExitGracefully() {
-  if (!GracefulExitRequested)
-    return;
+  if (!GracefulExitRequested) return;
   Printf("==%lu== INFO: libFuzzer: exiting as requested\n", GetPid());
   PrintFinalStats();
   _Exit(0);
@@ -277,7 +276,8 @@ NO_SANITIZE_MEMORY
 void Fuzzer::AlarmCallback() {
   assert(Options.UnitTimeoutSec > 0);
   // In Windows Alarm callback is executed by a different thread.
-#if !LIBFUZZER_WINDOWS
+  // NetBSD's current behavior needs this change too.
+#if !LIBFUZZER_WINDOWS && !LIBFUZZER_NETBSD
   if (!InFuzzingThread())
     return;
 #endif
@@ -356,14 +356,10 @@ void Fuzzer::PrintStats(const char *Where, const char *End, size_t Units) {
 void Fuzzer::PrintFinalStats() {
   if (Options.PrintCoverage)
     TPC.PrintCoverage();
-  if (Options.PrintUnstableStats)
-    TPC.PrintUnstableStats();
   if (Options.DumpCoverage)
     TPC.DumpCoverage();
   if (Options.PrintCorpusStats)
     Corpus.PrintStats();
-  if (Options.PrintMutationStats)
-    MD.PrintMutationStats();
   if (!Options.PrintFinalStats)
     return;
   size_t ExecPerSec = execPerSec();
@@ -452,34 +448,6 @@ void Fuzzer::PrintPulseAndReportSlowInput(const uint8_t *Data, size_t Size) {
   }
 }
 
-void Fuzzer::CheckForUnstableCounters(const uint8_t *Data, size_t Size) {
-  auto CBSetupAndRun = [&]() {
-    ScopedEnableMsanInterceptorChecks S;
-    UnitStartTime = system_clock::now();
-    TPC.ResetMaps();
-    RunningUserCallback = true;
-    CB(Data, Size);
-    RunningUserCallback = false;
-    UnitStopTime = system_clock::now();
-  };
-
-  // Copy original run counters into our unstable counters
-  TPC.InitializeUnstableCounters();
-
-  // First Rerun
-  CBSetupAndRun();
-  TPC.UpdateUnstableCounters(Options.HandleUnstable);
-
-  // Second Rerun
-  CBSetupAndRun();
-  TPC.UpdateUnstableCounters(Options.HandleUnstable);
-
-  // Move minimum hit counts back to ModuleInline8bitCounters
-  if (Options.HandleUnstable == TracePC::MinUnstable ||
-      Options.HandleUnstable == TracePC::ZeroUnstable)
-    TPC.ApplyUnstableCounters();
-}
-
 bool Fuzzer::RunOne(const uint8_t *Data, size_t Size, bool MayDeleteFile,
                     InputInfo *II, bool *FoundUniqFeatures) {
   if (!Size)
@@ -490,17 +458,6 @@ bool Fuzzer::RunOne(const uint8_t *Data, size_t Size, bool MayDeleteFile,
   UniqFeatureSetTmp.clear();
   size_t FoundUniqFeaturesOfII = 0;
   size_t NumUpdatesBefore = Corpus.NumFeatureUpdates();
-  bool NewFeaturesUnstable = false;
-
-  if (Options.HandleUnstable || Options.PrintUnstableStats) {
-    TPC.CollectFeatures([&](size_t Feature) {
-      if (Corpus.IsFeatureNew(Feature, Size, Options.Shrink))
-        NewFeaturesUnstable = true;
-    });
-    if (NewFeaturesUnstable)
-      CheckForUnstableCounters(Data, Size);
-  }
-
   TPC.CollectFeatures([&](size_t Feature) {
     if (Corpus.AddFeature(Feature, Size, Options.Shrink))
       UniqFeatureSetTmp.push_back(Feature);
@@ -509,12 +466,10 @@ bool Fuzzer::RunOne(const uint8_t *Data, size_t Size, bool MayDeleteFile,
                              II->UniqFeatureSet.end(), Feature))
         FoundUniqFeaturesOfII++;
   });
-
   if (FoundUniqFeatures)
     *FoundUniqFeatures = FoundUniqFeaturesOfII;
   PrintPulseAndReportSlowInput(Data, Size);
   size_t NumNewFeatures = Corpus.NumFeatureUpdates() - NumUpdatesBefore;
-
   if (NumNewFeatures) {
     TPC.UpdateObservedPCs();
     Corpus.AddToCorpus({Data, Data + Size}, NumNewFeatures, MayDeleteFile,
@@ -719,10 +674,10 @@ void Fuzzer::MutateAndTestOne() {
                             /*DuringInitialCorpusExecution*/ false);
     if (NewCov) {
       ReportNewCoverage(&II, {CurrentUnitData, CurrentUnitData + Size});
-      break; // We will mutate this input more in the next rounds.
+      break;  // We will mutate this input more in the next rounds.
     }
     if (Options.ReduceDepth && !FoundUniqFeatures)
-      break;
+        break;
   }
 }
 
@@ -812,10 +767,9 @@ void Fuzzer::ReadAndExecuteSeedCorpora(const Vector<std::string> &CorpusDirs) {
 
 void Fuzzer::Loop(const Vector<std::string> &CorpusDirs) {
   ReadAndExecuteSeedCorpora(CorpusDirs);
-  DFT.Clear(); // No need for DFT any more.
+  DFT.Clear();  // No need for DFT any more.
   TPC.SetPrintNewPCs(Options.PrintNewCovPcs);
   TPC.SetPrintNewFuncs(Options.PrintNewCovFuncs);
-  TPC.SetPrintDataFlows(Options.PrintDataFlows);
   system_clock::time_point LastCorpusReload = system_clock::now();
   if (Options.DoCrossOver)
     MD.SetCorpus(&Corpus);

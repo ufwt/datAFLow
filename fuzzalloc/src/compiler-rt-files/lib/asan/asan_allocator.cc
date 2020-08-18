@@ -15,7 +15,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// clang-format off
 #include "asan_allocator.h"
 #include "asan_mapping.h"
 #include "asan_poisoning.h"
@@ -31,7 +30,6 @@
 #include "sanitizer_common/sanitizer_stackdepot.h"
 #include "sanitizer_common/sanitizer_quarantine.h"
 #include "lsan/lsan_common.h"
-// clang-format on
 
 namespace __asan {
 
@@ -78,14 +76,14 @@ static const uptr kAllocBegMagic = 0xCC6E96B9;
 
 struct ChunkHeader {
   // 1-st 8 bytes.
-  u32 chunk_state : 8; // Must be first.
-  u32 alloc_tid : 24;
+  u32 chunk_state       : 8;  // Must be first.
+  u32 alloc_tid         : 24;
 
-  u32 free_tid : 24;
-  u32 from_memalign : 1;
-  u32 alloc_type : 2;
-  u32 rz_log : 3;
-  u32 lsan_tag : 2;
+  u32 free_tid          : 24;
+  u32 from_memalign     : 1;
+  u32 alloc_type        : 2;
+  u32 rz_log            : 3;
+  u32 lsan_tag          : 2;
   // 2-nd 8 bytes
   // This field is used for small sizes. For large sizes it is equal to
   // SizeClassMap::kMaxSize and the actual size is stored in the
@@ -112,18 +110,18 @@ COMPILER_CHECK(kChunkHeader2Size <= 16);
 // CHUNK_ALLOCATED: the chunk is allocated and not yet freed.
 // CHUNK_QUARANTINE: the chunk was freed and put into quarantine zone.
 enum {
-  CHUNK_AVAILABLE = 0, // 0 is the default value even if we didn't set it.
-  CHUNK_ALLOCATED = 2,
+  CHUNK_AVAILABLE  = 0,  // 0 is the default value even if we didn't set it.
+  CHUNK_ALLOCATED  = 2,
   CHUNK_QUARANTINE = 3
 };
 
-struct AsanChunk : ChunkBase {
+struct AsanChunk: ChunkBase {
   uptr Beg() { return reinterpret_cast<uptr>(this) + kChunkHeaderSize; }
   uptr UsedSize(bool locked_version = false) {
     if (user_requested_size != SizeClassMap::kMaxSize)
       return user_requested_size;
     return *reinterpret_cast<uptr *>(
-        get_allocator().GetMetaData(AllocBeg(locked_version)));
+               get_allocator().GetMetaData(AllocBeg(locked_version)));
   }
   void *AllocBeg(bool locked_version = false) {
     if (from_memalign) {
@@ -132,7 +130,7 @@ struct AsanChunk : ChunkBase {
             reinterpret_cast<void *>(this));
       return get_allocator().GetBlockBegin(reinterpret_cast<void *>(this));
     }
-    return reinterpret_cast<void *>(Beg() - RZLog2Size(rz_log));
+    return reinterpret_cast<void*>(Beg() - RZLog2Size(rz_log));
   }
   bool AddrIsInside(uptr addr, bool locked_version = false) {
     return (addr >= Beg()) && (addr < Beg() + UsedSize(locked_version));
@@ -141,14 +139,17 @@ struct AsanChunk : ChunkBase {
 
 struct QuarantineCallback {
   QuarantineCallback(AllocatorCache *cache, BufferedStackTrace *stack)
-      : cache_(cache), stack_(stack) {}
+      : cache_(cache),
+        stack_(stack) {
+  }
 
   void Recycle(AsanChunk *m) {
     CHECK_EQ(m->chunk_state, CHUNK_QUARANTINE);
-    atomic_store((atomic_uint8_t *)m, CHUNK_AVAILABLE, memory_order_relaxed);
+    atomic_store((atomic_uint8_t*)m, CHUNK_AVAILABLE, memory_order_relaxed);
     CHECK_NE(m->alloc_tid, kInvalidTid);
     CHECK_NE(m->free_tid, kInvalidTid);
-    PoisonShadow(m->Beg(), RoundUpTo(m->UsedSize(), SHADOW_GRANULARITY),
+    PoisonShadow(m->Beg(),
+                 RoundUpTo(m->UsedSize(), SHADOW_GRANULARITY),
                  kAsanHeapLeftRedzoneMagic);
     void *p = reinterpret_cast<void *>(m->AllocBeg());
     if (p != m) {
@@ -181,11 +182,13 @@ struct QuarantineCallback {
     return res;
   }
 
-  void Deallocate(void *p) { get_allocator().Deallocate(cache_, p); }
+  void Deallocate(void *p) {
+    get_allocator().Deallocate(cache_, p);
+  }
 
-private:
-  AllocatorCache *const cache_;
-  BufferedStackTrace *const stack_;
+ private:
+  AllocatorCache* const cache_;
+  BufferedStackTrace* const stack_;
 };
 
 typedef Quarantine<QuarantineCallback, AsanChunk> AsanQuarantine;
@@ -351,22 +354,13 @@ struct Allocator {
   // -------------------- Helper methods. -------------------------
   uptr ComputeRZLog(uptr user_requested_size) {
     u32 rz_log =
-        user_requested_size <= 64 - 16
-            ? 0
-            : user_requested_size <= 128 - 32
-                  ? 1
-                  : user_requested_size <= 512 - 64
-                        ? 2
-                        : user_requested_size <= 4096 - 128
-                              ? 3
-                              : user_requested_size <= (1 << 14) - 256
-                                    ? 4
-                                    : user_requested_size <= (1 << 15) - 512
-                                          ? 5
-                                          : user_requested_size <=
-                                                    (1 << 16) - 1024
-                                                ? 6
-                                                : 7;
+      user_requested_size <= 64        - 16   ? 0 :
+      user_requested_size <= 128       - 32   ? 1 :
+      user_requested_size <= 512       - 64   ? 2 :
+      user_requested_size <= 4096      - 128  ? 3 :
+      user_requested_size <= (1 << 14) - 256  ? 4 :
+      user_requested_size <= (1 << 15) - 512  ? 5 :
+      user_requested_size <= (1 << 16) - 1024 ? 6 : 7;
     u32 min_rz = atomic_load(&min_redzone, memory_order_acquire);
     u32 max_rz = atomic_load(&max_redzone, memory_order_acquire);
     return Min(Max(rz_log, RZSize2Log(min_rz)), RZSize2Log(max_rz));
@@ -459,7 +453,7 @@ struct Allocator {
     if (size > kMaxAllowedMallocSize || needed_size > kMaxAllowedMallocSize) {
       if (AllocatorMayReturnNull()) {
         Report("WARNING: AddressSanitizer failed to allocate 0x%zx bytes\n",
-               (void *)size);
+               (void*)size);
         return nullptr;
       }
       ReportAllocationSizeTooBig(size, needed_size, kMaxAllowedMallocSize,
@@ -506,11 +500,11 @@ struct Allocator {
     m->rz_log = rz_log;
     u32 alloc_tid = t ? t->tid() : 0;
     m->alloc_tid = alloc_tid;
-    CHECK_EQ(alloc_tid, m->alloc_tid); // Does alloc_tid fit into the bitfield?
+    CHECK_EQ(alloc_tid, m->alloc_tid);  // Does alloc_tid fit into the bitfield?
     m->free_tid = kInvalidTid;
     m->from_memalign = user_beg != beg_plus_redzone;
     if (alloc_beg != chunk_beg) {
-      CHECK_LE(alloc_beg + 2 * sizeof(uptr), chunk_beg);
+      CHECK_LE(alloc_beg+ 2 * sizeof(uptr), chunk_beg);
       reinterpret_cast<uptr *>(alloc_beg)[0] = kAllocBegMagic;
       reinterpret_cast<uptr *>(alloc_beg)[1] = chunk_beg;
     }
@@ -568,7 +562,7 @@ struct Allocator {
   // Set quarantine flag if chunk is allocated, issue ASan error report on
   // available and quarantined chunks. Return true on success, false otherwise.
   bool AtomicallySetQuarantineFlagIfAllocated(AsanChunk *m, void *ptr,
-                                              BufferedStackTrace *stack) {
+                                   BufferedStackTrace *stack) {
     u8 old_chunk_state = CHUNK_ALLOCATED;
     // Flip the chunk_state atomically to avoid race on double-free.
     if (!atomic_compare_exchange_strong((atomic_uint8_t *)m, &old_chunk_state,
@@ -587,7 +581,7 @@ struct Allocator {
   void QuarantineChunk(AsanChunk *m, void *ptr, BufferedStackTrace *stack) {
     CHECK_EQ(m->chunk_state, CHUNK_QUARANTINE);
     CHECK_GE(m->alloc_tid, 0);
-    if (SANITIZER_WORDSIZE == 64) // On 32-bits this resides in user area.
+    if (SANITIZER_WORDSIZE == 64)  // On 32-bits this resides in user area.
       CHECK_EQ(m->free_tid, kInvalidTid);
     AsanThread *t = GetCurrentThread();
     m->free_tid = t ? t->tid() : 0;
@@ -597,7 +591,7 @@ struct Allocator {
     if (fl.max_free_fill_size > 0) {
       // We have to skip the chunk header, it contains free_context_id.
       uptr scribble_start = (uptr)m + kChunkHeaderSize + kChunkHeader2Size;
-      if (m->UsedSize() >= kChunkHeader2Size) { // Skip Header2 in user area.
+      if (m->UsedSize() >= kChunkHeader2Size) {  // Skip Header2 in user area.
         uptr size_to_fill = m->UsedSize() - kChunkHeader2Size;
         size_to_fill = Min(size_to_fill, (uptr)fl.max_free_fill_size);
         REAL(memset)((void *)scribble_start, fl.free_fill_byte, size_to_fill);
@@ -605,7 +599,8 @@ struct Allocator {
     }
 
     // Poison the region.
-    PoisonShadow(m->Beg(), RoundUpTo(m->UsedSize(), SHADOW_GRANULARITY),
+    PoisonShadow(m->Beg(),
+                 RoundUpTo(m->UsedSize(), SHADOW_GRANULARITY),
                  kAsanHeapFreeMagic);
 
     AsanStats &thread_stats = GetCurrentThreadStats();
@@ -629,15 +624,15 @@ struct Allocator {
   void Deallocate(void *ptr, uptr delete_size, uptr delete_alignment,
                   BufferedStackTrace *stack, AllocType alloc_type) {
     uptr p = reinterpret_cast<uptr>(ptr);
-    if (p == 0)
-      return;
+    if (p == 0) return;
 
     uptr chunk_beg = p - kChunkHeaderSize;
     AsanChunk *m = reinterpret_cast<AsanChunk *>(chunk_beg);
 
     // On Windows, uninstrumented DLLs may allocate memory before ASan hooks
     // malloc. Don't report an invalid free in this case.
-    if (SANITIZER_WINDOWS && !get_allocator().PointerIsMine(ptr)) {
+    if (SANITIZER_WINDOWS &&
+        !get_allocator().PointerIsMine(ptr)) {
       if (!IsSystemHeapAddress(p))
         ReportFreeNotMalloced(p, stack);
       return;
@@ -647,8 +642,7 @@ struct Allocator {
 
     // Must mark the chunk as quarantined before any changes to its metadata.
     // Do not quarantine given chunk if we failed to set CHUNK_QUARANTINE flag.
-    if (!AtomicallySetQuarantineFlagIfAllocated(m, ptr, stack))
-      return;
+    if (!AtomicallySetQuarantineFlagIfAllocated(m, ptr, stack)) return;
 
     if (m->alloc_type != alloc_type) {
       if (atomic_load(&alloc_dealloc_mismatch, memory_order_acquire)) {
@@ -928,8 +922,7 @@ struct Allocator {
 
   // Assumes alloc_beg == allocator.GetBlockBegin(alloc_beg).
   AsanChunk *GetAsanChunk(void *alloc_beg) {
-    if (!alloc_beg)
-      return nullptr;
+    if (!alloc_beg) return nullptr;
     if (!allocator.FromPrimary(alloc_beg)) {
       uptr *meta = reinterpret_cast<uptr *>(allocator.GetMetaData(alloc_beg));
       AsanChunk *m = reinterpret_cast<AsanChunk *>(meta[1]);
@@ -955,12 +948,9 @@ struct Allocator {
 
   uptr AllocationSize(uptr p) {
     AsanChunk *m = GetAsanChunkByAddr(p);
-    if (!m)
-      return 0;
-    if (m->chunk_state != CHUNK_ALLOCATED)
-      return 0;
-    if (m->Beg() != p)
-      return 0;
+    if (!m) return 0;
+    if (m->chunk_state != CHUNK_ALLOCATED) return 0;
+    if (m->Beg() != p) return 0;
     return m->UsedSize();
   }
 
@@ -976,8 +966,7 @@ struct Allocator {
       AsanChunk *m2 = nullptr;
       for (uptr l = 1; l < GetPageSizeCached(); l++) {
         m2 = GetAsanChunkByAddr(addr - l);
-        if (m2 == m1)
-          continue; // Still the same chunk.
+        if (m2 == m1) continue;  // Still the same chunk.
         break;
       }
       if (m2 && AsanChunkView(m2).AddrIsAtRight(addr, 1, &offset))
@@ -990,15 +979,15 @@ struct Allocator {
     AsanThread *t = GetCurrentThread();
     if (t) {
       AsanThreadLocalMallocStorage *ms = &t->malloc_storage();
-      quarantine.DrainAndRecycle(
-          GetQuarantineCache(ms),
-          QuarantineCallback(GetAllocatorCache(ms), stack));
+      quarantine.DrainAndRecycle(GetQuarantineCache(ms),
+                                 QuarantineCallback(GetAllocatorCache(ms),
+                                                    stack));
     }
     {
       SpinMutexLock l(&fallback_mutex);
-      quarantine.DrainAndRecycle(
-          &fallback_quarantine_cache,
-          QuarantineCallback(&fallback_allocator_cache, stack));
+      quarantine.DrainAndRecycle(&fallback_quarantine_cache,
+                                 QuarantineCallback(&fallback_allocator_cache,
+                                                    stack));
     }
 
     allocator.ForceReleaseToOS();
@@ -1022,7 +1011,9 @@ struct Allocator {
 
 static Allocator instance(LINKER_INITIALIZED);
 
-static AsanAllocator &get_allocator() { return instance.allocator; }
+static AsanAllocator &get_allocator() {
+  return instance.allocator;
+}
 
 bool AsanChunkView::IsValid() const {
   return chunk_ && chunk_->chunk_state != CHUNK_AVAILABLE;
@@ -1079,7 +1070,7 @@ AsanChunkView FindHeapChunkByAddress(uptr addr) {
   return instance.FindHeapChunkByAddress(addr);
 }
 AsanChunkView FindHeapChunkByAllocBeg(uptr addr) {
-  return AsanChunkView(instance.GetAsanChunk(reinterpret_cast<void *>(addr)));
+  return AsanChunkView(instance.GetAsanChunk(reinterpret_cast<void*>(addr)));
 }
 
 void AsanThreadLocalMallocStorage::CommitBack() {
@@ -1087,7 +1078,9 @@ void AsanThreadLocalMallocStorage::CommitBack() {
   instance.CommitBack(this, &stack);
 }
 
-void PrintInternalAllocatorStats() { instance.PrintStats(); }
+void PrintInternalAllocatorStats() {
+  instance.PrintStats();
+}
 
 void asan_free(void *ptr, BufferedStackTrace *stack, AllocType alloc_type) {
   instance.Deallocate(ptr, 0, 0, stack, alloc_type);
@@ -1209,8 +1202,7 @@ int asan_posix_memalign(void **memptr, uptr alignment, uptr size,
 }
 
 uptr asan_malloc_usable_size(const void *ptr, uptr pc, uptr bp) {
-  if (!ptr)
-    return 0;
+  if (!ptr) return 0;
   uptr usable_size = instance.AllocationSize(reinterpret_cast<uptr>(ptr));
   if (flags()->check_malloc_usable_size && (usable_size == 0)) {
     GET_STACK_TRACE_FATAL(pc, bp);
@@ -1223,9 +1215,13 @@ uptr asan_mz_size(const void *ptr) {
   return instance.AllocationSize(reinterpret_cast<uptr>(ptr));
 }
 
-void asan_mz_force_lock() { instance.ForceLock(); }
+void asan_mz_force_lock() {
+  instance.ForceLock();
+}
 
-void asan_mz_force_unlock() { instance.ForceUnlock(); }
+void asan_mz_force_unlock() {
+  instance.ForceUnlock();
+}
 
 void AsanSoftRssLimitExceededCallback(bool limit_exceeded) {
   instance.SetRssLimitExceeded(limit_exceeded);
@@ -1235,20 +1231,23 @@ void AsanSoftRssLimitExceededCallback(bool limit_exceeded) {
 
 // --- Implementation of LSan-specific functions --- {{{1
 namespace __lsan {
-void LockAllocator() { __asan::get_allocator().ForceLock(); }
+void LockAllocator() {
+  __asan::get_allocator().ForceLock();
+}
 
-void UnlockAllocator() { __asan::get_allocator().ForceUnlock(); }
+void UnlockAllocator() {
+  __asan::get_allocator().ForceUnlock();
+}
 
 void GetAllocatorGlobalRange(uptr *begin, uptr *end) {
   *begin = (uptr)&__asan::get_allocator();
   *end = *begin + sizeof(__asan::get_allocator());
 }
 
-uptr PointsIntoChunk(void *p) {
+uptr PointsIntoChunk(void* p) {
   uptr addr = reinterpret_cast<uptr>(p);
   __asan::AsanChunk *m = __asan::instance.GetAsanChunkByAddrFastLocked(addr);
-  if (!m)
-    return 0;
+  if (!m) return 0;
   uptr chunk = m->Beg();
   if (m->chunk_state != __asan::CHUNK_ALLOCATED)
     return 0;
@@ -1302,8 +1301,7 @@ void ForEachChunk(ForEachChunkCallback callback, void *arg) {
 IgnoreObjectResult IgnoreObjectLocked(const void *p) {
   uptr addr = reinterpret_cast<uptr>(p);
   __asan::AsanChunk *m = __asan::instance.GetAsanChunkByAddr(addr);
-  if (!m)
-    return kIgnoreObjectInvalid;
+  if (!m) return kIgnoreObjectInvalid;
   if ((m->chunk_state == __asan::CHUNK_ALLOCATED) && m->AddrIsInside(addr)) {
     if (m->lsan_tag == kIgnored)
       return kIgnoreObjectAlreadyIgnored;
@@ -1313,14 +1311,16 @@ IgnoreObjectResult IgnoreObjectLocked(const void *p) {
     return kIgnoreObjectInvalid;
   }
 }
-} // namespace __lsan
+}  // namespace __lsan
 
 // ---------------------- Interface ---------------- {{{1
-using namespace __asan; // NOLINT
+using namespace __asan;  // NOLINT
 
 // ASan allocator doesn't reserve extra bytes, so normally we would
 // just return "size". We don't want to expose our redzone sizes, etc here.
-uptr __sanitizer_get_estimated_allocated_size(uptr size) { return size; }
+uptr __sanitizer_get_estimated_allocated_size(uptr size) {
+  return size;
+}
 
 int __sanitizer_get_ownership(const void *p) {
   uptr ptr = reinterpret_cast<uptr>(p);
@@ -1328,8 +1328,7 @@ int __sanitizer_get_ownership(const void *p) {
 }
 
 uptr __sanitizer_get_allocated_size(const void *p) {
-  if (!p)
-    return 0;
+  if (!p) return 0;
   uptr ptr = reinterpret_cast<uptr>(p);
   uptr allocated_size = instance.AllocationSize(ptr);
   // Die if p is not malloced or if it is already freed.
@@ -1347,8 +1346,8 @@ void __sanitizer_purge_allocator() {
 
 #if !SANITIZER_SUPPORTS_WEAK_HOOKS
 // Provide default (no-op) implementation of malloc hooks.
-SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook, void *ptr,
-                             uptr size) {
+SANITIZER_INTERFACE_WEAK_DEF(void, __sanitizer_malloc_hook,
+                             void *ptr, uptr size) {
   (void)ptr;
   (void)size;
 }

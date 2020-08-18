@@ -23,7 +23,7 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/IndirectCallSiteVisitor.h"
+#include "llvm/Analysis/IndirectCallVisitor.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -930,7 +930,7 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
 
   if (ClEnableIndirectCallTag) {
     for (auto &F : M.functions()) {
-      for (auto *IndirectCall : findIndirectCallSites(F)) {
+      for (auto *IndirectCall : findIndirectCalls(F)) {
         tagPossibleIndirectCallSite(CallSite(IndirectCall));
       }
     }
