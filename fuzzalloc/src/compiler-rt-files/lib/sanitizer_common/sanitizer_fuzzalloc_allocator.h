@@ -103,14 +103,11 @@ class LargeMmapAllocator {
         reinterpret_cast<uptr>(REAL(__tagged_malloc)(alloc_site_tag, map_size));
     if (!map_beg)
       return nullptr;
-    CHECK(IsAligned(map_beg, page_size_));
     MapUnmapCallback().OnMap(map_beg, map_size);
     uptr map_end = map_beg + map_size;
     uptr res = map_beg + page_size_;
     if (res & (alignment - 1))  // Align.
       res += alignment - (res & (alignment - 1));
-    CHECK(IsAligned(res, alignment));
-    CHECK(IsAligned(res, page_size_));
     CHECK_GE(res + size, map_beg);
     CHECK_LE(res + size, map_end);
     Header *h = GetHeader(res);
@@ -175,11 +172,6 @@ class LargeMmapAllocator {
 
   // At least page_size_/2 metadata bytes is available.
   void *GetMetaData(const void *p) {
-    // Too slow: CHECK_EQ(p, GetBlockBegin(p));
-    if (!IsAligned(reinterpret_cast<uptr>(p), page_size_)) {
-      Printf("%s: bad pointer %p\n", SanitizerToolName, p);
-      CHECK(IsAligned(reinterpret_cast<uptr>(p), page_size_));
-    }
     return GetHeader(p) + 1;
   }
 
@@ -297,7 +289,6 @@ class LargeMmapAllocator {
   };
 
   Header *GetHeader(uptr p) {
-    CHECK(IsAligned(p, page_size_));
     return reinterpret_cast<Header*>(p - page_size_);
   }
   Header *GetHeader(const void *p) {
@@ -305,7 +296,6 @@ class LargeMmapAllocator {
   }
 
   void *GetUser(const Header *h) {
-    CHECK(IsAligned((uptr)h, page_size_));
     return reinterpret_cast<void*>(reinterpret_cast<uptr>(h) + page_size_);
   }
 
