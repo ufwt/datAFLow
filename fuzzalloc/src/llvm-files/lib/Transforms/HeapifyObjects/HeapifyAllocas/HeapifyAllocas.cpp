@@ -256,7 +256,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
 
         if (IncomingValue == Alloca) {
           auto *LoadNewAlloca =
-              new LoadInst(NewAlloca, "", IncomingBlock->getTerminator());
+              new LoadInst(NewAlloca->getType(), NewAlloca, "",
+                           IncomingBlock->getTerminator());
           auto *BitCastNewAlloca = CastInst::CreatePointerCast(
               LoadNewAlloca, IncomingValue->getType(), "",
               IncomingBlock->getTerminator());
@@ -265,7 +266,8 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
       }
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the new alloca from the heap before we do anything with it
-      auto *LoadNewAlloca = new LoadInst(NewAlloca, "", Inst);
+      auto *LoadNewAlloca =
+          new LoadInst(NewAlloca->getType(), NewAlloca, "", Inst);
       auto *BitCastNewAlloca = CastInst::CreatePointerCast(
           LoadNewAlloca, Alloca->getType(), "", Inst);
       Inst->replaceUsesOfWith(Alloca, BitCastNewAlloca);

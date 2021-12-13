@@ -169,7 +169,7 @@ private:
   // AFL-style fuzzing
   //
 
-  Value *ReadPCAsm;
+  FunctionCallee ReadPCAsm;
   GlobalVariable *AFLMapPtr;
   Function *DbgMemAccessFn;
 
@@ -358,7 +358,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
     *Alignment = 0;
     PtrOperand = XCHG->getPointerOperand();
   } else if (auto *CI = dyn_cast<CallInst>(I)) {
-    auto *F = dyn_cast<Function>(CI->getCalledValue());
+    auto *F = dyn_cast<Function>(CI->getCalledFunction());
     if (F && (F->getName().startswith("llvm.masked.load.") ||
               F->getName().startswith("llvm.masked.store."))) {
       unsigned OpOffset = 0;
@@ -467,10 +467,11 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     // AFL-style fuzzing
     //
 
-    this->ReadPCAsm =
-        InlineAsm::get(FunctionType::get(this->Int64Ty, /* isVarArg */ false),
-                       "leaq (%rip), $0",
-                       /* Constraints */ "=r", /* hasSideEffects */ false);
+    auto *ReadPCAsmTy = FunctionType::get(this->Int64Ty, /*isVarArg=*/false);
+    this->ReadPCAsm = FunctionCallee(
+        ReadPCAsmTy,
+        InlineAsm::get(ReadPCAsmTy, "leaq (%rip), $0",
+                       /* Constraints */ "=r", /* hasSideEffects */ false));
     this->AFLMapPtr = new GlobalVariable(
         M, PointerType::getUnqual(this->Int8Ty), /* isConstant */ false,
         GlobalValue::ExternalLinkage, /* Initializer */ nullptr, AFLMapName);
@@ -503,7 +504,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     unsigned Alignment;
     uint64_t TypeSize;
 
-    // For determiningg whether to instrument a memory dereference
+    // For determining whether to instrument a memory dereference
     const TargetLibraryInfo *TLI =
         &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     ObjectSizeOffsetVisitor ObjSizeVis(*this->DL, TLI, C, ObjSizeOpts);
@@ -516,7 +517,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
 
         if (Value *Addr = isInterestingMemoryAccess(&Inst, &IsWrite, &TypeSize,
                                                     &Alignment, &MaybeMask)) {
-          Value *Obj = GetUnderlyingObject(Addr, *this->DL);
+          Value *Obj = getUnderlyingObject(Addr);
 
           // If we have a mask, skip instrumentation if we've already
           // instrumented the full object. But don't add to TempsToInstrument
@@ -536,19 +537,17 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
         // TODO pointer comparisons?
         else if (isa<MemIntrinsic>(Inst)) {
           // ok, take it.
-        } else {
-          CallSite CS(&Inst);
-
-          if (CS) {
-            // A call that accesses memory inside the basic block. If the call
-            // is indirect (getCalledFunction returns null) then we don't know
-            // so we just have to assume that it accesses memory
-            auto *CalledF = CS.getCalledFunction();
-            bool MaybeAccessMemory =
-                CalledF ? !CalledF->doesNotAccessMemory() : true;
-            if (MaybeAccessMemory) {
-              TempsToInstrument.clear();
-            }
+        } else if (const auto *CB = dyn_cast<CallBase>(&Inst)) {
+          // A call that accesses memory inside the basic block. If the call
+          // is indirect (getCalledFunction returns null) then we don't know
+          // so we just have to assume that it accesses memory
+          auto *CalledF = CB->getCalledFunction()->stripPointerCasts();
+          bool MaybeAccessMemory =
+              isa_and_nonnull<Function>(CalledF)
+                  ? !cast<Function>(CalledF)->doesNotAccessMemory()
+                  : true;
+          if (MaybeAccessMemory) {
+            TempsToInstrument.clear();
           }
 
           continue;
@@ -571,7 +570,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     for (auto *I : ToInstrument) {
       if (Value *Addr =
               isInterestingMemoryAccess(I, &IsWrite, &TypeSize, &Alignment)) {
-        Value *Obj = GetUnderlyingObject(Addr, *this->DL);
+        Value *Obj = getUnderlyingObject(Addr);
         // A direct inbounds access to a stack variable is always valid
         if (isa<AllocaInst>(Obj) && isSafeAccess(ObjSizeVis, Addr, TypeSize)) {
           continue;

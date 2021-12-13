@@ -24,7 +24,7 @@ Value *updateGEP(GetElementPtrInst *GEP, Value *MallocPtr) {
   // Load the pointer to the dynamically allocated array and create a new GEP
   // instruction. It seems that the simplest way is to cast the loaded pointer
   // to the original array type
-  auto *LoadMallocPtr = new LoadInst(MallocPtr, "", GEP);
+  auto *LoadMallocPtr = new LoadInst(MallocPtr->getType(), MallocPtr, "", GEP);
   auto *BitCastMallocPtr = CastInst::CreatePointerCast(
       LoadMallocPtr, GEP->getOperand(0)->getType(), "", GEP);
   auto *MallocPtrGEP = GetElementPtrInst::CreateInBounds(
@@ -99,6 +99,6 @@ Instruction *createMalloc(LLVMContext &C, const DataLayout &DL,
 
 void insertFree(Value *MallocPtr, Instruction *Inst) {
   // Load the pointer to the dynamically allocated memory and pass it to free
-  auto *LoadMalloc = new LoadInst(MallocPtr, "", Inst);
+  auto *LoadMalloc = new LoadInst(MallocPtr->getType(), MallocPtr, "", Inst);
   CallInst::CreateFree(LoadMalloc, Inst);
 }

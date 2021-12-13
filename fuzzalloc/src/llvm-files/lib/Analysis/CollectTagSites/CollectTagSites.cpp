@@ -17,6 +17,7 @@
 
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
@@ -120,11 +121,10 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
   LLVM_DEBUG(dbgs() << "recording user " << *U << " of tagged function "
                     << F->getName() << '\n');
 
-  if (isa<CallInst>(U) || isa<InvokeInst>(U)) {
+  if (auto *CB = dyn_cast<CallBase>(U)) {
     // The result of a dynamic memory allocation function call is typically
     // cast. Strip this cast to determine the actual function being called
-    ImmutableCallSite CS(cast<Instruction>(U));
-    auto *CalledValue = CS.getCalledValue()->stripPointerCasts();
+    auto *CalledValue = CB->getCalledOperand()->stripPointerCasts();
 
     // Ignore calls to dynamic memory allocation functions - we can just tag
     // them directly later
@@ -133,8 +133,8 @@ void CollectTagSites::tagUser(const User *U, const Function *F,
     }
 
     // Otherwise the user must be a function argument
-    for (unsigned I = 0; I < CS.getNumArgOperands(); ++I) {
-      if (CS.getArgument(I) == F) {
+    for (unsigned I = 0; I < CB->getNumArgOperands(); ++I) {
+      if (CB->getArgOperand(I) == F) {
         this->FunctionArgsToTag.insert(
             cast<Function>(CalledValue)->arg_begin() + I);
         NumOfFunctionArgs++;

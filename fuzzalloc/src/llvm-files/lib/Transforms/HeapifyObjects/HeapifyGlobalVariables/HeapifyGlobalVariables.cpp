@@ -67,7 +67,7 @@ char HeapifyGlobalVariables::ID = 0;
 
 /// Create a constructor function that will be used to `malloc` the given
 /// heapified global variable.
-static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
+static void createHeapifyCtor(GlobalVariable *GV, IRBuilder<> &IRB) {
   Module *M = GV->getParent();
   LLVMContext &C = M->getContext();
 
@@ -79,7 +79,7 @@ static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
   appendToGlobalCtors(*M, GlobalCtorF, kHeapifyGVCtorAndDtorPriority);
 
   BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalCtorF);
-  IRBuilder<> IRB(EntryBB);
+  IRB.SetInsertPoint(EntryBB);
 
   if (GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceAnyLinkage ||
       GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceODRLinkage) {
@@ -116,13 +116,11 @@ static IRBuilder<> createHeapifyCtor(GlobalVariable *GV) {
     auto *RetVoid = IRB.CreateRetVoid();
     IRB.SetInsertPoint(RetVoid);
   }
-
-  return IRB;
 }
 
 /// Create a destructor function that will be used to `free` all the given
 /// heapified global variable.
-static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
+static void createHeapifyDtor(GlobalVariable *GV, IRBuilder<> &IRB) {
   Module *M = GV->getParent();
   LLVMContext &C = M->getContext();
 
@@ -134,7 +132,7 @@ static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
   appendToGlobalDtors(*M, GlobalDtorF, kHeapifyGVCtorAndDtorPriority);
 
   BasicBlock *EntryBB = BasicBlock::Create(C, "entry", GlobalDtorF);
-  IRBuilder<> IRB(EntryBB);
+  IRB.SetInsertPoint(EntryBB);
 
   if (GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceAnyLinkage ||
       GV->getLinkage() == GlobalValue::LinkageTypes::LinkOnceODRLinkage) {
@@ -175,8 +173,6 @@ static IRBuilder<> createHeapifyDtor(GlobalVariable *GV) {
     auto *RetVoid = IRB.CreateRetVoid();
     IRB.SetInsertPoint(RetVoid);
   }
-
-  return IRB;
 }
 
 /// Initialize the heapified global variable in the given constructor function.
@@ -188,11 +184,13 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
   LLVM_DEBUG(dbgs() << "creating initializer for " << *NewGV << '\n');
 
   // Create a new module constructor to initialize the heapified global variable
-  IRBuilder<> IRB = createHeapifyCtor(NewGV);
-
-  Module *M = NewGV->getParent();
+  const Module *M = OrigGV->getParent();
   LLVMContext &C = M->getContext();
   const DataLayout &DL = M->getDataLayout();
+  IRBuilder<> IRB(C);
+
+  createHeapifyCtor(NewGV, IRB);
+
   Type *ValueTy = OrigGV->getValueType();
   Instruction *MallocCall = nullptr;
 
@@ -290,6 +288,9 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   LLVM_DEBUG(dbgs() << "heapifying " << *OrigGV << '\n');
 
   Module *M = OrigGV->getParent();
+  LLVMContext &C = M->getContext();
+  IRBuilder<> IRB(C);
+
   const Type *ValueTy = OrigGV->getValueType();
   PointerType *NewGVTy = nullptr;
 
@@ -356,8 +357,8 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
         BasicBlock *IncomingBlock = PHI->getIncomingBlock(I);
 
         if (IncomingValue == OrigGV) {
-          auto *LoadNewGV =
-              new LoadInst(NewGV, "", IncomingBlock->getTerminator());
+          auto *LoadNewGV = new LoadInst(NewGV->getType(), NewGV, "",
+                                         IncomingBlock->getTerminator());
           auto *BitCastNewGV =
               CastInst::CreatePointerCast(LoadNewGV, IncomingValue->getType(),
                                           "", IncomingBlock->getTerminator());
@@ -366,7 +367,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
       }
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
-      auto *LoadNewGV = new LoadInst(NewGV, "", Inst);
+      auto *LoadNewGV = new LoadInst(NewGV->getType(), NewGV, "", Inst);
       auto *BitCastNewGV =
           CastInst::CreatePointerCast(LoadNewGV, OrigGV->getType(), "", Inst);
       Inst->replaceUsesOfWith(OrigGV, BitCastNewGV);
@@ -376,7 +377,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   }
 
   if (!NewGV->isDeclaration()) {
-    IRBuilder<> IRB = createHeapifyDtor(NewGV);
+    createHeapifyDtor(NewGV, IRB);
 
     insertFree(NewGV, &*IRB.GetInsertPoint());
     NumOfFreeInsert++;

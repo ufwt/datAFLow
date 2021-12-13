@@ -94,25 +94,24 @@ static bool isDeleteFn(const Value *V, const TargetLibraryInfo *TLI) {
   return false;
 }
 
-static Instruction *rewriteNew(CallSite &CS) {
-  LLVM_DEBUG(dbgs() << "rewriting new call " << *CS.getInstruction() << '\n');
+static Instruction *rewriteNew(CallBase *CB) {
+  LLVM_DEBUG(dbgs() << "rewriting new call " << *CB << '\n');
 
-  Value *AllocSize = CS.getArgOperand(0);
-  Instruction *CSInst = CS.getInstruction();
+  Value *AllocSize = CB->getArgOperand(0);
 
   auto *MallocCall = CallInst::CreateMalloc(
-      CSInst, AllocSize->getType(), CS.getType()->getPointerElementType(),
+      CB, AllocSize->getType(), CB->getType()->getPointerElementType(),
       AllocSize, nullptr, nullptr, "rewrite_new");
 
   // If new was invoke-d, rather than call-ed, we must branch to the invoke's
   // normal destination.
   //
   // TODO Emulate exception handling (i.e., the invoke's unwind destination)
-  if (auto *Invoke = dyn_cast<InvokeInst>(CSInst)) {
+  if (auto *Invoke = dyn_cast<InvokeInst>(CB)) {
     auto *NormalDest = Invoke->getNormalDest();
     assert(NormalDest && "Invoke has no normal destination");
 
-    BranchInst::Create(NormalDest, CSInst);
+    BranchInst::Create(NormalDest, CB);
 
     // Remove the basic block containing the rewritten new in any PHI nodes,
     // otherwise the verifier will fail
@@ -125,30 +124,29 @@ static Instruction *rewriteNew(CallSite &CS) {
     }
 
     for (PHINode *PHI : PHIs) {
-      int BBIdx = PHI->getBasicBlockIndex(CSInst->getParent());
+      int BBIdx = PHI->getBasicBlockIndex(CB->getParent());
       if (BBIdx >= 0) {
         PHI->removeIncomingValue(BBIdx);
       }
     }
   }
 
-  CS->replaceAllUsesWith(MallocCall);
-  CS->eraseFromParent();
+  CB->replaceAllUsesWith(MallocCall);
+  CB->eraseFromParent();
 
   NumOfNewRewrites++;
 
   return MallocCall;
 }
 
-static Instruction *rewriteDelete(CallSite &CS) {
-  LLVM_DEBUG(dbgs() << "rewriting delete call " << *CS.getInstruction()
-                    << '\n');
+static Instruction *rewriteDelete(CallBase *CB) {
+  LLVM_DEBUG(dbgs() << "rewriting delete call " << *CB << '\n');
 
-  Value *Ptr = CS.getArgOperand(CS.getNumArgOperands() - 1);
+  Value *Ptr = CB->getArgOperand(CB->getNumArgOperands() - 1);
 
-  auto *FreeCall = CallInst::CreateFree(Ptr, CS.getInstruction());
-  CS->replaceAllUsesWith(FreeCall);
-  CS->eraseFromParent();
+  auto *FreeCall = CallInst::CreateFree(Ptr, CB);
+  CB->replaceAllUsesWith(FreeCall);
+  CB->eraseFromParent();
 
   NumOfDeleteRewrites++;
 
@@ -166,24 +164,23 @@ bool RewriteNews::runOnFunction(Function &F) {
       &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
 
   // new calls to rewrite
-  SmallVector<CallSite, 8> NewCalls;
+  SmallVector<CallBase *, 8> NewCalls;
 
   // delete calls to rewrite
-  SmallVector<CallSite, 8> DeleteCalls;
+  SmallVector<CallBase *, 8> DeleteCalls;
 
   // llvm.mem* intrinsics that may require realignment
   SmallVector<MemIntrinsic *, 4> MemIntrinsics;
 
   // Collect all the things!
   for (auto I = inst_begin(F); I != inst_end(F); ++I) {
-    if (isa<CallInst>(&*I) || isa<InvokeInst>(&*I)) {
-      CallSite CS(&*I);
-      Value *Callee = CS.getCalledValue();
+    if (auto *CB = dyn_cast<CallBase>(&*I)) {
+      Value *Callee = CB->getCalledOperand();
 
       if (isNewFn(Callee, TLI)) {
-        NewCalls.push_back(CS);
+        NewCalls.push_back(CB);
       } else if (isDeleteFn(Callee, TLI)) {
-        DeleteCalls.push_back(CS);
+        DeleteCalls.push_back(CB);
       } else if (auto *MemI = dyn_cast<MemIntrinsic>(&*I)) {
         MemIntrinsics.push_back(MemI);
       }
