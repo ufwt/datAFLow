@@ -26,6 +26,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/SpecialCaseList.h"
+#include "llvm/Support/VirtualFileSystem.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "Utils/FuzzallocUtils.h"
@@ -110,7 +111,8 @@ static FuzzallocWhitelist getWhitelist() {
     report_fatal_error(Err);
   }
 
-  return FuzzallocWhitelist(SpecialCaseList::createOrDie({ClWhitelist}));
+  return FuzzallocWhitelist(
+      SpecialCaseList::createOrDie({ClWhitelist}, *vfs::getRealFileSystem()));
 }
 
 void CollectTagSites::tagUser(const User *U, const Function *F,
@@ -283,9 +285,6 @@ bool CollectTagSites::doInitialization(Module &M) {
 }
 
 bool CollectTagSites::runOnModule(Module &M) {
-  const TargetLibraryInfo *TLI =
-      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-
   // Collect all the values to tag
 
   if (const auto *MallocF = M.getFunction("malloc")) {
@@ -311,6 +310,8 @@ bool CollectTagSites::runOnModule(Module &M) {
     }
 
     for (auto *U : F->users()) {
+      const TargetLibraryInfo *TLI =
+          &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(*F);
       tagUser(U, F, TLI);
     }
   }

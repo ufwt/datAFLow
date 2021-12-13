@@ -163,7 +163,7 @@ bool RewriteNews::runOnFunction(Function &F) {
   Module *M = F.getParent();
   const DataLayout &DL = M->getDataLayout();
   const TargetLibraryInfo *TLI =
-      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
+      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
 
   // new calls to rewrite
   SmallVector<CallSite, 8> NewCalls;

@@ -217,7 +217,8 @@ void HeapifyGlobalVariables::initializeHeapifiedGlobalVariable(
       // allocated memory to zero. Likewise with heapified allocas that are
       // memset, reset the destination alignment
       IRB.CreateMemSet(MallocCall, Constant::getNullValue(IRB.getInt8Ty()),
-                       DL.getTypeAllocSize(ValueTy), NewGV->getAlignment());
+                       DL.getTypeAllocSize(ValueTy),
+                       MaybeAlign(NewGV->getAlignment()));
     } else if (auto *Initializer =
                    dyn_cast<ConstantDataArray>(OrigGV->getInitializer())) {
       // If the initializer is a constant data array, we store the data into the
@@ -307,7 +308,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
       OrigGV->isExternallyInitialized());
   NewGV->takeName(OrigGV);
   NewGV->copyAttributesFrom(OrigGV);
-  NewGV->setAlignment(0);
+  NewGV->setAlignment(MaybeAlign(0));
 
   // Copy debug info
   SmallVector<DIGlobalVariableExpression *, 1> GVs;

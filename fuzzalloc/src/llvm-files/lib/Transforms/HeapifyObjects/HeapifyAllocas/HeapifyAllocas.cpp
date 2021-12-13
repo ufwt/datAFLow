@@ -43,8 +43,7 @@ static cl::opt<bool> ClHeapifyStructs(
     cl::desc("Heapify alloca structs that have their address taken"),
     cl::init(false), cl::Hidden);
 
-STATISTIC(NumOfAllocaHeapification,
-          "Number of alloca heapifications.");
+STATISTIC(NumOfAllocaHeapification, "Number of alloca heapifications.");
 STATISTIC(NumOfFreeInsert, "Number of calls to free inserted.");
 
 namespace {

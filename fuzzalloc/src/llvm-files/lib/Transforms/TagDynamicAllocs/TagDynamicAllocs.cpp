@@ -132,24 +132,19 @@ static const char *const FuzzallocReallocFuncName = "__tagged_realloc";
 char TagDynamicAllocs::ID = 0;
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
-static Function *checkFuzzallocFunc(Constant *FuncOrBitcast) {
-  if (isa<Function>(FuncOrBitcast)) {
-    return cast<Function>(FuncOrBitcast);
+static Function *checkFuzzallocFunc(FunctionCallee FuncOrBitcast) {
+  assert(FuncOrBitcast && "Invalid function callee");
+  if (isa<Function>(FuncOrBitcast.getCallee()->stripPointerCasts())) {
+    return cast<Function>(FuncOrBitcast.getCallee()->stripPointerCasts());
   }
 
-  FuncOrBitcast->print(errs());
+  FuncOrBitcast.getCallee()->print(errs());
   errs() << '\n';
   std::string Err;
   raw_string_ostream OS(Err);
-  OS << "fuzzalloc function redefined: " << *FuncOrBitcast;
+  OS << "fuzzalloc function redefined: " << *FuncOrBitcast.getCallee();
   OS.flush();
   report_fatal_error(Err);
-}
-
-static bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
-                            bool LookThroughBitCast = false) {
-  return isAllocationFn(V, TLI, LookThroughBitCast) &&
-         !isAllocLikeFn(V, TLI, LookThroughBitCast);
 }
 
 Constant *TagDynamicAllocs::castAbort(Type *Ty) const {
@@ -353,10 +348,10 @@ TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
   FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
   Twine NewFName = "__tagged_" + OrigF->getName();
 
-  auto *NewC = this->Mod->getOrInsertFunction(NewFName.str(), NewFTy);
+  FunctionCallee NewC = this->Mod->getOrInsertFunction(NewFName.str(), NewFTy);
 
-  assert(isa<Function>(NewC) && "Translated tagged function not a function");
-  auto *NewF = cast<Function>(NewC);
+  assert(NewC && "Translated tagged function not a function");
+  auto *NewF = cast<Function>(NewC.getCallee()->stripPointerCasts());
 
   return NewF;
 }
@@ -397,11 +392,11 @@ void TagDynamicAllocs::tagUser(User *U, Function *F,
     // function with
     Function *NewF = nullptr;
 
-    if (isMallocLikeFn(U, TLI)) {
+    if (isMallocLikeFn(U, TLI, /*LookThroughBitCast=*/true)) {
       NewF = this->FuzzallocMallocF;
-    } else if (isCallocLikeFn(U, TLI)) {
+    } else if (isCallocLikeFn(U, TLI, /*LookThroughBitCast=*/true)) {
       NewF = this->FuzzallocCallocF;
-    } else if (isReallocLikeFn(U, TLI)) {
+    } else if (isReallocLikeFn(U, TLI, /*LookThroughBitCast=*/true)) {
       NewF = this->FuzzallocReallocF;
     } else if (auto *CalledFunc = dyn_cast<Function>(CalledValue)) {
       if (this->FunctionsToTag.count(CalledFunc) > 0) {
@@ -706,8 +701,8 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
       // Load the global variable containing the tagged function
       auto *NewLoad = new LoadInst(
           TaggedGV, Load->hasName() ? "__tagged_" + Load->getName() : "",
-          Load->isVolatile(), Load->getAlignment(), Load->getOrdering(),
-          Load->getSyncScopeID(), Load);
+          Load->isVolatile(), MaybeAlign(Load->getAlignment()),
+          Load->getOrdering(), Load->getSyncScopeID(), Load);
 
       for (auto *LU : LoadUsers) {
         if (isa<CallInst>(LU) || isa<InvokeInst>(LU)) {
@@ -774,10 +769,10 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
           assert(false && "Must store taggable function");
         }
 
-        auto *NewStore =
-            new StoreInst(translateTaggedFunction(F), TaggedGV,
-                          Store->isVolatile(), Store->getAlignment(),
-                          Store->getOrdering(), Store->getSyncScopeID(), Store);
+        auto *NewStore = new StoreInst(
+            translateTaggedFunction(F), TaggedGV, Store->isVolatile(),
+            MaybeAlign(Store->getAlignment()), Store->getOrdering(),
+            Store->getSyncScopeID(), Store);
         Store->replaceAllUsesWith(NewStore);
         Store->eraseFromParent();
       } else {
@@ -866,9 +861,6 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   assert(ClDefSiteTagMin >= FUZZALLOC_TAG_MIN && "Invalid minimum tag value");
   assert(ClDefSiteTagMax <= FUZZALLOC_TAG_MAX && "Invalid maximum tag value");
 
-  const TargetLibraryInfo *TLI =
-      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-
   LLVMContext &C = M.getContext();
   PointerType *Int8PtrTy = Type::getInt8PtrTy(C);
   Type *VoidTy = Type::getVoidTy(C);
@@ -912,6 +904,9 @@ bool TagDynamicAllocs::runOnModule(Module &M) {
   }
 
   for (auto *F : this->FunctionsToTag) {
+    const TargetLibraryInfo *TLI =
+        &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(*F);
+
     // Cache users
     SmallVector<User *, 16> Users(F->user_begin(), F->user_end());
 

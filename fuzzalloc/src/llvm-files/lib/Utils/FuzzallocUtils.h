@@ -18,12 +18,12 @@
 #include <string>
 
 #include "llvm/ADT/Optional.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Support/CommandLine.h"
 
 namespace llvm {
 class DataLayout;
 class Module;
-class Statistic;
 class StructType;
 class Value;
 } // namespace llvm

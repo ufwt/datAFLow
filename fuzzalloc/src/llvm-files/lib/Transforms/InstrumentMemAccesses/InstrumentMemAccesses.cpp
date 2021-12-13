@@ -31,9 +31,9 @@
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
+#include "Utils/FuzzallocUtils.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
-#include "Utils/FuzzallocUtils.h"
 
 using namespace llvm;
 
@@ -189,16 +189,17 @@ private:
 char InstrumentMemAccesses::ID = 0;
 
 // Adapted from llvm::checkSanitizerInterfaceFunction
-static Function *checkInstrumentationFunc(Constant *FuncOrBitcast) {
-  if (isa<Function>(FuncOrBitcast)) {
-    return cast<Function>(FuncOrBitcast);
+static Function *checkInstrumentationFunc(FunctionCallee FuncOrBitcast) {
+  assert(FuncOrBitcast && "Invalid function callee");
+  if (isa<Function>(FuncOrBitcast.getCallee()->stripPointerCasts())) {
+    return cast<Function>(FuncOrBitcast.getCallee()->stripPointerCasts());
   }
 
-  FuncOrBitcast->print(errs());
+  FuncOrBitcast.getCallee()->print(errs());
   errs() << '\n';
   std::string Err;
   raw_string_ostream OS(Err);
-  OS << "Instrumentation function redefined: " << *FuncOrBitcast;
+  OS << "Instrumentation function redefined: " << *FuncOrBitcast.getCallee();
   OS.flush();
   report_fatal_error(Err);
 }
@@ -267,7 +268,7 @@ static GEPOperator *getUseSiteGEP(Value *V, DataLayout &DL,
       V = cast<Operator>(V)->getOperand(0);
     } else {
       if (auto *Call = dyn_cast<CallBase>(V)) {
-        if (auto *RP = getArgumentAliasingToReturnedPointer(Call)) {
+        if (auto *RP = getArgumentAliasingToReturnedPointer(Call, false)) {
           V = RP;
           continue;
         }
@@ -449,8 +450,6 @@ bool InstrumentMemAccesses::doInitialization(Module &M) {
 
 bool InstrumentMemAccesses::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
-  const TargetLibraryInfo *TLI =
-      &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
   Type *VoidTy = Type::getVoidTy(C);
 
   if (ClLibFuzzerInstrument) {
@@ -487,7 +486,6 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   // For determining whether to instrument a memory dereference
   ObjectSizeOpts ObjSizeOpts;
   ObjSizeOpts.RoundToAlign = true;
-  ObjectSizeOffsetVisitor ObjSizeVis(*this->DL, TLI, C, ObjSizeOpts);
 
   for (auto &F : M.functions()) {
     // Don't instrument our own constructors/destructors
@@ -504,6 +502,11 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
     bool IsWrite;
     unsigned Alignment;
     uint64_t TypeSize;
+
+    // For determiningg whether to instrument a memory dereference
+    const TargetLibraryInfo *TLI =
+        &getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
+    ObjectSizeOffsetVisitor ObjSizeVis(*this->DL, TLI, C, ObjSizeOpts);
 
     for (auto &BB : F) {
       TempsToInstrument.clear();
