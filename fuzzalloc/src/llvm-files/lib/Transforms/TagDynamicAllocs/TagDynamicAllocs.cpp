@@ -459,6 +459,10 @@ Instruction *TagDynamicAllocs::tagCall(CallBase *CB, Value *NewCallee) const {
                     << CB->getFunction()->getName() << ") with call to "
                     << NewCallee->getName() << '\n');
 
+  assert(NewCallee->getType()->isPointerTy() &&
+         NewCallee->getType()->getPointerElementType()->isFunctionTy() &&
+         "Must be a function pointer");
+
   // The tag value depends where the function call is occuring. If the tagged
   // function is being called from within another tagged function, just pass
   // the first argument (which is guaranteed to be the tag) straight through.
@@ -500,13 +504,14 @@ Instruction *TagDynamicAllocs::tagCall(CallBase *CB, Value *NewCallee) const {
 
   // Create the call/invoke to the callee/invokee
   Instruction *TaggedCall = nullptr;
+  FunctionType *TaggedCallTy =
+      cast<FunctionType>(CastNewCallee->getType()->getPointerElementType());
   if (isa<CallInst>(CB)) {
-    TaggedCall = IRB.CreateCall(cast<FunctionType>(CastNewCallee->getType()),
-                                CastNewCallee, TaggedCallArgs);
+    TaggedCall = IRB.CreateCall(TaggedCallTy, CastNewCallee, TaggedCallArgs);
   } else if (auto *Invoke = dyn_cast<InvokeInst>(CB)) {
-    TaggedCall = IRB.CreateInvoke(cast<FunctionType>(CastNewCallee->getType()),
-                                  CastNewCallee, Invoke->getNormalDest(),
-                                  Invoke->getUnwindDest(), TaggedCallArgs);
+    TaggedCall =
+        IRB.CreateInvoke(TaggedCallTy, CastNewCallee, Invoke->getNormalDest(),
+                         Invoke->getUnwindDest(), TaggedCallArgs);
   }
   TaggedCall->setMetadata(this->Mod->getMDKindID("fuzzalloc.tagged_alloc"),
                           MDNode::get(IRB.getContext(), None));

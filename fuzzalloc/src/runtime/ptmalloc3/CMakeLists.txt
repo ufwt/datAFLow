@@ -29,3 +29,4 @@ target_include_directories(ptmalloc3 PRIVATE
                            "${CMAKE_CURRENT_SOURCE_DIR}/sysdeps/pthread"
                            "${CMAKE_CURRENT_SOURCE_DIR}/sysdeps/generic")
 target_link_libraries(ptmalloc3 PRIVATE pthread)
+install(TARGETS ptmalloc3 LIBRARY DESTINATION lib)

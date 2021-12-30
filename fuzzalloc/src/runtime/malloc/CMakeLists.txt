@@ -10,17 +10,18 @@ endif()
 add_definitions(-DMSPACES)
 
 if(AFL_INSTRUMENT)
-  message(STATUS "Building with AFL instrumentation")
+  message(STATUS "Building with AFL++ instrumentation")
 
   add_definitions(-DAFL_INSTRUMENT)
 
-  # Need to remove -Werror for afl-llvm-rt.o.c
+  # Need to remove -Werror for afl-compiler-rt.o.c
   string(REPLACE " -Werror" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 
-  target_sources(fuzzalloc PUBLIC "${AFL_PATH}/llvm_mode/afl-llvm-rt.o.c")
+  target_sources(fuzzalloc PUBLIC "${AFL_PATH}/llvm_mode/afl-compiler-rt.o.c")
 endif()
 
 target_include_directories(fuzzalloc PRIVATE
                            "${CMAKE_SOURCE_DIR}/src/runtime/ptmalloc3")
 target_link_libraries(fuzzalloc PRIVATE
                       "${CMAKE_BINARY_DIR}/src/runtime/ptmalloc3/libptmalloc3.so")
+install(TARGETS fuzzalloc LIBRARY DESTINATION lib)

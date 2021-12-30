@@ -358,7 +358,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
     *Alignment = 0;
     PtrOperand = XCHG->getPointerOperand();
   } else if (auto *CI = dyn_cast<CallInst>(I)) {
-    auto *F = dyn_cast<Function>(CI->getCalledFunction());
+    auto *F = CI->getCalledFunction();
     if (F && (F->getName().startswith("llvm.masked.load.") ||
               F->getName().startswith("llvm.masked.store."))) {
       unsigned OpOffset = 0;
@@ -541,7 +541,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
           // A call that accesses memory inside the basic block. If the call
           // is indirect (getCalledFunction returns null) then we don't know
           // so we just have to assume that it accesses memory
-          auto *CalledF = CB->getCalledFunction()->stripPointerCasts();
+          auto *CalledF = CB->getCalledFunction();
           bool MaybeAccessMemory =
               isa_and_nonnull<Function>(CalledF)
                   ? !cast<Function>(CalledF)->doesNotAccessMemory()
