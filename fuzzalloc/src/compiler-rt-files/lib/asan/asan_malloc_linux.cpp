@@ -1,9 +1,8 @@
-//===-- asan_malloc_linux.cc ----------------------------------------------===//
+//===-- asan_malloc_linux.cpp ---------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,7 +27,6 @@
 #include "asan_stack.h"
 
 // ---------------------- Replacement functions ---------------- {{{1
-using namespace __asan;  // NOLINT
 
 #if FUZZALLOC_ASAN
 #include "sanitizer_common/fuzzalloc.h"
@@ -41,7 +39,7 @@ static uptr last_dlsym_alloc_size_in_words;
 static const uptr kDlsymAllocPoolSize = SANITIZER_RTEMS ? 4096 : 1024;
 static uptr alloc_memory_for_dlsym[kDlsymAllocPoolSize];
 
-static INLINE bool IsInDlsymAllocPool(const void *ptr) {
+static inline bool IsInDlsymAllocPool(const void *ptr) {
   uptr off = (uptr)ptr - (uptr)alloc_memory_for_dlsym;
   return off < allocated_for_dlsym * sizeof(alloc_memory_for_dlsym[0]);
 }
@@ -102,12 +100,12 @@ bool IsFromLocalPool(const void *ptr) {
 }
 #endif
 
-static INLINE bool MaybeInDlsym() {
+static inline bool MaybeInDlsym() {
   // Fuchsia doesn't use dlsym-based interceptors.
   return !SANITIZER_FUCHSIA && asan_init_is_running;
 }
 
-static INLINE bool UseLocalPool() {
+static inline bool UseLocalPool() {
   return EarlyMalloc() || MaybeInDlsym();
 }
 
@@ -127,19 +125,19 @@ static void *ReallocFromLocalPool(void *ptr, uptr size) {
 }
 
 INTERCEPTOR(void, free, void *ptr) {
-  GET_STACK_TRACE_FREE;
   if (UNLIKELY(IsInDlsymAllocPool(ptr))) {
     DeallocateFromLocalPool(ptr);
     return;
   }
+  GET_STACK_TRACE_FREE;
   asan_free(ptr, &stack, FROM_MALLOC);
 }
 
 #if SANITIZER_INTERCEPT_CFREE
 INTERCEPTOR(void, cfree, void *ptr) {
-  GET_STACK_TRACE_FREE;
   if (UNLIKELY(IsInDlsymAllocPool(ptr)))
     return;
+  GET_STACK_TRACE_FREE;
   asan_free(ptr, &stack, FROM_MALLOC);
 }
 #endif // SANITIZER_INTERCEPT_CFREE
@@ -202,17 +200,23 @@ INTERCEPTOR(void *, __tagged_calloc, TAG_T alloc_site_tag, SIZE_T nmemb,
 
 INTERCEPTOR(void *, __tagged_realloc, TAG_T alloc_site_tag, void *ptr,
             SIZE_T size) {
-  if (UNLIKELY(IsInDlsymAllocPool(ptr))) {
+  if (UNLIKELY(IsInDlsymAllocPool(ptr)))
     return ReallocFromLocalPool(ptr, size);
-  }
-  if (UNLIKELY(UseLocalPool())) {
+  if (UNLIKELY(UseLocalPool()))
     return AllocateFromLocalPool(size);
-  }
   ENSURE_ASAN_INITED();
   GET_STACK_TRACE_MALLOC;
   return asan___tagged_realloc(alloc_site_tag, ptr, size, &stack);
 }
 #endif // FUZZALLOC_ASAN
+
+#if SANITIZER_INTERCEPT_REALLOCARRAY
+INTERCEPTOR(void*, reallocarray, void *ptr, uptr nmemb, uptr size) {
+  ENSURE_ASAN_INITED();
+  GET_STACK_TRACE_MALLOC;
+  return asan_reallocarray(ptr, nmemb, size, &stack);
+}
+#endif  // SANITIZER_INTERCEPT_REALLOCARRAY
 
 #if SANITIZER_INTERCEPT_MEMALIGN
 INTERCEPTOR(void*, memalign, uptr boundary, uptr size) {

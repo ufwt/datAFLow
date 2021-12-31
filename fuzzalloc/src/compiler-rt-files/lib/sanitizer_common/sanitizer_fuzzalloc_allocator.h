@@ -1,9 +1,8 @@
 //===-- sanitizer_fuzzalloc_allocator.h -------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -21,8 +20,8 @@
 // (currently, 32 bits and internal allocator).
 class LargeMmapAllocatorPtrArrayStatic {
  public:
-  INLINE void *Init() { return &p_[0]; }
-  INLINE void EnsureSpace(uptr n) { CHECK_LT(n, kMaxNumChunks); }
+  inline void *Init() { return &p_[0]; }
+  inline void EnsureSpace(uptr n) { CHECK_LT(n, kMaxNumChunks); }
  private:
   static const int kMaxNumChunks = 1 << 15;
   uptr p_[kMaxNumChunks];
@@ -34,14 +33,14 @@ class LargeMmapAllocatorPtrArrayStatic {
 // same functionality in Fuchsia case, which does not support MAP_NORESERVE.
 class LargeMmapAllocatorPtrArrayDynamic {
  public:
-  INLINE void *Init() {
+  inline void *Init() {
     uptr p = address_range_.Init(kMaxNumChunks * sizeof(uptr),
                                  SecondaryAllocatorName);
     CHECK(p);
     return reinterpret_cast<void*>(p);
   }
 
-  INLINE void EnsureSpace(uptr n) {
+  inline void EnsureSpace(uptr n) {
     CHECK_LT(n, kMaxNumChunks);
     DCHECK(n <= n_reserved_);
     if (UNLIKELY(n == n_reserved_)) {
@@ -70,6 +69,9 @@ typedef LargeMmapAllocatorPtrArrayDynamic DefaultLargeMmapAllocatorPtrArray;
 
 using namespace __fuzzalloc;
 
+// This class can (de)allocate only large chunks of memory using mmap/unmap.
+// The main purpose of this allocator is to cover large and rare allocation
+// sizes not covered by more efficient allocators (e.g. SizeClassAllocator64).
 template <class MapUnmapCallback = NoOpMapUnmapCallback,
           class PtrArrayT = DefaultLargeMmapAllocatorPtrArray,
           class AddressSpaceViewTy = LocalAddressSpaceView>
@@ -146,9 +148,10 @@ class LargeMmapAllocator {
       stats.n_frees++;
       stats.currently_allocated -= h->map_size;
       stat->Sub(AllocatorStatAllocated, h->map_size);
+      stat->Sub(AllocatorStatMapped, h->map_size);
     }
     MapUnmapCallback().OnUnmap(h->map_beg, h->map_size);
-    REAL(free)(reinterpret_cast<void *>(h->map_beg));
+    UnmapOrDie(reinterpret_cast<void*>(h->map_beg), h->map_size);
   }
 
   uptr TotalMemoryUsed() {
@@ -179,6 +182,7 @@ class LargeMmapAllocator {
     uptr p = reinterpret_cast<uptr>(ptr);
     SpinMutexLock l(&mutex_);
     uptr nearest_chunk = 0;
+    Header *const *chunks = AddressSpaceView::Load(chunks_, n_chunks_);
     // Cache-friendly linear search.
     for (uptr i = 0; i < n_chunks_; i++) {
       uptr ch = reinterpret_cast<uptr>(chunks_[i]);
@@ -188,13 +192,15 @@ class LargeMmapAllocator {
     }
     if (!nearest_chunk)
       return nullptr;
-    Header *h = reinterpret_cast<Header *>(nearest_chunk);
+    const Header *h =
+        AddressSpaceView::Load(reinterpret_cast<Header *>(nearest_chunk));
+    Header *h_ptr = reinterpret_cast<Header *>(nearest_chunk);
     CHECK_GE(nearest_chunk, h->map_beg);
     CHECK_LT(nearest_chunk, h->map_beg + h->map_size);
     CHECK_LE(nearest_chunk, p);
     if (h->map_beg + h->map_size <= p)
       return nullptr;
-    return GetUser(h);
+    return GetUser(h_ptr);
   }
 
   void EnsureSortedChunks() {
@@ -214,9 +220,10 @@ class LargeMmapAllocator {
     uptr n = n_chunks_;
     if (!n) return nullptr;
     EnsureSortedChunks();
+    Header *const *chunks = AddressSpaceView::Load(chunks_, n_chunks_);
     auto min_mmap_ = reinterpret_cast<uptr>(chunks_[0]);
-    auto max_mmap_ =
-        reinterpret_cast<uptr>(chunks_[n - 1]) + chunks_[n - 1]->map_size;
+    auto max_mmap_ = reinterpret_cast<uptr>(chunks[n - 1]) +
+                     AddressSpaceView::Load(chunks[n - 1])->map_size;
     if (p < min_mmap_ || p >= max_mmap_)
       return nullptr;
     uptr beg = 0, end = n - 1;
@@ -237,10 +244,11 @@ class LargeMmapAllocator {
         beg = end;
     }
 
-    Header *h = chunks_[beg];
+    const Header *h = AddressSpaceView::Load(chunks[beg]);
+    Header *h_ptr = chunks_[beg];
     if (h->map_beg + h->map_size <= p || p < h->map_beg)
       return nullptr;
-    return GetUser(h);
+    return GetUser(h_ptr);
   }
 
   void PrintStats() {
