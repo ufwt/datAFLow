@@ -55,11 +55,11 @@ static void edit_params(u32 argc, char **argv) {
         alloc_printf("-fuzzalloc-tag-log=%s", fuzzalloc_tag_log);
   }
 
-  char *fuzzalloc_whitelist = getenv("FUZZALLOC_WHITELIST");
-  if (fuzzalloc_whitelist && !maybe_assembler) {
+  char *fuzzalloc_allowlist = getenv("FUZZALLOC_ALLOWLIST");
+  if (fuzzalloc_allowlist && !maybe_assembler) {
     cc_params[cc_par_cnt++] = "-mllvm";
     cc_params[cc_par_cnt++] =
-        alloc_printf("-fuzzalloc-whitelist=%s", fuzzalloc_whitelist);
+        alloc_printf("-fuzzalloc-allowlist=%s", fuzzalloc_allowlist);
   }
 
   if (getenv("FUZZALLOC_DEBUG")) {

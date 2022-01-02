@@ -44,8 +44,8 @@ static cl::opt<std::string>
               cl::Required);
 
 static cl::opt<std::string>
-    ClWhitelist("fuzzalloc-whitelist",
-                cl::desc("Path to memory allocation whitelist file"));
+    ClAllowlist("fuzzalloc-allowlist",
+                cl::desc("Path to memory allocation allowlist file"));
 
 STATISTIC(NumOfFunctions, "Number of functions to tag.");
 STATISTIC(NumOfGlobalVariables, "Number of global variables to tag.");
@@ -55,15 +55,15 @@ STATISTIC(NumOfFunctionArgs, "Number of function arguments to tag.");
 
 namespace {
 
-/// Whitelist of dynamic memory allocation wrapper functions
-class FuzzallocWhitelist {
+/// Allowlist of dynamic memory allocation wrapper functions
+class FuzzallocAllowlist {
 private:
   std::unique_ptr<SpecialCaseList> SCL;
 
 public:
-  FuzzallocWhitelist() = default;
+  FuzzallocAllowlist() = default;
 
-  FuzzallocWhitelist(std::unique_ptr<SpecialCaseList> List)
+  FuzzallocAllowlist(std::unique_ptr<SpecialCaseList> List)
       : SCL(std::move(List)){};
 
   bool isIn(const Function &F) const {
@@ -75,7 +75,7 @@ public:
 class CollectTagSites : public ModulePass {
 private:
   Module *Mod;
-  FuzzallocWhitelist Whitelist;
+  FuzzallocAllowlist Allowlist;
 
   SmallPtrSet<const Function *, 8> FunctionsToTag;
   SmallPtrSet<const GlobalVariable *, 8> GlobalVariablesToTag;
@@ -99,21 +99,21 @@ public:
 
 char CollectTagSites::ID = 0;
 
-static FuzzallocWhitelist getWhitelist() {
-  if (ClWhitelist.empty()) {
-    return FuzzallocWhitelist();
+static FuzzallocAllowlist getAllowlist() {
+  if (ClAllowlist.empty()) {
+    return FuzzallocAllowlist();
   }
 
-  if (!sys::fs::exists(ClWhitelist)) {
+  if (!sys::fs::exists(ClAllowlist)) {
     std::string Err;
     raw_string_ostream OS(Err);
-    OS << "fuzzalloc whitelist does not exist at " << ClWhitelist;
+    OS << "fuzzalloc allowlist does not exist at " << ClAllowlist;
     OS.flush();
     report_fatal_error(Err);
   }
 
-  return FuzzallocWhitelist(
-      SpecialCaseList::createOrDie({ClWhitelist}, *vfs::getRealFileSystem()));
+  return FuzzallocAllowlist(
+      SpecialCaseList::createOrDie({ClAllowlist}, *vfs::getRealFileSystem()));
 }
 
 void CollectTagSites::tagUser(const User *U, const Function *F,
@@ -279,7 +279,7 @@ void CollectTagSites::getAnalysisUsage(AnalysisUsage &AU) const {
 
 bool CollectTagSites::doInitialization(Module &M) {
   this->Mod = &M;
-  this->Whitelist = getWhitelist();
+  this->Allowlist = getAllowlist();
 
   return false;
 }
@@ -298,7 +298,7 @@ bool CollectTagSites::runOnModule(Module &M) {
   }
 
   for (const auto &F : M.functions()) {
-    if (this->Whitelist.isIn(F)) {
+    if (this->Allowlist.isIn(F)) {
       this->FunctionsToTag.insert(&F);
       NumOfFunctions++;
     }
