@@ -167,7 +167,7 @@ gcc, it's safest to pass in the flags
 
 All you have to do is link your target with `-lfuzzalloc`.
 
-### With AFL++
+### Instrumenting a Target
 
 The `dataflow-cc` (and `dataflow-cc++`) tools can be used as dropin replacements
 for `clang` (and `clang++`).
@@ -204,8 +204,9 @@ environment variable (e.g., `FUZZALLOC_TAG_LOG=/path/to/tags`).
 
 Other useful environment variables include:
 
-* `FUZZALLOC_DEBUG_INSTRUMENT`: If set, enables debug logging on memory
-accesses.
+* `FUZZALLOC_FUZZER`: Sets the fuzzer instrumentation to use. Valid fuzzers
+include: `debug-log` (logging to `stderr`. This requires `fuzzalloc` be built
+in debug mode; i.e., with `-DCMAKE_BUILD_TYPE=Debug`), `AFL`, and `libfuzzer`.
 
 * `FUZZALLOC_SENSITIVITY`: Sets the _use_ site sensitivity. Valid sensitivities
 are: `mem-read`, `mem-write`, `mem-access`, `mem-read-idx`, `mem-write-idx`,
