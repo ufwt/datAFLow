@@ -49,6 +49,11 @@ enum Sensitivity {
   MemAccessIdx,
 };
 
+enum Fuzzer {
+  AFL,
+  LibFuzzer,
+};
+
 static cl::opt<Sensitivity> ClSensitivity(
     cl::desc("Sensitivity:"),
     cl::values(clEnumValN(MemRead, "mem-read", "Instrument read instructions"),
@@ -68,9 +73,12 @@ static cl::opt<bool>
     ClDebugInstrument("fuzzalloc-debug-instrument",
                       cl::desc("Instrument with debug function"), cl::Hidden);
 
-static cl::opt<bool> ClLibFuzzerInstrument("fuzzalloc-libfuzzer",
-                                           cl::desc("Instrument for libFuzzer"),
-                                           cl::Hidden);
+static cl::opt<Fuzzer> ClFuzzerInstrument("fuzzer-instrumentation",
+                                          cl::desc("Fuzzer instrumentation:"),
+                                          cl::values(clEnumValN(AFL, "afl", "AFL"),
+                                              clEnumValN(LibFuzzer, "libfuzzer", "libFuzzer")),
+                                          cl::init(AFL),
+                                          cl::Hidden);
 
 STATISTIC(NumOfInstrumentedMemAccesses,
           "Number of memory accesses instrumented.");
@@ -452,17 +460,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   LLVMContext &C = M.getContext();
   Type *VoidTy = Type::getVoidTy(C);
 
-  if (ClLibFuzzerInstrument) {
-    //
-    // libFuzzer-style fuzzing
-    //
-
-    this->SanCovTraceDataFlowFn =
-        checkInstrumentationFunc(M.getOrInsertFunction(
-            SanCovTraceDataFlow, VoidTy, this->TagTy, this->Int64Ty));
-    this->SanCovTraceDataFlowFn->addParamAttr(0, Attribute::ZExt);
-    this->SanCovTraceDataFlowFn->addParamAttr(1, Attribute::SExt);
-  } else {
+  if (ClFuzzerInstrument == Fuzzer::AFL) {
     //
     // AFL-style fuzzing
     //
@@ -482,6 +480,16 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
       this->DbgMemAccessFn->addParamAttr(0, Attribute::ZExt);
       this->DbgMemAccessFn->addParamAttr(1, Attribute::SExt);
     }
+  } else if (ClFuzzerInstrument == Fuzzer::LibFuzzer) {
+    //
+    // libFuzzer-style fuzzing
+    //
+
+    this->SanCovTraceDataFlowFn =
+        checkInstrumentationFunc(M.getOrInsertFunction(
+            SanCovTraceDataFlow, VoidTy, this->TagTy, this->Int64Ty));
+    this->SanCovTraceDataFlowFn->addParamAttr(0, Attribute::ZExt);
+    this->SanCovTraceDataFlowFn->addParamAttr(1, Attribute::SExt);
   }
 
   // For determining whether to instrument a memory dereference
@@ -581,10 +589,10 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
           continue;
         }
 
-        if (ClLibFuzzerInstrument) {
-          doLibFuzzerInstrument(I, Addr);
-        } else {
+        if (ClFuzzerInstrument == Fuzzer::AFL) {
           doAFLInstrument(I, Addr);
+        } else if (ClFuzzerInstrument == Fuzzer::LibFuzzer) {
+          doLibFuzzerInstrument(I, Addr);
         }
       } else {
         // TODO instrumentMemIntrinsic
