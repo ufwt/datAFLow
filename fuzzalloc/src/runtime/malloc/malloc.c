@@ -197,14 +197,17 @@ void *__tagged_calloc(tag_t def_site_tag, size_t nmemb, size_t size) {
     space = GET_MSPACE(def_site_tag) + mspace_overhead;
   }
 
-  // Note that this doesn't look at previously-allocated memory in this mspace
-  // (because that would be too expensive)
-  if (__builtin_expect(nmemb > mspace_size / size, FALSE)) {
-    DEBUG_MSG("calloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
-              nmemb * size, mspace_size);
-    errno = ENOMEM;
+  // Need to check this to avoid a division-by-zero
+  if (__builtin_expect(size > 0, TRUE)) {
+    // Note that this doesn't look at previously-allocated memory in this mspace
+    // (because that would be too expensive)
+    if (__builtin_expect(nmemb > mspace_size / size, FALSE)) {
+      DEBUG_MSG("calloc size (%lu bytes) larger than mspace size (%lu bytes)\n",
+                nmemb * size, mspace_size);
+      errno = ENOMEM;
 
-    return NULL;
+      return NULL;
+    }
   }
 
   void *mem = mspace_calloc(space, nmemb, size);
