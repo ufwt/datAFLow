@@ -59,7 +59,7 @@ static void edit_params(u32 argc, char **argv) {
 
 int main(int argc, char **argv) {
   if (isatty(2) && !getenv("AFL_QUIET")) {
-    SAYF(cCYA "dataflow-collect-stats" cBRI VERSION cRST
+    SAYF(cCYA "dataflow-stats" cBRI VERSION cRST
               " by <adrian.herrera@anu.edu.au>\n");
   }
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv) {
          "This is a helper application for collecting some useful statistics "
          "from a target bitcode (bc) file. A typical usage would be:\n\n"
 
-         "  dataflow-collect-stats /path/to/bc/file\n\n");
+         "  dataflow-stats /path/to/bc/file\n\n");
 
     exit(1);
   }

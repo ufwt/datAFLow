@@ -99,7 +99,7 @@ static void edit_params(u32 argc, char **argv) {
     name++;
   }
 
-  if (!strcmp(name, "dataflow-clang-fast++")) {
+  if (!strcmp(name, "dataflow-cc++")) {
     u8 *alt_cxx = getenv("AFL_CXX");
     cc_params[0] = alt_cxx ? alt_cxx : (u8 *)"clang++";
   } else {
@@ -392,7 +392,7 @@ static void edit_params(u32 argc, char **argv) {
 
 int main(int argc, char **argv) {
   if (isatty(2) && !getenv("AFL_QUIET")) {
-    SAYF(cCYA "dataflow-clang-fast " cBRI VERSION cRST
+    SAYF(cCYA "dataflow-cc " cBRI VERSION cRST
               " by <lszekeres@google.com, adrian.herrera@anu.edu.au>\n");
   }
 
@@ -406,8 +406,8 @@ int main(int argc, char **argv) {
         "instrumentation. A common use pattern would be one of the "
         "following:\n\n"
 
-        "  CC=dataflow-clang-fast ./configure\n"
-        "  CXX=dataflow-clang-fast++ ./configure\n\n"
+        "  CC=dataflow-cc ./configure\n"
+        "  CXX=dataflow-cc++ ./configure\n\n"
 
         "You can specify custom next-stage toolchain via AFL_CC and AFL_CXX. "
         "Setting\n"

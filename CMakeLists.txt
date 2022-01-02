@@ -1,7 +1,7 @@
 # Same version required by LLVM
 cmake_minimum_required(VERSION 3.13.4)
 
-project(fuzzalloc
+project(datAFLow
   LANGUAGES C CXX
   DESCRIPTION "Data-flow-based fuzzing"
 )
