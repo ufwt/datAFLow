@@ -179,12 +179,11 @@ Note that this typically requires running `dataflow-preprocess` before running
 
 If the target uses custom memory allocation routines (i.e., wrapping `malloc`,
 `calloc`, etc.), then a [special case list](https://clang.llvm.org/docs/SanitizerSpecialCaseList.html)
-containing an allow list of the names of these routines should be provided to
-`dataflow-preprocess`. Doing so ensures that dynamically-allocated variable
-_def_ sites are appropriately tagged. The allow list is provided via
-the `FUZZALLOC_ALLOWLIST` environment variable; i.e.,
-`FUZZALLOC_ALLOWLIST=/path/to/special/case/list`. The special case list must be
-formatted as:
+containing a list of these routines should be provided to `dataflow-preprocess`.
+Doing so ensures that dynamically-allocated variable _def_ sites are
+appropriately tagged. The list is provided via the `FUZZALLOC_MEM_FUNCS`
+environment variable; i.e., `FUZZALLOC_MEM_FUNCS=/path/to/special/case/list`.
+The special case list must be formatted as:
 
 ```
 [fuzzalloc]
