@@ -152,8 +152,9 @@ Constant *TagDynamicAllocs::castAbort(Type *Ty) const {
 }
 
 Function *TagDynamicAllocs::createTrampoline(Function *OrigF) {
-  const Twine TrampolineFName = "fuzzalloc.__trampoline_" + OrigF->getName();
-  Function *TrampolineF = this->Mod->getFunction(TrampolineFName.str());
+  const auto TrampolineFName =
+      "fuzzalloc.__trampoline_" + OrigF->getName().str();
+  Function *TrampolineF = this->Mod->getFunction(TrampolineFName);
   if (TrampolineF) {
     return TrampolineF;
   }
@@ -370,12 +371,12 @@ TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
 /// of the function and prepends the global variable name with "__tagged_".
 GlobalVariable *
 TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
+  const auto NewGVName = "__tagged_" + OrigGV->getName().str();
+
   FunctionType *NewGVTy = translateTaggedFunctionType(
       cast<FunctionType>(OrigGV->getValueType()->getPointerElementType()));
-  Twine NewGVName = "__tagged_" + OrigGV->getName();
-
   auto *NewGV =
-      this->Mod->getOrInsertGlobal(NewGVName.str(), NewGVTy->getPointerTo());
+      this->Mod->getOrInsertGlobal(NewGVName, NewGVTy->getPointerTo());
   assert(isa<GlobalVariable>(NewGV) &&
          "Translated tagged global variable not a global variable");
 
