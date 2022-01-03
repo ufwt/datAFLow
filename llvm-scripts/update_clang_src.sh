@@ -12,7 +12,7 @@ INC=${SRC}/include
 LLVM=$(pwd)
 CLANG_DEST=${LLVM}/clang
 
-ln -sf ${CLANG_SRC}/include/clang/Driver/CC1Options.td ${CLANG_DEST}/include/clang/Driver/CC1Options.td
+ln -sf ${CLANG_SRC}/include/clang/Driver/Options.td ${CLANG_DEST}/include/clang/Driver/Options.td
 ln -sf ${CLANG_SRC}/include/clang/Basic/CodeGenOptions.def ${CLANG_DEST}/include/clang/Basic/CodeGenOptions.def
 
 ln -sf ${CLANG_SRC}/lib/CodeGen/CGExprConstant.cpp ${CLANG_DEST}/lib/CodeGen/CGExprConstant.cpp
