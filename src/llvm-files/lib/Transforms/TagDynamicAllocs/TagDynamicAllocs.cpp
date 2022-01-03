@@ -347,13 +347,18 @@ FunctionType *TagDynamicAllocs::translateTaggedFunctionType(
 /// and prepends the function name with "__tagged_".
 Function *
 TagDynamicAllocs::translateTaggedFunction(const Function *OrigF) const {
-  FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
-  Twine NewFName = "__tagged_" + OrigF->getName();
+  const auto NewFName = "__tagged_" + OrigF->getName().str();
 
-  FunctionCallee NewC = this->Mod->getOrInsertFunction(NewFName.str(), NewFTy);
+  FunctionType *NewFTy = translateTaggedFunctionType(OrigF->getFunctionType());
+  FunctionCallee NewC = this->Mod->getOrInsertFunction(NewFName, NewFTy);
 
   assert(NewC && "Translated tagged function not a function");
   auto *NewF = cast<Function>(NewC.getCallee()->stripPointerCasts());
+
+  NewF->getArg(0)->setName("tag");
+  for (unsigned I = 0; I < OrigF->arg_size(); ++I) {
+    NewF->getArg(I + 1)->setName(OrigF->getArg(I)->getName());
+  }
 
   return NewF;
 }
