@@ -44,9 +44,9 @@ enum Sensitivity {
   MemWrite,
   MemAccess,
 
-  MemReadIdx,
-  MemWriteIdx,
-  MemAccessIdx,
+  MemReadOffset,
+  MemWriteOffset,
+  MemAccessOffset,
 };
 
 enum Fuzzer {
@@ -57,18 +57,19 @@ enum Fuzzer {
 
 static cl::opt<Sensitivity> ClSensitivity(
     cl::desc("Sensitivity:"),
-    cl::values(clEnumValN(Sensitivity::MemRead, "mem-read",
-                          "Instrument read instructions"),
-               clEnumValN(Sensitivity::MemWrite, "mem-write",
-                          "Instrument write instructions"),
-               clEnumValN(Sensitivity::MemAccess, "mem-access",
-                          "Instrument read and write instructions"),
-               clEnumValN(Sensitivity::MemReadIdx, "mem-read-idx",
-                          "Instrument read instructions with index"),
-               clEnumValN(Sensitivity::MemWriteIdx, "mem-write-idx",
-                          "Instrument write instructions with index"),
-               clEnumValN(Sensitivity::MemAccessIdx, "mem-access-idx",
-                          "Instrument read and write instructions with index")),
+    cl::values(
+        clEnumValN(Sensitivity::MemRead, "mem-read",
+                   "Instrument read instructions"),
+        clEnumValN(Sensitivity::MemWrite, "mem-write",
+                   "Instrument write instructions"),
+        clEnumValN(Sensitivity::MemAccess, "mem-access",
+                   "Instrument read and write instructions"),
+        clEnumValN(Sensitivity::MemReadOffset, "mem-read-offset",
+                   "Instrument read instructions with offset"),
+        clEnumValN(Sensitivity::MemWriteOffset, "mem-write-offset",
+                   "Instrument write instructions with offset"),
+        clEnumValN(Sensitivity::MemAccessOffset, "mem-access-offset",
+                   "Instrument read and write instructions with offset")),
     cl::init(MemAccess));
 
 static cl::opt<Fuzzer> ClFuzzerInstrument(
@@ -119,19 +120,19 @@ struct InstrumentFlags {
       InstrumentAtomics = false;
       UseOffset = false;
       break;
-    case MemReadIdx:
+    case MemReadOffset:
       InstrumentReads = true;
       InstrumentWrites = false;
       InstrumentAtomics = false;
       UseOffset = true;
       break;
-    case MemWriteIdx:
+    case MemWriteOffset:
       InstrumentReads = false;
       InstrumentWrites = true;
       InstrumentAtomics = false;
       UseOffset = true;
       break;
-    case MemAccessIdx:
+    case MemAccessOffset:
       InstrumentReads = true;
       InstrumentWrites = true;
       InstrumentAtomics = false;

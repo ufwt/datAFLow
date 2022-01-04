@@ -208,8 +208,8 @@ include: `debug-log` (logging to `stderr`. This requires `fuzzalloc` be built
 in debug mode; i.e., with `-DCMAKE_BUILD_TYPE=Debug`), `AFL`, and `libfuzzer`.
 
 * `FUZZALLOC_SENSITIVITY`: Sets the _use_ site sensitivity. Valid sensitivities
-are: `mem-read`, `mem-write`, `mem-access`, `mem-read-idx`, `mem-write-idx`,
-and `mem-access-idx`.
+are: `mem-read`, `mem-write`, `mem-access`, `mem-read-offset`,
+`mem-write-offset`, and `mem-access-offset`.
 
 ### With libFuzzer (Experimental)
 
