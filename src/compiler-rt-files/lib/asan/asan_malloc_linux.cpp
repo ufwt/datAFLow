@@ -27,6 +27,7 @@
 #include "asan_stack.h"
 
 // ---------------------- Replacement functions ---------------- {{{1
+using namespace __asan;
 
 #if FUZZALLOC_ASAN
 #include "sanitizer_common/fuzzalloc.h"

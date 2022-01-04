@@ -14,8 +14,8 @@ RT_DEST=${LLVM}/compiler-rt
 
 ln -sf ${RT_SRC}/lib/asan/asan_allocator.cpp ${RT_DEST}/lib/asan/asan_allocator.cpp
 ln -sf ${RT_SRC}/lib/asan/asan_allocator.h ${RT_DEST}/lib/asan/asan_allocator.h
-ln -sf ${RT_SRC}/lib/asan/asan_interceptors.cc ${RT_DEST}/lib/asan/asan_interceptors.cc
-ln -sf ${RT_SRC}/lib/asan/asan_malloc_linux.cc ${RT_DEST}/lib/asan/asan_malloc_linux.cc
+ln -sf ${RT_SRC}/lib/asan/asan_interceptors.cpp ${RT_DEST}/lib/asan/asan_interceptors.cpp
+ln -sf ${RT_SRC}/lib/asan/asan_malloc_linux.cpp ${RT_DEST}/lib/asan/asan_malloc_linux.cpp
 ln -sf ${RT_SRC}/lib/asan/asan_mapping.h ${RT_DEST}/lib/asan/asan_mapping.h
 ln -sf ${RT_SRC}/lib/asan/CMakeLists.txt ${RT_DEST}/lib/asan/CMakeLists.txt
 ln -sf ${RT_SRC}/lib/asan/tests/CMakeLists.txt ${RT_DEST}/lib/asan/tests/CMakeLists.txt

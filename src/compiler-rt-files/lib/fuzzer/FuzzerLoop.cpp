@@ -393,7 +393,7 @@ void Fuzzer::CheckExitOnSrcPosOrItem() {
     auto HandlePC = [&](const TracePC::PCTableEntry *TE) {
       if (!PCsSet->insert(TE->PC).second)
         return;
-      std::string Descr = DescribePC("%F %L", PC + 1);
+      std::string Descr = DescribePC("%F %L", TE->PC + 1);
       if (Descr.find(Options.ExitOnSrcPos) != std::string::npos) {
         Printf("INFO: found line matching '%s', exiting.\n",
                Options.ExitOnSrcPos.c_str());

@@ -185,7 +185,7 @@ class LargeMmapAllocator {
     Header *const *chunks = AddressSpaceView::Load(chunks_, n_chunks_);
     // Cache-friendly linear search.
     for (uptr i = 0; i < n_chunks_; i++) {
-      uptr ch = reinterpret_cast<uptr>(chunks_[i]);
+      uptr ch = reinterpret_cast<uptr>(chunks[i]);
       if (p < ch) continue;  // p is at left to this chunk, skip it.
       if (p - ch < p - nearest_chunk)
         nearest_chunk = ch;
@@ -324,26 +324,31 @@ class LargeMmapAllocator {
 
 // The PrimaryAllocator template parameters is unused: it is just here to
 // satisfy the sanitizer allocator requirements
-template <class PrimaryAllocator, class AllocatorCache,
-          class SecondaryAllocator>
+template <class PrimaryAllocator,
+          class LargeMmapAllocatorPtrArray = DefaultLargeMmapAllocatorPtrArray>
 class CombinedAllocator {
  public:
+  using AllocatorCache = typename PrimaryAllocator::AllocatorCache;
+  using SecondaryAllocator =
+      LargeMmapAllocator<typename PrimaryAllocator::MapUnmapCallback,
+                         LargeMmapAllocatorPtrArray,
+                         typename PrimaryAllocator::AddressSpaceView>;
+
   void InitLinkerInitialized(s32 release_to_os_interval_ms) {
-    secondary_.InitLinkerInitialized();
     stats_.InitLinkerInitialized();
+    secondary_.InitLinkerInitialized();
   }
 
   void Init(s32 release_to_os_interval_ms) {
-    secondary_.Init();
     stats_.Init();
+    secondary_.Init();
   }
 
   void *Allocate(AllocatorCache *cache, uptr size, uptr alignment,
                  tag_t alloc_site_tag = FUZZALLOC_DEFAULT_TAG) {
     // Returning 0 on malloc(0) may break a lot of code.
-    if (size == 0) {
+    if (size == 0)
       size = 1;
-    }
     if (size + alignment < size) {
       Report("WARNING: %s: CombinedAllocator allocation overflow: "
              "0x%zx bytes with 0x%zx alignment requested\n",
@@ -372,18 +377,15 @@ class CombinedAllocator {
   }
 
   void Deallocate(AllocatorCache *cache, void *p) {
-    if (!p) {
-      return;
-    }
+    if (!p) return;
     secondary_.Deallocate(&stats_, p);
   }
 
   void *Reallocate(AllocatorCache *cache, void *p, uptr new_size,
                    uptr alignment,
                    tag_t alloc_site_tag = FUZZALLOC_DEFAULT_TAG) {
-    if (!p) {
+    if (!p)
       return Allocate(cache, new_size, alignment, alloc_site_tag);
-    }
     if (!new_size) {
       Deallocate(cache, p);
       return nullptr;
@@ -392,20 +394,27 @@ class CombinedAllocator {
     uptr old_size = GetActuallyAllocatedSize(p);
     uptr memcpy_size = Min(new_size, old_size);
     void *new_p = Allocate(cache, new_size, alignment, alloc_site_tag);
-    if (new_p) {
+    if (new_p)
       internal_memcpy(new_p, p, memcpy_size);
-    }
     Deallocate(cache, p);
     return new_p;
   }
 
-  bool PointerIsMine(void *p) { return secondary_.PointerIsMine(p); }
+  bool PointerIsMine(void *p) {
+    return secondary_.PointerIsMine(p);
+  }
 
-  bool FromPrimary(void *p) { return false; }
+  bool FromPrimary(void *p) {
+    return false;
+  }
 
-  void *GetMetaData(const void *p) { return secondary_.GetMetaData(p); }
+  void *GetMetaData(const void *p) {
+    return secondary_.GetMetaData(p);
+  }
 
-  void *GetBlockBegin(const void *p) { return secondary_.GetBlockBegin(p); }
+  void *GetBlockBegin(const void *p) {
+    return secondary_.GetBlockBegin(p);
+  }
 
   void *GetBlockBeginFastLocked(void *p) {
     return secondary_.GetBlockBeginFastLocked(p);
@@ -415,7 +424,13 @@ class CombinedAllocator {
     return secondary_.GetActuallyAllocatedSize(p);
   }
 
-  uptr TotalMemoryUsed() const { return secondary_.TotalMemoryUsed(); }
+  uptr TotalMemoryUsed() const {
+    return secondary_.TotalMemoryUsed();
+  }
+
+  void TestOnlyUnmap() {
+    // Nothing to do here
+  }
 
   //
   // We don't use the allocator cache, so none of these methods do anything
@@ -433,13 +448,21 @@ class CombinedAllocator {
     // Nothing to do here
   }
 
-  void GetStats(AllocatorStatCounters s) const { stats_.Get(s); }
+  void GetStats(AllocatorStatCounters s) const {
+    stats_.Get(s);
+  }
 
-  void PrintStats() { secondary_.PrintStats(); }
+  void PrintStats() {
+    secondary_.PrintStats();
+  }
 
-  void ForceLock() { secondary_.ForceLock(); }
+  void ForceLock() {
+    secondary_.ForceLock();
+  }
 
-  void ForceUnlock() { secondary_.ForceUnlock(); }
+  void ForceUnlock() {
+    secondary_.ForceUnlock();
+  }
 
   void ForEachChunk(ForEachChunkCallback callback, void *arg) {
     secondary_.ForEachChunk(callback, arg);
