@@ -375,12 +375,15 @@ TagDynamicAllocs::translateTaggedGlobalVariable(GlobalVariable *OrigGV) const {
 
   FunctionType *NewGVTy = translateTaggedFunctionType(
       cast<FunctionType>(OrigGV->getValueType()->getPointerElementType()));
-  auto *NewGV =
+  auto *NewConst =
       this->Mod->getOrInsertGlobal(NewGVName, NewGVTy->getPointerTo());
-  assert(isa<GlobalVariable>(NewGV) &&
+  assert(isa<GlobalVariable>(NewConst) &&
          "Translated tagged global variable not a global variable");
 
-  return cast<GlobalVariable>(NewGV);
+  auto *NewGV = cast<GlobalVariable>(NewConst);
+  NewGV->copyAttributesFrom(OrigGV);
+
+  return NewGV;
 }
 
 /// Translate users of a dynamic memory allocation function so that they use the
@@ -711,7 +714,7 @@ GlobalVariable *TagDynamicAllocs::tagGlobalVariable(GlobalVariable *OrigGV) {
 
       // Load the global variable containing the tagged function
       auto *NewLoad =
-          new LoadInst(TaggedGV->getType(), TaggedGV,
+          new LoadInst(TaggedGVTy, TaggedGV,
                        Load->hasName() ? "__tagged_" + Load->getName() : "",
                        Load->isVolatile(), Align(Load->getAlignment()),
                        Load->getOrdering(), Load->getSyncScopeID(), Load);
