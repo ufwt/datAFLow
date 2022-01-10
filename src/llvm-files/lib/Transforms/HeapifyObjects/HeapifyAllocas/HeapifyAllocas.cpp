@@ -245,7 +245,7 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // Ensure GEPs are correctly typed
-      updateGEP(GEP, NewAlloca);
+      updateGEP(GEP, NewAlloca, NewAlloca->getAllocatedType());
     } else if (auto *PHI = dyn_cast<PHINode>(U)) {
       // PHI nodes are a special case because they must always be the first
       // instruction in a basic block. To ensure this property is true we insert
@@ -256,7 +256,7 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
 
         if (IncomingValue == Alloca) {
           auto *LoadNewAlloca =
-              new LoadInst(NewAlloca->getType(), NewAlloca, "",
+              new LoadInst(NewAlloca->getAllocatedType(), NewAlloca, "",
                            IncomingBlock->getTerminator());
           auto *BitCastNewAlloca = CastInst::CreatePointerCast(
               LoadNewAlloca, IncomingValue->getType(), "",
@@ -267,7 +267,7 @@ AllocaInst *HeapifyAllocas::heapifyAlloca(
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the new alloca from the heap before we do anything with it
       auto *LoadNewAlloca =
-          new LoadInst(NewAlloca->getType(), NewAlloca, "", Inst);
+          new LoadInst(NewAlloca->getAllocatedType(), NewAlloca, "", Inst);
       auto *BitCastNewAlloca = CastInst::CreatePointerCast(
           LoadNewAlloca, Alloca->getType(), "", Inst);
       Inst->replaceUsesOfWith(Alloca, BitCastNewAlloca);
@@ -354,7 +354,7 @@ bool HeapifyAllocas::runOnModule(Module &M) {
         // If no lifetime.end intrinsics were found, just free the allocation
         // when the function returns
         for (auto *Return : Returns) {
-          insertFree(NewAlloca, Return);
+          insertFree(NewAlloca->getAllocatedType(), NewAlloca, Return);
           NumOfFreeInsert++;
         }
       } else {
@@ -362,7 +362,7 @@ bool HeapifyAllocas::runOnModule(Module &M) {
         for (auto *LifetimeEnd : LifetimeEnds) {
           if (GetUnderlyingObjectThroughLoads(LifetimeEnd->getOperand(1),
                                               *this->DL) == NewAlloca) {
-            insertFree(NewAlloca, LifetimeEnd);
+            insertFree(NewAlloca->getAllocatedType(), NewAlloca, LifetimeEnd);
             NumOfFreeInsert++;
           }
         }

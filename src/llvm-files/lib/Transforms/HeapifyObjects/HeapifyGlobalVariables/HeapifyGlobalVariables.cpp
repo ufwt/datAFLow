@@ -347,7 +347,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   for (auto *U : Users) {
     if (auto *GEP = dyn_cast<GetElementPtrInst>(U)) {
       // Ensure GEPs are correctly typed
-      updateGEP(GEP, NewGV);
+      updateGEP(GEP, NewGV, NewGV->getValueType());
     } else if (auto *PHI = dyn_cast<PHINode>(U)) {
       // PHI nodes are a special case because they must always be the first
       // instruction in a basic block. To ensure this property is true we insert
@@ -357,7 +357,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
         BasicBlock *IncomingBlock = PHI->getIncomingBlock(I);
 
         if (IncomingValue == OrigGV) {
-          auto *LoadNewGV = new LoadInst(NewGV->getType(), NewGV, "",
+          auto *LoadNewGV = new LoadInst(NewGV->getValueType(), NewGV, "",
                                          IncomingBlock->getTerminator());
           auto *BitCastNewGV =
               CastInst::CreatePointerCast(LoadNewGV, IncomingValue->getType(),
@@ -367,7 +367,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
       }
     } else if (auto *Inst = dyn_cast<Instruction>(U)) {
       // We must load the array from the heap before we can do anything with it
-      auto *LoadNewGV = new LoadInst(NewGV->getType(), NewGV, "", Inst);
+      auto *LoadNewGV = new LoadInst(NewGV->getValueType(), NewGV, "", Inst);
       auto *BitCastNewGV =
           CastInst::CreatePointerCast(LoadNewGV, OrigGV->getType(), "", Inst);
       Inst->replaceUsesOfWith(OrigGV, BitCastNewGV);
@@ -379,7 +379,7 @@ HeapifyGlobalVariables::heapifyGlobalVariable(GlobalVariable *OrigGV) {
   if (!NewGV->isDeclaration()) {
     createHeapifyDtor(NewGV, IRB);
 
-    insertFree(NewGV, &*IRB.GetInsertPoint());
+    insertFree(NewGV->getValueType(), NewGV, &*IRB.GetInsertPoint());
     NumOfFreeInsert++;
   }
 

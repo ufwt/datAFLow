@@ -32,7 +32,7 @@ class Value;
 const unsigned kHeapifyGVCtorAndDtorPriority = 0;
 
 /// Update a GEP instruction to use the given value
-llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *);
+llvm::Value *updateGEP(llvm::GetElementPtrInst *, llvm::Value *, llvm::Type *);
 
 /// Returns \c true if the given type is heapifiable
 bool isHeapifiableType(llvm::Type *);
@@ -53,7 +53,7 @@ llvm::Instruction *createMalloc(llvm::LLVMContext &, const llvm::DataLayout &,
                                 llvm::IRBuilder<> &, llvm::Type *,
                                 const llvm::Twine & = "");
 
-/// Insert a call to \c free for the given alloca
-void insertFree(llvm::Value *, llvm::Instruction *);
+/// Insert a call to \c free for the given alloca (with the given type)
+void insertFree(llvm::Type *, llvm::Value *, llvm::Instruction *);
 
 #endif // FUZZALLOC_HEAPIFY_UTILS_H
