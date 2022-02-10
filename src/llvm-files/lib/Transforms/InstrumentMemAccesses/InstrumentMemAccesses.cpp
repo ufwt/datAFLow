@@ -33,6 +33,7 @@
 
 #include "Utils/FuzzallocUtils.h"
 #include "Utils/LowerAtomics.h"
+#include "Utils/LowerMemIntrinsics.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -438,6 +439,7 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
 
 void InstrumentMemAccesses::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.addRequired<LowerAtomicWrapper>();
+  AU.addRequired<LowerMemIntrinsics>();
   AU.addRequired<TargetLibraryInfoWrapperPass>();
 }
 
