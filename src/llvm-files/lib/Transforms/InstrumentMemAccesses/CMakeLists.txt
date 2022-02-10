@@ -1,4 +1,6 @@
-add_llvm_library(fuzzalloc-inst-mem-accesses
-                 MODULE InstrumentMemAccesses.cpp
-                 LINK_LIBS fuzzalloc-utils
-                 PLUGIN_TOOL opt)
+add_library(fuzzalloc-inst-mem-accesses
+            SHARED
+            InstrumentMemAccesses.cpp)
+target_link_libraries(fuzzalloc-inst-mem-accesses PRIVATE fuzzalloc-utils)
+set_target_properties(fuzzalloc-inst-mem-accesses PROPERTIES LINK_FLAGS "-Wl,-znodelete")
+install(TARGETS fuzzalloc-inst-mem-accesses LIBRARY DESTINATION lib)

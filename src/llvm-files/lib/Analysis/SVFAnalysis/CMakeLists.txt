@@ -82,6 +82,7 @@ set(SVF_SOURCES
 
 include_directories(${SVF_PATH}/include)
 
-add_llvm_library(fuzzalloc-svf-analysis
-                 MODULE ${SVF_SOURCES} SVFAnalysis.cpp
-                 PLUGIN_TOOL opt)
+add_library(fuzzalloc-svf-analysis
+            SHARED
+            ${SVF_SOURCES} SVFAnalysis.cpp)
+set_target_properties(fuzzalloc-svf-analysis PROPERTIES LINK_FLAGS "-Wl,-znodelete")
