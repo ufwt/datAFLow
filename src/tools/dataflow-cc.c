@@ -120,22 +120,23 @@ static void edit_params(u32 argc, char **argv) {
   /* Rewrite calls to new with calls to malloc */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/RewriteNews/fuzzalloc-rewrite-news.so";
+                            "/Transforms/RewriteNews/"
+                            "libfuzzalloc-rewrite-news.so";
 
   /* Expand global variables with static ConstantAggregate initializers */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
                             "/Transforms/HeapifyObjects/ExpandGVInitializers/"
-                            "fuzzalloc-expand-gv-initializers.so";
+                            "libfuzzalloc-expand-gv-initializers.so";
 
   /* Heapify static arrays to dynamically allocated arrays */
 
-  cc_params[cc_par_cnt++] =
-      "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/HeapifyObjects/HeapifyAllocas/fuzzalloc-heapify-allocas.so";
+  cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
+                            "/Transforms/HeapifyObjects/HeapifyAllocas/"
+                            "libfuzzalloc-heapify-allocas.so";
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
                             "/Transforms/HeapifyObjects/HeapifyGlobalVariables/"
-                            "fuzzalloc-heapify-global-vars.so";
+                            "libfuzzalloc-heapify-global-vars.so";
 
   if (getenv("FUZZALLOC_HEAPIFY_STRUCTS")) {
     cc_params[cc_par_cnt++] = "-mllvm";
@@ -147,7 +148,7 @@ static void edit_params(u32 argc, char **argv) {
 
   cc_params[cc_par_cnt++] =
       "-fplugin=" FUZZALLOC_LLVM_DIR
-      "/Transforms/TagDynamicAllocs/fuzzalloc-tag-dyn-allocs.so";
+      "/Transforms/TagDynamicAllocs/libfuzzalloc-tag-dyn-allocs.so";
 
   char *fuzzalloc_tag_log = getenv("FUZZALLOC_TAG_LOG");
   if (fuzzalloc_tag_log && !maybe_assembler) {
@@ -161,7 +162,7 @@ static void edit_params(u32 argc, char **argv) {
   if (!maybe_assembler) {
     cc_params[cc_par_cnt++] =
         "-fplugin=" FUZZALLOC_LLVM_DIR
-        "/Transforms/InstrumentMemAccesses/fuzzalloc-inst-mem-accesses.so";
+        "/Transforms/InstrumentMemAccesses/libfuzzalloc-inst-mem-accesses.so";
 
     char *fuzzalloc_fuzzer = getenv("FUZZALLOC_FUZZER");
     if (fuzzalloc_fuzzer) {

@@ -19,6 +19,7 @@
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/Utils/Local.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/IRBuilder.h"
@@ -28,12 +29,12 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Scalar/LowerAtomic.h"
+#include "llvm/Transforms/Utils/LowerMemIntrinsics.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 
 #include "Utils/FuzzallocUtils.h"
-#include "Utils/LowerAtomics.h"
-#include "Utils/LowerMemIntrinsics.h"
 #include "debug.h"     // from afl
 #include "fuzzalloc.h" // from fuzzalloc
 
@@ -307,6 +308,27 @@ static GEPOperator *getUseSiteGEP(Value *V, DataLayout &DL,
   return nullptr;
 }
 
+static void lowerMemIntrinsics(Function &F, const TargetTransformInfo &TTI) {
+  SmallVector<MemIntrinsic *, 8> InstsToDelete;
+
+  for (auto &I : instructions(F)) {
+    if (auto *MemCpy = dyn_cast<MemCpyInst>(&I)) {
+      expandMemCpyAsLoop(MemCpy, TTI);
+      InstsToDelete.push_back(MemCpy);
+    } else if (auto *MemMove = dyn_cast<MemMoveInst>(&I)) {
+      expandMemMoveAsLoop(MemMove);
+      InstsToDelete.push_back(MemMove);
+    } else if (auto *MemSet = dyn_cast<MemSetInst>(&I)) {
+      expandMemSetAsLoop(MemSet);
+      InstsToDelete.push_back(MemSet);
+    }
+  }
+
+  for (auto *MemInst : InstsToDelete) {
+    MemInst->eraseFromParent();
+  }
+}
+
 Value *InstrumentMemAccesses::getDefSite(Value *Ptr, IRBuilder<> &IRB) const {
   // Cast the memory access pointer to an integer and mask out the mspace tag
   // from the pointer by right-shifting by 32 bits
@@ -438,9 +460,8 @@ Value *InstrumentMemAccesses::isInterestingMemoryAccess(
 }
 
 void InstrumentMemAccesses::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addRequired<LowerAtomicWrapper>();
-  AU.addRequired<LowerMemIntrinsics>();
   AU.addRequired<TargetLibraryInfoWrapperPass>();
+  AU.addRequired<TargetTransformInfoWrapperPass>();
 }
 
 bool InstrumentMemAccesses::doInitialization(Module &M) {
@@ -509,6 +530,9 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
   ObjectSizeOpts ObjSizeOpts;
   ObjSizeOpts.RoundToAlign = true;
 
+  FunctionAnalysisManager DummyFAM;
+  LowerAtomicPass LowerAtomic;
+
   for (auto &F : M.functions()) {
     // Don't instrument our own constructors/destructors
     if (F.getName().startswith("fuzzalloc.init_") ||
@@ -516,6 +540,11 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
         F.getName().startswith("fuzzalloc.free_")) {
       continue;
     }
+
+    // Lower atomics and intrinsics
+    LowerAtomic.run(F, DummyFAM);
+    lowerMemIntrinsics(F,
+                       getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F));
 
     // We want to instrument every address only once per basic block (unless
     // there are calls between uses that access memory)
@@ -556,9 +585,7 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
           }
         }
         // TODO pointer comparisons?
-        else if (isa<MemIntrinsic>(Inst)) {
-          // ok, take it.
-        } else if (const auto *CB = dyn_cast<CallBase>(&Inst)) {
+        else if (const auto *CB = dyn_cast<CallBase>(&Inst)) {
           // A call that accesses memory inside the basic block. If the call
           // is indirect (getCalledFunction returns null) then we don't know
           // so we just have to assume that it accesses memory
@@ -609,8 +636,6 @@ bool InstrumentMemAccesses::runOnModule(Module &M) {
         } else if (ClFuzzerInstrument == Fuzzer::LibFuzzer) {
           doLibFuzzerInstrument(I, Addr);
         }
-      } else {
-        // TODO instrumentMemIntrinsic
       }
     }
   }

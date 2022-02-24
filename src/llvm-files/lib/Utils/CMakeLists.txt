@@ -1,14 +1,4 @@
 add_library(fuzzalloc-utils
-            STATIC
+            SHARED
             FuzzallocUtils.cpp)
 set_target_properties(fuzzalloc-utils PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-add_library(lower-atomics
-            SHARED
-            LowerAtomics.cpp)
-set_target_properties(lower-atomics PROPERTIES LINK_FLAGS "-Wl,-znodelete")
-
-add_library(lower-mem-intrinsics
-            SHARED
-            LowerMemIntrinsics.cpp)
-set_target_properties(lower-mem-intrinsics PROPERTIES LINK_FLAGS "-Wl,-znodelete")
