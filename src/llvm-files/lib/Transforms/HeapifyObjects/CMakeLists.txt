@@ -8,7 +8,7 @@ add_library(fuzzalloc-heapify-allocas
             HeapifyAllocas.cpp HeapifyUtils.cpp)
 set_target_properties(fuzzalloc-heapify-allocas PROPERTIES LINK_FLAGS "-Wl,-znodelete")
 
-add_library(fuzzalloc-heapify-global-variables
+add_library(fuzzalloc-heapify-global-vars
             SHARED
             HeapifyGlobalVariables.cpp HeapifyUtils.cpp)
-set_target_properties(fuzzalloc-heapify-global-variables PROPERTIES LINK_FLAGS "-Wl,-znodelete")
+set_target_properties(fuzzalloc-heapify-global-vars PROPERTIES LINK_FLAGS "-Wl,-znodelete")

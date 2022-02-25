@@ -4,6 +4,4 @@ add_library(fuzzalloc-inst-mem-accesses
 target_link_libraries(fuzzalloc-inst-mem-accesses
                       PRIVATE
                       fuzzalloc-utils)
-set_target_properties(fuzzalloc-inst-mem-accesses
-                      PROPERTIES LINK_FLAGS
-                      "-Wl,-znodelete")
+set_target_properties(fuzzalloc-inst-mem-accesses PROPERTIES LINK_FLAGS "-Wl,-znodelete")

@@ -126,16 +126,16 @@ static void edit_params(u32 argc, char **argv) {
   /* Expand global variables with static ConstantAggregate initializers */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/HeapifyObjects/ExpandGVInitializers/"
+                            "/Transforms/HeapifyObjects/"
                             "libfuzzalloc-expand-gv-initializers.so";
 
   /* Heapify static arrays to dynamically allocated arrays */
 
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/HeapifyObjects/HeapifyAllocas/"
+                            "/Transforms/HeapifyObjects/"
                             "libfuzzalloc-heapify-allocas.so";
   cc_params[cc_par_cnt++] = "-fplugin=" FUZZALLOC_LLVM_DIR
-                            "/Transforms/HeapifyObjects/HeapifyGlobalVariables/"
+                            "/Transforms/HeapifyObjects/"
                             "libfuzzalloc-heapify-global-vars.so";
 
   if (getenv("FUZZALLOC_HEAPIFY_STRUCTS")) {
@@ -158,6 +158,14 @@ static void edit_params(u32 argc, char **argv) {
   }
 
   /* Instrument memory accesses */
+
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Transforms/LowerAtomics/libfuzzalloc-lower-atomics.so";
+
+//  cc_params[cc_par_cnt++] =
+//      "-fplugin=" FUZZALLOC_LLVM_DIR
+//      "/Transforms/LowerMemIntrinsics/libfuzzalloc-lower-mem-intrinsics.so";
 
   if (!maybe_assembler) {
     cc_params[cc_par_cnt++] =
