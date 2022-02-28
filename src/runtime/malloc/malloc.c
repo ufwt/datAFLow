@@ -19,7 +19,7 @@
 //===-- Global variables --------------------------------------------------===//
 
 /// Maps malloc/calloc/realloc def site tags (inserted during compilation) to
-/// mspaces
+/// whether they have been mapped or not
 static uint8_t mapped_def_sites[FUZZALLOC_TAG_MAX + 1];
 
 /// Page size determined at runtime by `getpagesize`

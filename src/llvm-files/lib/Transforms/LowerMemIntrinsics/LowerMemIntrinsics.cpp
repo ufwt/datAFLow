@@ -12,6 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -21,9 +22,15 @@
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 
+#include "Utils/FuzzallocUtils.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "fuzzalloc-lower-mem-intrinsics"
+
+STATISTIC(NumOfMemCpyExpanded, "Number of memcpy expansions");
+STATISTIC(NumOfMemMoveExpanded, "Number of memmove expansions");
+STATISTIC(NumOfMemSetExpanded, "Number of memset expansions");
 
 namespace {
 // Adapted from llvm/lib/Transforms/LowerMemIntrinsics.cpp
@@ -511,6 +518,7 @@ bool LowerMemIntrinsics::expandMemIntrinsicUses(Function &F) {
       Changed = true;
       Memcpy->eraseFromParent();
 
+      NumOfMemCpyExpanded++;
       break;
     }
     case Intrinsic::memmove: {
@@ -519,6 +527,7 @@ bool LowerMemIntrinsics::expandMemIntrinsicUses(Function &F) {
       Changed = true;
       Memmove->eraseFromParent();
 
+      NumOfMemMoveExpanded++;
       break;
     }
     case Intrinsic::memset: {
@@ -527,6 +536,7 @@ bool LowerMemIntrinsics::expandMemIntrinsicUses(Function &F) {
       Changed = true;
       Memset->eraseFromParent();
 
+      NumOfMemSetExpanded++;
       break;
     }
     default:
@@ -555,6 +565,10 @@ bool LowerMemIntrinsics::runOnModule(Module &M) {
       break;
     }
   }
+
+  printStatistic(M, NumOfMemCpyExpanded);
+  printStatistic(M, NumOfMemMoveExpanded);
+  printStatistic(M, NumOfMemSetExpanded);
 
   return Changed;
 }
