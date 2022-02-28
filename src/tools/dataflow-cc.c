@@ -163,9 +163,9 @@ static void edit_params(u32 argc, char **argv) {
       "-fplugin=" FUZZALLOC_LLVM_DIR
       "/Transforms/LowerAtomics/libfuzzalloc-lower-atomics.so";
 
-//  cc_params[cc_par_cnt++] =
-//      "-fplugin=" FUZZALLOC_LLVM_DIR
-//      "/Transforms/LowerMemIntrinsics/libfuzzalloc-lower-mem-intrinsics.so";
+  cc_params[cc_par_cnt++] =
+      "-fplugin=" FUZZALLOC_LLVM_DIR
+      "/Transforms/LowerMemIntrinsics/libfuzzalloc-lower-mem-intrinsics.so";
 
   if (!maybe_assembler) {
     cc_params[cc_par_cnt++] =

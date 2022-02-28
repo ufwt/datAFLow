@@ -19,7 +19,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "lower-atomics"
+#define DEBUG_TYPE "fuzzalloc-lower-atomics"
 
 class LowerAtomics : public llvm::FunctionPass {
 public:
