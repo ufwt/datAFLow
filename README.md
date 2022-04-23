@@ -1,5 +1,11 @@
 # datAFLow
 
+<p>
+<a href="https://www.ndss-symposium.org/wp-content/uploads/fuzzing2022_23001_paper.pdf" target="_blank">
+<img align="right" width="250" src="img/dataflow-paper.png">
+</a>
+</p>
+
 DatAFLow is a fuzzer built on top of
 [AFL++](https://github.com/AFLplusplus/AFLplusplus/). However, instead of a
 control-flow-based feedback mechanism (e.g., based on control-flow edge
