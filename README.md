@@ -1,81 +1,26 @@
 # datAFLow
 
-## Motivation
+DatAFLow is a fuzzer built on top of
+[AFL++](https://github.com/AFLplusplus/AFLplusplus/). However, instead of a
+control-flow-based feedback mechanism (e.g., based on control-flow edge
+coverage), datAFLow uses a data-flow-based feedback mechanism; specifically,
+data flows based on _def-use associations_.
 
-Most popular fuzzers (e.g., AFL, libFuzzer, honggfuzz, VUzzer, etc.) are
-_code-coverage_ guided. This means that they select and mutate seeds with the
-aim of maximising the code coverage of the program under test (PUT). Seeds that
-lead to new code being executed are therefore prioritised over other seeds.
+To enable performant fuzzing, datAFLow uses a custom low-fat pointer memory
+allocator for efficiently tracking data flows at runtime. This is achieved via
+two mechanisms: a runtime replacement for malloc and friends, `libfuzzalloc`,
+and a set of LLVM passes to transform your target to use `libfuzzalloc`.
 
-## How does AFL record code coverage?
-
-AFL (a popular open-source fuzzer) performs compile-time source instrumentation
-to insert code that tracks _edge_ coverage (which is more accurate than _block_
-coverage). This edge coverage information is stored in a bitmap (default size
-64KB), where each byte in the bitmap represents the hit count of a specific
-edge. The code injected at each edge is essentially equivalent to (from the
-AFL documentation):
-
-```
-cur_location = <COMPILE_TIME_RANDOM>;
-bitmap[cur_location ^ prev_location]++;
-prev_location = cur_location >> 1;
-```
-
-Note that the last right-shift operation is performed to preserve the
-directionality of edges (without this, `A -> B` would be indistinguishable from
-`B -> A`).
-
-## What issues may arise when using code coverage?
-
-Take the following example (seems to be a classic example, used in a number of
-lecture slides):
-
-```
-            1
-           / \
- x = ...; 2   3
-           \ /
-            4
-           / \
-          5   6 ... = x;
-           \ /
-            7
-```
-
-We may execute the following two paths:
-
-```
-1 -> 2 -> 4 -> 5 -> 7
-1 -> 3 -> 4 -> 6 - >7
-```
-
-Fuzzers guided by AFL may mark this code as being fully explored and
-deprioritise seeds that further execute this code. However, there is a chance
-we may miss any interesting behaviour that is exercised in the relationship
-between the _definition_ of `x` in statement `2` and the _usage_ of `x` in
-statement `6`.
-
-## Data-flow coverage
-
-Data-flow coverage seeks to capture _use-def_ relationships such as the one
-outlined in the previous section. In "data-flow guided fuzzing", seed selection
-is based on the ways in which values are associated with variables, and how
-these associations can affect the execution of the program.
-
-## `fuzzalloc`
-
-A low-fat pointer memory allocator for fuzzing. Stores useful metadata in the
-upper bits of allocated memory addresses. This achieved via two mechanisms: a
-runtime replacement for malloc and friends, `libfuzzalloc`, and a set of LLVM
-passes to transform your target to use `libfuzzalloc`.
-
-Note that the `FUZZALLOC_SRC` variable refers to this directory.
+More details are available in our registered report, published at the [1st
+International Fuzzing Workshop (FUZZING)
+2022](https://fuzzingworkshop.github.io/). You can read our report
+[here](https://www.ndss-symposium.org/wp-content/uploads/fuzzing2022_23001_paper.pdf).
 
 ## Building
 
 The `datAFLow` fuzzer requires a custom version of clang. Once this is built,
-the `fuzzalloc` toolchain can be built.
+the `fuzzalloc` toolchain can be built. `FUZZALLOC_SRC` variable refers to this
+directory.
 
 ### Patching clang
 
@@ -88,8 +33,8 @@ To build the custom clang:
 # Get the LLVM source code and update the clang source code
 mkdir llvm
 cd llvm
-$FUZZALLOC_SRC/scripts/get_llvm_src.sh
-$FUZZALLOC_SRC/scripts/update_clang_src.sh
+$FUZZALLOC_SRC/llvm-scripts/get_llvm_src.sh
+$FUZZALLOC_SRC/llvm-scripts/update_clang_src.sh
 
 # Build and install LLVM/clang/etc.
 mkdir build
@@ -125,8 +70,8 @@ To build the custom ASan, run the following after running `get_llvm_src.sh` and
 
 ```bash
 cd llvm
-$FUZZALLOC_SRC/scripts/update_compiler_rt_src.sh
-$FUZZALLOC_SRC/scripts/update_llvm_src.sh
+$FUZZALLOC_SRC/llvm-scripts/update_compiler_rt_src.sh
+$FUZZALLOC_SRC/llvm-scripts/update_llvm_src.sh
 
 # Build and install LLVM/clang/etc.
 cd build
@@ -149,12 +94,9 @@ fuzzalloc with the new clang/clang++ (found under `install/bin`).
 ```bash
 mkdir build
 cd build
-cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DAFL_PATH=/path/to./afl/source $FUZZALLOC_SRC
+cmake -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DAFL_PATH=/path/to./afl++/source $FUZZALLOC_SRC
 make -j
 ```
-
-To build the runtime with AFL++ support, set the `-DAFL_INSTRUMENT=On` CMake
-flag.
 
 ## Usage
 
@@ -178,12 +120,13 @@ Note that this typically requires running `dataflow-preprocess` before running
 ### `dataflow-preprocess`
 
 If the target uses custom memory allocation routines (i.e., wrapping `malloc`,
-`calloc`, etc.), then a [special case list](https://clang.llvm.org/docs/SanitizerSpecialCaseList.html)
-containing a list of these routines should be provided to `dataflow-preprocess`.
-Doing so ensures that dynamically-allocated variable _def_ sites are
-appropriately tagged. The list is provided via the `FUZZALLOC_MEM_FUNCS`
-environment variable; i.e., `FUZZALLOC_MEM_FUNCS=/path/to/special/case/list`.
-The special case list must be formatted as:
+`calloc`, etc.), then a [special case
+list](https://clang.llvm.org/docs/SanitizerSpecialCaseList.html) containing a
+list of these routines should be provided to `dataflow-preprocess`. Doing so
+ensures dynamically-allocated variable _def_ sites are appropriately tagged. The
+list is provided via the `FUZZALLOC_MEM_FUNCS` environment variable; i.e.,
+`FUZZALLOC_MEM_FUNCS=/path/to/special/case/list`. The special case list must be
+formatted as:
 
 ```
 [fuzzalloc]
